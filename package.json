@@ -1,0 +1,17 @@
+{
+  "name": "autoposter",
+  "version": "1.0.0",
+  "description": "AI-powered content publishing hub",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "backend": "npm --prefix backend start",
+    "backend:dev": "npm --prefix backend run dev",
+    "frontend": "npm --prefix frontend start",
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend\"",
+    "build": "npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

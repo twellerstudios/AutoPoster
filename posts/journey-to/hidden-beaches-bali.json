@@ -1,0 +1,19 @@
+{
+  "businessId": "journey-to",
+  "businessName": "Journey To",
+  "topic": "Hidden beaches in Bali",
+  "tone": "adventurous",
+  "wordCount": 1000,
+  "keywords": ["hidden beaches Bali", "secret beaches Bali", "off the beaten path Bali"],
+  "seo": {
+    "title": "Hidden Beaches in Bali: 7 Secret Shores Worth Finding",
+    "metaDescription": "Discover Bali's best-kept secret beaches — from cliff-carved coves in Uluwatu to wild shores on Nusa Penida. These hidden gems are worth the adventure.",
+    "focusKeyphrase": "hidden beaches Bali",
+    "tags": ["Bali", "hidden beaches", "secret beaches", "Nusa Penida", "off the beaten path", "Bali travel tips", "Uluwatu"],
+    "categories": ["Asia", "Beach", "Travel Tips"],
+    "slug": "hidden-beaches-bali"
+  },
+  "contentFile": "hidden-beaches-bali.html",
+  "status": "ready-to-publish",
+  "generatedAt": "2026-03-16"
+}

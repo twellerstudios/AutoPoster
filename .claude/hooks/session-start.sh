@@ -6,6 +6,9 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
+# Async mode — session starts immediately, deps install in background
+echo '{"async": true, "asyncTimeout": 300000}'
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/home/user/AutoPoster}"
 
 echo "[AutoPoster] Installing backend dependencies..."

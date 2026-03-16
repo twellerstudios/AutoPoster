@@ -10,6 +10,7 @@ const { config, validate } = require('./config');
 validate();
 
 const app = express();
+app.set('trust proxy', 1); // Trust the React dev proxy / reverse proxies
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 

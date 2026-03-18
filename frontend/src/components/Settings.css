@@ -101,7 +101,16 @@
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background 0.2s, transform 0.1s;
+}
+
+.ai-mode-card.clickable {
+  cursor: pointer;
+}
+
+.ai-mode-card.clickable:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
 }
 
 .ai-mode-card.active {

@@ -30,6 +30,7 @@ router.get('/', (req, res) => {
   const settings = loadSettings() || { businesses: [], anthropicApiKey: '', pexelsApiKey: '' };
 
   res.json({
+    aiMode: settings.aiMode || (settings.anthropicApiKey ? 'auto' : 'manual'),
     anthropicApiKey: maskSecret(settings.anthropicApiKey),
     anthropicApiKeySet: Boolean(settings.anthropicApiKey),
     pexelsApiKey: maskSecret(settings.pexelsApiKey),
@@ -52,8 +53,11 @@ router.get('/', (req, res) => {
  */
 router.put('/', (req, res) => {
   const settings = loadSettings() || { businesses: [], anthropicApiKey: '', pexelsApiKey: '' };
-  const { anthropicApiKey, pexelsApiKey } = req.body;
+  const { anthropicApiKey, pexelsApiKey, aiMode } = req.body;
 
+  if (aiMode !== undefined) {
+    settings.aiMode = aiMode;
+  }
   if (anthropicApiKey !== undefined) {
     settings.anthropicApiKey = anthropicApiKey;
   }

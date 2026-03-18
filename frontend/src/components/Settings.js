@@ -54,6 +54,23 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
     }
   }
 
+  // ── AI Mode ──────────────────────────────────────────────────────────────
+
+  async function handleSetAiMode(mode) {
+    if (mode === 'auto' && !settings?.anthropicApiKeySet) {
+      showToast('Add an Anthropic API key below first to use Automatic Mode.', 'warning');
+      return;
+    }
+    try {
+      await api.updateSettings({ aiMode: mode });
+      await loadSettings();
+      onBusinessesChanged(); // refresh health so PostGenerator picks up the new mode
+      showToast(`Switched to ${mode === 'manual' ? 'Manual' : 'Automatic'} Mode.`, 'success');
+    } catch (err) {
+      showToast(`Failed to switch mode: ${err.message}`, 'error');
+    }
+  }
+
   // ── API Keys ──────────────────────────────────────────────────────────────
 
   async function handleSaveKeys(e) {
@@ -229,18 +246,24 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
         </h2>
 
         <div className="ai-mode-cards">
-          <div className={`ai-mode-card ${!settings?.anthropicApiKeySet ? 'active' : ''}`}>
+          <div
+            className={`ai-mode-card clickable ${settings?.aiMode === 'manual' || (!settings?.aiMode && !settings?.anthropicApiKeySet) ? 'active' : ''}`}
+            onClick={() => handleSetAiMode('manual')}
+          >
             <div className="ai-mode-badge free">FREE</div>
             <h3>Manual Mode</h3>
             <p>Uses your $20/mo Claude subscription at claude.ai. The app generates the perfect prompt — you copy it to Claude, get the response, and paste it back. No API costs.</p>
-            {!settings?.anthropicApiKeySet && <span className="ai-mode-status">Currently Active</span>}
+            {(settings?.aiMode === 'manual' || (!settings?.aiMode && !settings?.anthropicApiKeySet)) && <span className="ai-mode-status">Currently Active</span>}
           </div>
 
-          <div className={`ai-mode-card ${settings?.anthropicApiKeySet ? 'active' : ''}`}>
+          <div
+            className={`ai-mode-card clickable ${settings?.aiMode === 'auto' || (!settings?.aiMode && settings?.anthropicApiKeySet) ? 'active' : ''}`}
+            onClick={() => handleSetAiMode('auto')}
+          >
             <div className="ai-mode-badge api">API</div>
             <h3>Automatic Mode</h3>
             <p>Uses the Anthropic API for fully automated generation. Requires an API key with separate billing from your Claude subscription.</p>
-            {settings?.anthropicApiKeySet && <span className="ai-mode-status">Currently Active</span>}
+            {(settings?.aiMode === 'auto' || (!settings?.aiMode && settings?.anthropicApiKeySet)) && <span className="ai-mode-status">Currently Active</span>}
           </div>
         </div>
 

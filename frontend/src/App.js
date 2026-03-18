@@ -18,9 +18,13 @@ export default function App() {
   }, []);
 
   const refreshBusinesses = useCallback(() => {
-    return api.getBusinesses()
-      .then(setBusinesses)
-      .catch(() => {});
+    return Promise.all([
+      api.getBusinesses().catch(() => []),
+      api.health().catch(() => null),
+    ]).then(([biz, h]) => {
+      setBusinesses(biz);
+      if (h) setHealth(h);
+    });
   }, []);
 
   useEffect(() => {
@@ -58,7 +62,7 @@ export default function App() {
           <PostGenerator
             businesses={businesses}
             showToast={showToast}
-            hasApiKey={health?.hasApiKey}
+            hasApiKey={health?.aiMode === 'auto' && health?.hasApiKey}
             onGoToSettings={() => setPage('settings')}
           />
         )}

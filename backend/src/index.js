@@ -43,12 +43,15 @@ app.use('/api/settings', require('./routes/settings'));
 
 // Health check
 app.get('/api/health', (req, res) => {
+  const settings = require('./config').loadSettings() || {};
+  const aiMode = settings.aiMode || (config.anthropicApiKey ? 'auto' : 'manual');
   res.json({
     ok: true,
     version: '2.1.0',
     businesses: Object.keys(config.businesses),
     hasApiKey: Boolean(config.anthropicApiKey),
     hasPexelsKey: Boolean(config.pexelsApiKey),
+    aiMode,
     timestamp: new Date().toISOString(),
   });
 });

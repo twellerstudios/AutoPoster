@@ -456,7 +456,7 @@ router.post('/publish', async (req, res) => {
 
     console.log(`[Post] Publishing: "${post.title}" to ${business.name}`);
 
-    // Upload user images to WordPress
+    // Upload user images to WordPress and collect real URLs
     const wpImageUrls = {};
     for (const img of preview.userImages) {
       try {
@@ -465,14 +465,14 @@ router.post('/publish', async (req, res) => {
           continue;
         }
         const buffer = fs.readFileSync(img.path);
-        const mediaId = await uploadImage(
+        const media = await uploadImage(
           business.wordpress,
           buffer,
           img.originalName,
           img.caption || post.title
         );
-        wpImageUrls[img.url] = { mediaId, filename: img.originalName };
-        console.log(`[Post] User image uploaded: ${img.originalName} → media ID ${mediaId}`);
+        wpImageUrls[img.url] = media.sourceUrl;
+        console.log(`[Post] User image uploaded: ${img.originalName} → ${media.sourceUrl}`);
       } catch (imgErr) {
         console.warn(`[Post] Failed to upload "${img.originalName}": ${imgErr.message}`);
       }
@@ -484,29 +484,27 @@ router.post('/publish', async (req, res) => {
     if (featuredImage) {
       try {
         const buffer = await downloadImage(featuredImage.url);
-        featuredMediaId = await uploadImage(
+        const media = await uploadImage(
           business.wordpress,
           buffer,
           `${post.slug}-featured.jpg`,
           post.title
         );
+        featuredMediaId = media.id;
         post.htmlContent += `\n<p class="photo-credit" style="font-size:0.75em;color:#999;">Featured photo by <a href="${featuredImage.photographerUrl}" target="_blank" rel="noopener">${featuredImage.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
       } catch (imgErr) {
         console.warn('[Post] Featured image upload failed (non-fatal):', imgErr.message);
       }
     }
 
-    // Upload inline stock images and replace broken/placeholder img tags
+    // Upload inline stock images and replace placeholder/broken img tags
     const inlineImages = preview.stockImages.filter(img => img.role === 'inline');
     if (inlineImages.length > 0) {
-      // Find all <img> tags whose src is NOT a valid http URL or points to a non-existent resource
       const imgTagRegex = /<img\s+[^>]*src="([^"]*)"[^>]*>/gi;
       const brokenImgs = [];
       let match;
       while ((match = imgTagRegex.exec(post.htmlContent)) !== null) {
         const src = match[1];
-        // Skip user-uploaded images (local /uploads/ paths already handled above)
-        // and skip images that are already valid WordPress URLs
         const isLocalUpload = src.startsWith('/uploads/');
         const isWpUrl = business.wordpress.url && src.startsWith(business.wordpress.url);
         if (!isLocalUpload && !isWpUrl) {
@@ -514,27 +512,24 @@ router.post('/publish', async (req, res) => {
         }
       }
 
-      // Replace broken img tags with uploaded stock images
+      // Replace placeholder/broken img tags with uploaded stock images using real WordPress URLs
       for (let i = 0; i < Math.min(brokenImgs.length, inlineImages.length); i++) {
         const stockImg = inlineImages[i];
         try {
           const buffer = await downloadImage(stockImg.url);
           const filename = `${post.slug}-inline-${i + 1}.jpg`;
-          const mediaId = await uploadImage(
+          const media = await uploadImage(
             business.wordpress,
             buffer,
             filename,
             brokenImgs[i].fullMatch.match(/alt="([^"]*)"/i)?.[1] || post.title
           );
-          // Get the WordPress URL for the uploaded image
-          const wpUrl = `${business.wordpress.url}/wp-content/uploads/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${filename}`;
-          // Replace the broken src with the real WordPress URL
-          const fixedTag = brokenImgs[i].fullMatch.replace(brokenImgs[i].src, wpUrl);
+          // Use the actual WordPress URL from the API response
+          const fixedTag = brokenImgs[i].fullMatch.replace(brokenImgs[i].src, media.sourceUrl);
           const credit = `<p class="photo-credit" style="font-size:0.75em;color:#999;text-align:center;">Photo by <a href="${stockImg.photographerUrl}" target="_blank" rel="noopener">${stockImg.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
           post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, fixedTag + '\n' + credit);
-          console.log(`[Post] Inline stock image uploaded: ${filename}`);
+          console.log(`[Post] Inline stock image uploaded: ${filename} → ${media.sourceUrl}`);
         } catch (imgErr) {
-          // Remove the broken img tag entirely if we can't replace it
           post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, '');
           console.warn(`[Post] Inline image upload failed, removed broken tag: ${imgErr.message}`);
         }
@@ -547,11 +542,11 @@ router.post('/publish', async (req, res) => {
       }
     }
 
-    // Replace local image URLs with WordPress URLs
-    for (const [localUrl, wpData] of Object.entries(wpImageUrls)) {
+    // Replace local /uploads/ URLs with real WordPress URLs
+    for (const [localUrl, wpUrl] of Object.entries(wpImageUrls)) {
       post.htmlContent = post.htmlContent.replace(
         new RegExp(localUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-        `${business.wordpress.url}/wp-content/uploads/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${wpData.filename}`
+        wpUrl
       );
     }
 

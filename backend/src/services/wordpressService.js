@@ -27,7 +27,7 @@ function wpClient(wpConfig) {
 
 /**
  * Upload an image to the WordPress media library.
- * @returns {Promise<number>} WordPress media attachment ID
+ * @returns {Promise<{id: number, sourceUrl: string}>} WordPress media attachment ID and URL
  */
 async function uploadImage(wpConfig, imageBuffer, filename, altText) {
   const { url, username, appPassword } = wpConfig;
@@ -55,7 +55,10 @@ async function uploadImage(wpConfig, imageBuffer, filename, altText) {
     }
   );
 
-  return response.data.id;
+  return {
+    id: response.data.id,
+    sourceUrl: response.data.source_url,
+  };
 }
 
 /**

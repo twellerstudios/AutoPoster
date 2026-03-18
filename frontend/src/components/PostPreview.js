@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './PostPreview.css';
 
-export default function PostPreview({ data, step, businessName, onPublish, onBack, onNewPost }) {
+export default function PostPreview({ data, step, businessName, onPublish, onBack, onNewPost, errorInfo }) {
   const [tab, setTab] = useState('content');
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState(data?.post?.title || '');
@@ -209,6 +209,14 @@ export default function PostPreview({ data, step, businessName, onPublish, onBac
           {hasStockImages && (
             <MetaRow label="Stock Images" value={`${post.stockImages.length} image(s) from Pexels`} />
           )}
+        </div>
+      )}
+
+      {/* Error display */}
+      {errorInfo && (
+        <div className="preview-error">
+          <p className="preview-error-msg">{errorInfo.message}</p>
+          {errorInfo.hint && <p className="preview-error-hint">{errorInfo.hint}</p>}
         </div>
       )}
 

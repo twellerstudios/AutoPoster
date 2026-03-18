@@ -28,13 +28,39 @@
   letter-spacing: -0.3px;
 }
 
-.header-badge {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+.header-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  border-radius: 8px;
   color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  transition: all 0.15s;
+}
+
+.nav-btn:hover {
   background: var(--surface-2);
-  padding: 4px 10px;
-  border-radius: 20px;
+  color: var(--text);
+}
+
+.nav-btn.active {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .nav-btn span {
+    display: none;
+  }
 }

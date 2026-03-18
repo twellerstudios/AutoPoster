@@ -19,7 +19,7 @@ const WORD_COUNTS = [
   { value: 2000, label: '~2,000 words (Comprehensive)' },
 ];
 
-export default function PostGenerator({ businesses, showToast }) {
+export default function PostGenerator({ businesses, showToast, hasApiKey, onGoToSettings }) {
   const [form, setForm] = useState({
     businessId: businesses[0]?.id || '',
     topic: '',
@@ -29,20 +29,27 @@ export default function PostGenerator({ businesses, showToast }) {
   });
 
   // Image upload state
-  const [images, setImages] = useState([]);       // File objects
-  const [imagePreviews, setImagePreviews] = useState([]); // { file, previewUrl, caption }
+  const [images, setImages] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState([]);
   const fileInputRef = useRef(null);
-  const dropZoneRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Workflow state
-  const [step, setStep] = useState('input');      // input | generating | preview | publishing | published
+  // Workflow state: input | generating | manual-prompt | manual-paste | preview | publishing | published
+  const [step, setStep] = useState('input');
   const [previewData, setPreviewData] = useState(null);
   const [publishResult, setPublishResult] = useState(null);
   const [testingConn, setTestingConn] = useState(false);
+  const [errorInfo, setErrorInfo] = useState(null);
+
+  // Manual mode state
+  const [manualPrompt, setManualPrompt] = useState('');
+  const [manualSessionId, setManualSessionId] = useState('');
+  const [pastedContent, setPastedContent] = useState('');
+  const [parsingContent, setParsingContent] = useState(false);
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }));
+    setErrorInfo(null);
   }
 
   // ── Image handling ──────────────────────────────────────────────────────────
@@ -52,7 +59,11 @@ export default function PostGenerator({ businesses, showToast }) {
       /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)
     );
     if (validFiles.length === 0) {
-      showToast('Only image files (jpg, png, gif, webp) are allowed', 'error');
+      showToast('Only image files are allowed (JPG, PNG, GIF, WEBP)', 'error');
+      return;
+    }
+    if (images.length + validFiles.length > 10) {
+      showToast('You can upload up to 10 images per post.', 'warning');
       return;
     }
     const newPreviews = validFiles.map(file => ({
@@ -76,21 +87,9 @@ export default function PostGenerator({ businesses, showToast }) {
     ));
   }
 
-  function handleDragOver(e) {
-    e.preventDefault();
-    setIsDragging(true);
-  }
-
-  function handleDragLeave(e) {
-    e.preventDefault();
-    setIsDragging(false);
-  }
-
-  function handleDrop(e) {
-    e.preventDefault();
-    setIsDragging(false);
-    addFiles(e.dataTransfer.files);
-  }
+  function handleDragOver(e) { e.preventDefault(); setIsDragging(true); }
+  function handleDragLeave(e) { e.preventDefault(); setIsDragging(false); }
+  function handleDrop(e) { e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files); }
 
   // ── Connection test ─────────────────────────────────────────────────────────
 
@@ -99,51 +98,88 @@ export default function PostGenerator({ businesses, showToast }) {
     setTestingConn(true);
     try {
       const r = await api.testBusiness(form.businessId);
-      showToast(`Connected as "${r.user}"`, 'success');
+      showToast(r.message || `Connected as "${r.user}"`, 'success');
     } catch (err) {
-      showToast(`Connection failed: ${err.message}`, 'error');
+      showToast(err.hint || `Connection failed: ${err.message}`, 'error');
     } finally {
       setTestingConn(false);
     }
   }
 
-  // ── Step 1: Generate preview ────────────────────────────────────────────────
+  // ── Generate (API mode — automatic) ─────────────────────────────────────────
 
-  async function handleGenerate(e) {
+  async function handleGenerateAPI(e) {
     e.preventDefault();
-    if (!form.topic.trim()) {
-      showToast('Please enter a topic', 'error');
-      return;
-    }
+    if (!validateForm()) return;
 
     setStep('generating');
     setPreviewData(null);
     setPublishResult(null);
+    setErrorInfo(null);
 
     try {
-      const data = await api.generatePost({
-        businessId: form.businessId,
-        topic: form.topic.trim(),
-        tone: form.tone,
-        wordCount: parseInt(form.wordCount),
-        keywords: form.keywords,
-        images,
-        imageCaptions: imagePreviews.map(img => img.caption),
-      });
-
+      const data = await api.generatePost(buildFormPayload());
       setPreviewData(data);
       setStep('preview');
       showToast('Blog post generated! Review it below before publishing.', 'success');
     } catch (err) {
       setStep('input');
+      setErrorInfo({ message: err.message, hint: err.hint });
       showToast(err.message, 'error');
     }
   }
 
-  // ── Step 2: Publish ─────────────────────────────────────────────────────────
+  // ── Generate (Manual mode — free) ───────────────────────────────────────────
+
+  async function handleGenerateManual(e) {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setStep('generating');
+    setErrorInfo(null);
+
+    try {
+      const data = await api.getManualPrompt(buildFormPayload());
+      setManualPrompt(data.prompt);
+      setManualSessionId(data.sessionId);
+      setStep('manual-prompt');
+    } catch (err) {
+      setStep('input');
+      setErrorInfo({ message: err.message, hint: err.hint });
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function handlePasteContent() {
+    if (!pastedContent.trim()) {
+      showToast('Please paste Claude\'s response first.', 'error');
+      return;
+    }
+
+    setParsingContent(true);
+    setErrorInfo(null);
+
+    try {
+      const data = await api.parseManualContent({
+        sessionId: manualSessionId,
+        content: pastedContent,
+      });
+      setPreviewData(data);
+      setStep('preview');
+      showToast('Content parsed successfully! Review your post below.', 'success');
+    } catch (err) {
+      setErrorInfo({ message: err.message, hint: err.hint });
+      showToast(err.hint || err.message, 'error');
+    } finally {
+      setParsingContent(false);
+    }
+  }
+
+  // ── Publish ─────────────────────────────────────────────────────────────────
 
   async function handlePublish({ title, htmlContent }) {
     setStep('publishing');
+    setErrorInfo(null);
 
     try {
       const data = await api.publishPost({
@@ -151,22 +187,52 @@ export default function PostGenerator({ businesses, showToast }) {
         title,
         htmlContent,
       });
-
       setPublishResult(data);
       setStep('published');
       showToast('Post published successfully!', 'success');
     } catch (err) {
       setStep('preview');
-      showToast(`Publish failed: ${err.message}`, 'error');
+      setErrorInfo({ message: err.message, hint: err.hint });
+      showToast(err.hint || `Publish failed: ${err.message}`, 'error');
     }
   }
 
-  // ── Go back to edit ─────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  function validateForm() {
+    if (!form.businessId) {
+      setErrorInfo({
+        message: 'Please select a business.',
+        hint: 'If no businesses appear, go to Settings to add one.',
+      });
+      return false;
+    }
+    if (!form.topic.trim()) {
+      setErrorInfo({ message: 'Please enter a topic for your blog post.' });
+      return false;
+    }
+    return true;
+  }
+
+  function buildFormPayload() {
+    return {
+      businessId: form.businessId,
+      topic: form.topic.trim(),
+      tone: form.tone,
+      wordCount: parseInt(form.wordCount),
+      keywords: form.keywords,
+      images,
+      imageCaptions: imagePreviews.map(img => img.caption),
+    };
+  }
 
   function handleBackToInput() {
     setStep('input');
     setPreviewData(null);
     setPublishResult(null);
+    setErrorInfo(null);
+    setManualPrompt('');
+    setPastedContent('');
   }
 
   function handleNewPost() {
@@ -176,10 +242,120 @@ export default function PostGenerator({ businesses, showToast }) {
     setStep('input');
     setPreviewData(null);
     setPublishResult(null);
+    setErrorInfo(null);
+    setManualPrompt('');
+    setPastedContent('');
   }
 
   const selectedBusiness = businesses.find(b => b.id === form.businessId);
   const isWorking = step === 'generating' || step === 'publishing';
+
+  // ── Manual prompt step ──────────────────────────────────────────────────────
+
+  if (step === 'manual-prompt') {
+    return (
+      <div className="generator">
+        <div className="generator-header">
+          <div className="step-indicator">
+            <span className="step done">1. Create</span>
+            <span className="step-arrow">&rarr;</span>
+            <span className="step active">2. Copy to Claude</span>
+            <span className="step-arrow">&rarr;</span>
+            <span className="step">3. Review</span>
+            <span className="step-arrow">&rarr;</span>
+            <span className="step">4. Publish</span>
+          </div>
+        </div>
+
+        <div className="manual-section">
+          <div className="manual-banner">
+            <strong>Free AI Mode</strong>
+            <span>Use your Claude subscription — no API costs</span>
+          </div>
+
+          <div className="manual-instructions">
+            <div className="manual-step-list">
+              <div className="manual-step-item">
+                <span className="manual-step-num">1</span>
+                <span>Copy the prompt below</span>
+              </div>
+              <div className="manual-step-item">
+                <span className="manual-step-num">2</span>
+                <span>Open <a href="https://claude.ai" target="_blank" rel="noopener noreferrer">claude.ai</a> and paste it in a new chat</span>
+              </div>
+              <div className="manual-step-item">
+                <span className="manual-step-num">3</span>
+                <span>Wait for Claude to generate the blog post</span>
+              </div>
+              <div className="manual-step-item">
+                <span className="manual-step-num">4</span>
+                <span>Copy Claude's <strong>entire</strong> response and paste it below</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="manual-prompt-box">
+            <div className="prompt-header">
+              <label>Your AI Prompt</label>
+              <button
+                className="btn-sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(manualPrompt);
+                  showToast('Prompt copied! Now paste it into claude.ai', 'success');
+                }}
+              >
+                Copy to Clipboard
+              </button>
+            </div>
+            <textarea
+              className="prompt-text"
+              value={manualPrompt}
+              readOnly
+              rows={8}
+              onClick={e => e.target.select()}
+            />
+          </div>
+
+          <div className="manual-paste-box">
+            <label>Paste Claude's Response Here</label>
+            <textarea
+              className="paste-text"
+              value={pastedContent}
+              onChange={e => setPastedContent(e.target.value)}
+              placeholder="After Claude generates the blog post, copy its entire response and paste it here..."
+              rows={12}
+            />
+            {errorInfo && (
+              <div className="inline-error">
+                <p>{errorInfo.message}</p>
+                {errorInfo.hint && <p className="error-hint">{errorInfo.hint}</p>}
+              </div>
+            )}
+          </div>
+
+          <div className="manual-actions">
+            <button className="btn-ghost" onClick={handleBackToInput}>
+              &larr; Back
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handlePasteContent}
+              disabled={parsingContent || !pastedContent.trim()}
+            >
+              {parsingContent ? (
+                <>
+                  <span className="btn-spinner" />
+                  Processing...
+                </>
+              ) : (
+                'Continue to Preview'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Preview / Published view ────────────────────────────────────────────────
 
@@ -191,11 +367,11 @@ export default function PostGenerator({ businesses, showToast }) {
             <span className="step done">1. Create</span>
             <span className="step-arrow">&rarr;</span>
             <span className={`step ${step === 'preview' || step === 'publishing' ? 'active' : 'done'}`}>
-              2. Review
+              {hasApiKey ? '2. Review' : '3. Review'}
             </span>
             <span className="step-arrow">&rarr;</span>
             <span className={`step ${step === 'published' ? 'done' : ''}`}>
-              3. Publish
+              {hasApiKey ? '3. Publish' : '4. Publish'}
             </span>
           </div>
         </div>
@@ -207,6 +383,7 @@ export default function PostGenerator({ businesses, showToast }) {
           onPublish={handlePublish}
           onBack={handleBackToInput}
           onNewPost={handleNewPost}
+          errorInfo={errorInfo}
         />
       </div>
     );
@@ -222,13 +399,37 @@ export default function PostGenerator({ businesses, showToast }) {
         <div className="step-indicator">
           <span className="step active">1. Create</span>
           <span className="step-arrow">&rarr;</span>
-          <span className="step">2. Review</span>
+          {!hasApiKey && (
+            <>
+              <span className="step">2. Copy to Claude</span>
+              <span className="step-arrow">&rarr;</span>
+            </>
+          )}
+          <span className="step">{hasApiKey ? '2. Review' : '3. Review'}</span>
           <span className="step-arrow">&rarr;</span>
-          <span className="step">3. Publish</span>
+          <span className="step">{hasApiKey ? '3. Publish' : '4. Publish'}</span>
         </div>
       </div>
 
-      <form className="form" onSubmit={handleGenerate}>
+      {/* No businesses warning */}
+      {businesses.length === 0 && (
+        <div className="warning-box">
+          <strong>No businesses configured</strong>
+          <p>You need to add at least one business (with WordPress connection) before you can create posts.</p>
+          <button className="btn-primary" onClick={onGoToSettings}>Go to Settings</button>
+        </div>
+      )}
+
+      {/* Error display */}
+      {errorInfo && (
+        <div className="error-box">
+          <p className="error-message">{errorInfo.message}</p>
+          {errorInfo.hint && <p className="error-hint">{errorInfo.hint}</p>}
+          <button className="error-dismiss" onClick={() => setErrorInfo(null)}>&times;</button>
+        </div>
+      )}
+
+      <form className="form" onSubmit={hasApiKey ? handleGenerateAPI : handleGenerateManual}>
 
         {/* Business selector */}
         <div className="field">
@@ -241,20 +442,22 @@ export default function PostGenerator({ businesses, showToast }) {
               disabled={isWorking}
             >
               {businesses.length === 0 && (
-                <option value="">No businesses configured</option>
+                <option value="">No businesses — add one in Settings</option>
               )}
               {businesses.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
             </select>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={handleTestConnection}
-              disabled={testingConn || isWorking || !form.businessId}
-            >
-              {testingConn ? 'Testing...' : 'Test Connection'}
-            </button>
+            {businesses.length > 0 && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={handleTestConnection}
+                disabled={testingConn || isWorking || !form.businessId}
+              >
+                {testingConn ? 'Testing...' : 'Test Connection'}
+              </button>
+            )}
           </div>
           {selectedBusiness && (
             <span className="field-hint">{selectedBusiness.wordpressUrl}</span>
@@ -268,7 +471,7 @@ export default function PostGenerator({ businesses, showToast }) {
             id="topic"
             value={form.topic}
             onChange={e => set('topic', e.target.value)}
-            placeholder='e.g. Make me a blog post on "Downs Syndrome Day" with awareness info and resources'
+            placeholder='e.g. Make me a blog post on "World Down Syndrome Day" with awareness info and resources'
             rows={3}
             disabled={isWorking}
             required
@@ -280,29 +483,14 @@ export default function PostGenerator({ businesses, showToast }) {
         <div className="field-row">
           <div className="field">
             <label htmlFor="tone">Tone</label>
-            <select
-              id="tone"
-              value={form.tone}
-              onChange={e => set('tone', e.target.value)}
-              disabled={isWorking}
-            >
-              {TONES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
+            <select id="tone" value={form.tone} onChange={e => set('tone', e.target.value)} disabled={isWorking}>
+              {TONES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
-
           <div className="field">
             <label htmlFor="wordCount">Length</label>
-            <select
-              id="wordCount"
-              value={form.wordCount}
-              onChange={e => set('wordCount', e.target.value)}
-              disabled={isWorking}
-            >
-              {WORD_COUNTS.map(w => (
-                <option key={w.value} value={w.value}>{w.label}</option>
-              ))}
+            <select id="wordCount" value={form.wordCount} onChange={e => set('wordCount', e.target.value)} disabled={isWorking}>
+              {WORD_COUNTS.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
             </select>
           </div>
         </div>
@@ -325,7 +513,6 @@ export default function PostGenerator({ businesses, showToast }) {
         <div className="field">
           <label>Your Photos <span className="optional">(optional)</span></label>
           <div
-            ref={dropZoneRef}
             className={`drop-zone ${isDragging ? 'dragging' : ''}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -337,7 +524,7 @@ export default function PostGenerator({ businesses, showToast }) {
               type="file"
               accept="image/jpeg,image/png,image/gif,image/webp"
               multiple
-              onChange={e => addFiles(e.target.files)}
+              onChange={e => { addFiles(e.target.files); e.target.value = ''; }}
               style={{ display: 'none' }}
               disabled={isWorking}
             />
@@ -348,11 +535,10 @@ export default function PostGenerator({ businesses, showToast }) {
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
               <span>Drop images here or click to browse</span>
-              <span className="drop-zone-hint">JPG, PNG, GIF, WEBP — up to 10 images</span>
+              <span className="drop-zone-hint">JPG, PNG, GIF, WEBP — up to 10 images, 10 MB each</span>
             </div>
           </div>
 
-          {/* Image previews */}
           {imagePreviews.length > 0 && (
             <div className="image-previews">
               {imagePreviews.map((img, index) => (
@@ -383,7 +569,22 @@ export default function PostGenerator({ businesses, showToast }) {
           )}
         </div>
 
-        {/* Submit */}
+        {/* AI mode indicator + submit */}
+        <div className="ai-mode-indicator">
+          {hasApiKey ? (
+            <span className="mode-tag api">Automatic AI Mode</span>
+          ) : (
+            <span className="mode-tag free">Free Mode — uses your Claude subscription</span>
+          )}
+          <button
+            type="button"
+            className="mode-switch"
+            onClick={onGoToSettings}
+          >
+            Change in Settings
+          </button>
+        </div>
+
         <button
           type="submit"
           className="btn-primary"
@@ -392,13 +593,17 @@ export default function PostGenerator({ businesses, showToast }) {
           {isWorking ? (
             <>
               <span className="btn-spinner" />
-              Generating your post...
+              {hasApiKey ? 'Generating your post...' : 'Preparing your prompt...'}
             </>
           ) : (
-            'Generate Preview'
+            hasApiKey ? 'Generate Preview' : 'Generate Prompt'
           )}
         </button>
-        <p className="submit-hint">Your post will be generated for review before publishing.</p>
+        <p className="submit-hint">
+          {hasApiKey
+            ? 'Your post will be generated for review before publishing.'
+            : 'A prompt will be generated for you to paste into claude.ai (free).'}
+        </p>
       </form>
     </div>
   );

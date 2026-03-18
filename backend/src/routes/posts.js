@@ -1,6 +1,10 @@
 /**
- * POST /api/posts/generate  — Generate a blog post preview (with optional user images)
- * POST /api/posts/publish   — Publish a previously generated post to WordPress
+ * Blog post generation & publishing routes.
+ *
+ * POST /api/posts/generate        — AI-generate a blog post preview (API mode)
+ * POST /api/posts/manual-prompt   — Get the prompt to paste into claude.ai (free mode)
+ * POST /api/posts/manual-parse    — Parse content pasted back from claude.ai
+ * POST /api/posts/publish         — Publish a preview to WordPress
  */
 const express = require('express');
 const router = express.Router();
@@ -9,7 +13,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { config } = require('../config');
-const { generateBlogPost } = require('../services/claudeService');
+const { generateBlogPost, getManualPrompt, parseManualContent, isApiModeAvailable } = require('../services/claudeService');
 const { findImage, findMultipleImages, downloadImage } = require('../services/imageService');
 const { publishPost, uploadImage } = require('../services/wordpressService');
 
@@ -38,21 +42,44 @@ const upload = multer({
     if (allowed.test(path.extname(file.originalname))) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files (jpg, png, gif, webp) are allowed'));
+      cb(new Error(
+        `"${file.originalname}" is not a supported image format. ` +
+        'Please use JPG, PNG, GIF, or WEBP files.'
+      ));
     }
   },
 });
 
-// ── In-memory store for generated previews (keyed by previewId) ───────────────
+// Multer error handler
+function handleMulterError(err, req, res, next) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        error: 'One of your images is too large. Maximum file size is 10 MB per image.',
+      });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        error: 'Too many images. You can upload up to 10 images per post.',
+      });
+    }
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
+  }
+  if (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  next();
+}
+
+// ── In-memory store for generated previews ────────────────────────────────────
 
 const previews = new Map();
 
 // Clean up old previews every 30 minutes
 setInterval(() => {
-  const cutoff = Date.now() - 60 * 60 * 1000; // 1 hour
+  const cutoff = Date.now() - 60 * 60 * 1000;
   for (const [id, preview] of previews) {
     if (preview.createdAt < cutoff) {
-      // Clean up uploaded files
       if (preview.sessionDir && fs.existsSync(preview.sessionDir)) {
         fs.rmSync(preview.sessionDir, { recursive: true, force: true });
       }
@@ -61,58 +88,122 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000);
 
+// ── Helper: parse uploaded images from request ────────────────────────────────
+
+function parseUserImages(req) {
+  return (req.files || []).map((file, index) => ({
+    filename: file.filename,
+    originalName: file.originalname,
+    path: file.path,
+    url: `/uploads/${req.uploadSessionId}/${file.filename}`,
+    caption: req.body[`imageCaption_${index}`] || '',
+  }));
+}
+
+function parseKeywords(keywords) {
+  if (!keywords) return [];
+  return typeof keywords === 'string'
+    ? keywords.split(',').map(k => k.trim()).filter(Boolean)
+    : keywords;
+}
+
+// ── Helper: find stock images (non-fatal on failure) ──────────────────────────
+
+async function findStockImages(post) {
+  const stockImages = [];
+  try {
+    const mainImage = await findImage(post.imageSearchQuery);
+    if (mainImage) {
+      stockImages.push({ ...mainImage, role: 'featured' });
+    }
+    if (post.additionalImageQueries && post.additionalImageQueries.length > 0) {
+      const additional = await findMultipleImages(post.additionalImageQueries);
+      stockImages.push(...additional.map(img => ({ ...img, role: 'inline' })));
+    }
+  } catch (imgErr) {
+    console.warn('[Post] Image search failed (non-fatal):', imgErr.message);
+  }
+  return stockImages;
+}
+
+// ── Helper: store a preview ───────────────────────────────────────────────────
+
+function storePreview({ post, stockImages, userImages, businessId, sessionDir, uploadSessionId }) {
+  const previewId = uuidv4();
+  previews.set(previewId, {
+    post,
+    stockImages,
+    userImages,
+    businessId,
+    sessionDir,
+    uploadSessionId,
+    createdAt: Date.now(),
+  });
+  return previewId;
+}
+
+function buildPreviewResponse(previewId, post, stockImages, userImages) {
+  return {
+    success: true,
+    action: 'preview',
+    previewId,
+    aiMode: isApiModeAvailable() ? 'api' : 'manual',
+    post: {
+      ...post,
+      userImages: userImages.map(img => ({
+        url: img.url,
+        originalName: img.originalName,
+        caption: img.caption,
+      })),
+      stockImages: stockImages.map(img => ({
+        url: img.url,
+        photographer: img.photographer,
+        photographerUrl: img.photographerUrl,
+        role: img.role,
+      })),
+    },
+  };
+}
+
 /**
- * Step 1: Generate a blog post preview.
- * Accepts multipart/form-data with images and form fields.
+ * POST /api/posts/generate — Generate using Anthropic API (requires API key).
  */
 router.post('/generate', (req, res, next) => {
-  // Set session ID before multer processes files
   req.uploadSessionId = uuidv4();
   next();
-}, upload.array('images', 10), async (req, res) => {
-  const {
-    businessId,
-    topic,
-    tone,
-    wordCount,
-    keywords,
-  } = req.body;
+}, upload.array('images', 10), handleMulterError, async (req, res) => {
+  const { businessId, topic, tone, wordCount, keywords } = req.body;
 
-  if (!businessId || !topic) {
-    return res.status(400).json({ error: 'businessId and topic are required' });
+  if (!businessId) {
+    return res.status(400).json({
+      error: 'Please select a business before generating.',
+      hint: 'If no businesses appear in the dropdown, add one in Settings first.',
+    });
+  }
+  if (!topic || !topic.trim()) {
+    return res.status(400).json({
+      error: 'Please enter a topic for your blog post.',
+      hint: 'Example: "World Down Syndrome Day - awareness, resources, and why inclusion matters"',
+    });
   }
 
   const business = config.businesses[businessId];
   if (!business) {
     return res.status(404).json({
-      error: `Business "${businessId}" not found`,
+      error: `Business "${businessId}" not found.`,
+      hint: 'This business may have been deleted. Go to Settings to check your businesses.',
       available: Object.keys(config.businesses),
     });
   }
 
-  console.log(`[Post] Generating: "${topic}" for ${business.name}`);
+  console.log(`[Post] Generating (API mode): "${topic}" for ${business.name}`);
 
   try {
-    // Parse uploaded images
-    const userImages = (req.files || []).map((file, index) => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      path: file.path,
-      url: `/uploads/${req.uploadSessionId}/${file.filename}`,
-      caption: req.body[`imageCaption_${index}`] || '',
-    }));
+    const userImages = parseUserImages(req);
+    const parsedKeywords = parseKeywords(keywords);
 
-    // Parse keywords
-    let parsedKeywords = [];
-    if (keywords) {
-      parsedKeywords = typeof keywords === 'string'
-        ? keywords.split(',').map(k => k.trim()).filter(Boolean)
-        : keywords;
-    }
-
-    // Step 1: Generate content with Claude
     const post = await generateBlogPost({
-      topic,
+      topic: topic.trim(),
       businessName: business.name,
       tone,
       wordCount: parseInt(wordCount) || 1000,
@@ -122,55 +213,11 @@ router.post('/generate', (req, res, next) => {
 
     console.log(`[Post] Generated: "${post.title}"`);
 
-    // Step 2: Find stock images from Pexels
-    let stockImages = [];
-    try {
-      const mainImage = await findImage(post.imageSearchQuery);
-      if (mainImage) {
-        stockImages.push({ ...mainImage, role: 'featured' });
-      }
-      // Find additional in-content stock images
-      if (post.additionalImageQueries && post.additionalImageQueries.length > 0) {
-        const additional = await findMultipleImages(post.additionalImageQueries);
-        stockImages.push(...additional.map(img => ({ ...img, role: 'inline' })));
-      }
-    } catch (imgErr) {
-      console.warn('[Post] Image search failed (non-fatal):', imgErr.message);
-    }
-
-    // Store preview for later publishing
-    const previewId = uuidv4();
+    const stockImages = await findStockImages(post);
     const sessionDir = path.join(uploadsDir, req.uploadSessionId);
+    const previewId = storePreview({ post, stockImages, userImages, businessId, sessionDir, uploadSessionId: req.uploadSessionId });
 
-    previews.set(previewId, {
-      post,
-      stockImages,
-      userImages,
-      businessId,
-      sessionDir,
-      uploadSessionId: req.uploadSessionId,
-      createdAt: Date.now(),
-    });
-
-    return res.json({
-      success: true,
-      action: 'preview',
-      previewId,
-      post: {
-        ...post,
-        userImages: userImages.map(img => ({
-          url: img.url,
-          originalName: img.originalName,
-          caption: img.caption,
-        })),
-        stockImages: stockImages.map(img => ({
-          url: img.url,
-          photographer: img.photographer,
-          photographerUrl: img.photographerUrl,
-          role: img.role,
-        })),
-      },
-    });
+    return res.json(buildPreviewResponse(previewId, post, stockImages, userImages));
   } catch (err) {
     console.error('[Post] Error:', err.message);
     return res.status(500).json({ error: err.message });
@@ -178,40 +225,188 @@ router.post('/generate', (req, res, next) => {
 });
 
 /**
- * Step 2: Publish a previously generated preview to WordPress.
- * Body: { previewId, title?, htmlContent? }
- * Title and htmlContent allow the user to make edits before publishing.
+ * POST /api/posts/manual-prompt — Get the AI prompt to paste into claude.ai (free mode).
+ */
+router.post('/manual-prompt', (req, res, next) => {
+  req.uploadSessionId = uuidv4();
+  next();
+}, upload.array('images', 10), handleMulterError, async (req, res) => {
+  const { businessId, topic, tone, wordCount, keywords } = req.body;
+
+  if (!businessId) {
+    return res.status(400).json({
+      error: 'Please select a business before generating.',
+      hint: 'If no businesses appear in the dropdown, add one in Settings first.',
+    });
+  }
+  if (!topic || !topic.trim()) {
+    return res.status(400).json({
+      error: 'Please enter a topic for your blog post.',
+    });
+  }
+
+  const business = config.businesses[businessId];
+  if (!business) {
+    return res.status(404).json({
+      error: `Business "${businessId}" not found.`,
+      hint: 'Go to Settings to check your businesses.',
+    });
+  }
+
+  const userImages = parseUserImages(req);
+  const parsedKeywords = parseKeywords(keywords);
+
+  const prompt = getManualPrompt({
+    topic: topic.trim(),
+    businessName: business.name,
+    tone,
+    wordCount: parseInt(wordCount) || 1000,
+    keywords: parsedKeywords,
+    userImages,
+  });
+
+  // Store the session for later when the user pastes content back
+  const sessionId = req.uploadSessionId;
+  const sessionDir = path.join(uploadsDir, sessionId);
+
+  // Store a temporary entry so we can attach images later
+  previews.set(`manual_${sessionId}`, {
+    businessId,
+    userImages,
+    sessionDir,
+    uploadSessionId: sessionId,
+    topic: topic.trim(),
+    createdAt: Date.now(),
+  });
+
+  res.json({
+    success: true,
+    prompt,
+    sessionId,
+    instructions: [
+      '1. Copy the prompt below',
+      '2. Open claude.ai in a new tab (uses your free $20 subscription)',
+      '3. Paste the prompt and send it',
+      '4. Wait for Claude to generate the full blog post',
+      '5. Copy Claude\'s entire response',
+      '6. Come back here and paste it in',
+    ],
+  });
+});
+
+/**
+ * POST /api/posts/manual-parse — Parse pasted content from Claude and create a preview.
+ * Body: { sessionId, content }
+ */
+router.post('/manual-parse', async (req, res) => {
+  const { sessionId, content } = req.body;
+
+  if (!content || !content.trim()) {
+    return res.status(400).json({
+      error: 'Please paste the content from Claude.',
+      hint: 'Copy Claude\'s entire response (the full HTML blog post with the <seo_data> block at the end) and paste it here.',
+    });
+  }
+
+  if (!sessionId) {
+    return res.status(400).json({
+      error: 'Session expired. Please go back and generate a new prompt.',
+    });
+  }
+
+  const session = previews.get(`manual_${sessionId}`);
+  if (!session) {
+    return res.status(404).json({
+      error: 'Your session has expired (sessions last 1 hour). Please go back and start again.',
+    });
+  }
+
+  try {
+    const post = parseManualContent(content.trim(), session.topic);
+
+    if (!post.htmlContent || post.htmlContent.length < 50) {
+      return res.status(400).json({
+        error: 'The pasted content doesn\'t look like a valid blog post.',
+        hint: 'Make sure you copied Claude\'s entire response, including all the HTML content and the <seo_data> block at the end.',
+      });
+    }
+
+    console.log(`[Post] Manual content parsed: "${post.title}"`);
+
+    const stockImages = await findStockImages(post);
+    const previewId = storePreview({
+      post,
+      stockImages,
+      userImages: session.userImages,
+      businessId: session.businessId,
+      sessionDir: session.sessionDir,
+      uploadSessionId: session.uploadSessionId,
+    });
+
+    // Clean up manual session
+    previews.delete(`manual_${sessionId}`);
+
+    return res.json(buildPreviewResponse(previewId, post, stockImages, session.userImages));
+  } catch (err) {
+    console.error('[Post] Manual parse error:', err.message);
+    return res.status(500).json({
+      error: 'Failed to parse the pasted content.',
+      hint: 'Make sure you copied the complete response from Claude, including the <seo_data> JSON block at the end.',
+    });
+  }
+});
+
+/**
+ * POST /api/posts/publish — Publish a preview to WordPress.
  */
 router.post('/publish', async (req, res) => {
   const { previewId, title, htmlContent } = req.body;
 
   if (!previewId) {
-    return res.status(400).json({ error: 'previewId is required' });
+    return res.status(400).json({
+      error: 'Missing preview reference. Please generate or paste your content first.',
+    });
   }
 
   const preview = previews.get(previewId);
   if (!preview) {
-    return res.status(404).json({ error: 'Preview not found or expired. Please generate again.' });
+    return res.status(404).json({
+      error: 'Your preview has expired (previews last 1 hour). Please generate the post again.',
+      hint: 'Previews are temporary. If you took a long break, just re-generate the post.',
+    });
   }
 
   const business = config.businesses[preview.businessId];
   if (!business) {
-    return res.status(404).json({ error: 'Business configuration not found' });
+    return res.status(404).json({
+      error: `The business "${preview.businessId}" was not found. It may have been deleted from Settings.`,
+      hint: 'Go to Settings to check your business configurations.',
+    });
+  }
+
+  // Validate WordPress config
+  if (!business.wordpress.url || !business.wordpress.username || !business.wordpress.appPassword) {
+    return res.status(422).json({
+      error: `"${business.name}" has incomplete WordPress settings.`,
+      hint: 'Go to Settings and make sure this business has a WordPress URL, username, and application password configured.',
+    });
   }
 
   try {
     const post = { ...preview.post };
-
-    // Apply user edits if provided
     if (title) post.title = title;
     if (htmlContent) post.htmlContent = htmlContent;
 
     console.log(`[Post] Publishing: "${post.title}" to ${business.name}`);
 
-    // Step 1: Upload user images to WordPress
+    // Upload user images to WordPress
     const wpImageUrls = {};
     for (const img of preview.userImages) {
       try {
+        if (!fs.existsSync(img.path)) {
+          console.warn(`[Post] User image file not found: ${img.path} — skipping`);
+          continue;
+        }
         const buffer = fs.readFileSync(img.path);
         const mediaId = await uploadImage(
           business.wordpress,
@@ -219,20 +414,18 @@ router.post('/publish', async (req, res) => {
           img.originalName,
           img.caption || post.title
         );
-        // Get the WP URL for the uploaded image
         wpImageUrls[img.url] = { mediaId, filename: img.originalName };
         console.log(`[Post] User image uploaded: ${img.originalName} → media ID ${mediaId}`);
       } catch (imgErr) {
-        console.warn(`[Post] Failed to upload user image ${img.originalName}:`, imgErr.message);
+        console.warn(`[Post] Failed to upload "${img.originalName}": ${imgErr.message}`);
       }
     }
 
-    // Step 2: Upload featured stock image
+    // Upload featured stock image
     let featuredMediaId = null;
     const featuredImage = preview.stockImages.find(img => img.role === 'featured');
     if (featuredImage) {
       try {
-        console.log(`[Post] Uploading featured image: ${featuredImage.url}`);
         const buffer = await downloadImage(featuredImage.url);
         featuredMediaId = await uploadImage(
           business.wordpress,
@@ -240,31 +433,25 @@ router.post('/publish', async (req, res) => {
           `${post.slug}-featured.jpg`,
           post.title
         );
-        console.log(`[Post] Featured image uploaded, media ID: ${featuredMediaId}`);
-
-        // Append photographer credit
         post.htmlContent += `\n<p class="photo-credit" style="font-size:0.75em;color:#999;">Featured photo by <a href="${featuredImage.photographerUrl}" target="_blank" rel="noopener">${featuredImage.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
       } catch (imgErr) {
         console.warn('[Post] Featured image upload failed (non-fatal):', imgErr.message);
       }
     }
 
-    // Step 3: Replace local user image URLs with WordPress media URLs
-    // For user images that were uploaded, replace the local preview URLs
-    // The HTML contains placeholder references that we replace with actual WP-hosted images
+    // Replace local image URLs with WordPress URLs
     for (const [localUrl, wpData] of Object.entries(wpImageUrls)) {
-      // Replace local URLs in the HTML content
       post.htmlContent = post.htmlContent.replace(
         new RegExp(localUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
         `${business.wordpress.url}/wp-content/uploads/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${wpData.filename}`
       );
     }
 
-    // Step 4: Publish to WordPress
+    // Publish
     const result = await publishPost(business.wordpress, post, featuredMediaId);
     console.log(`[Post] Published! ID: ${result.id} → ${result.url}`);
 
-    // Clean up preview and temp files
+    // Clean up
     if (preview.sessionDir && fs.existsSync(preview.sessionDir)) {
       fs.rmSync(preview.sessionDir, { recursive: true, force: true });
     }
@@ -288,10 +475,33 @@ router.post('/publish', async (req, res) => {
   } catch (err) {
     console.error('[Post] Publish error:', err.message);
 
+    // Provide user-friendly WordPress error messages
+    if (err.response?.status === 401 || err.response?.status === 403) {
+      return res.status(502).json({
+        error: 'WordPress rejected your credentials.',
+        hint: 'Go to Settings and check the username and application password for this business. You may need to create a new application password in WordPress Admin > Users > Profile.',
+        detail: err.response.data,
+      });
+    }
+    if (err.response?.status === 404) {
+      return res.status(502).json({
+        error: 'Could not reach the WordPress REST API.',
+        hint: 'Make sure the WordPress URL in Settings is correct and the REST API is enabled on your site.',
+        detail: err.response.data,
+      });
+    }
+    if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+      return res.status(502).json({
+        error: `Could not connect to "${business.wordpress.url}".`,
+        hint: 'The site may be down, or the URL in Settings may be incorrect. Check your internet connection and try again.',
+      });
+    }
+
     if (err.response?.data) {
       return res.status(502).json({
-        error: 'WordPress API error',
+        error: 'WordPress returned an error while publishing.',
         detail: err.response.data,
+        hint: 'This might be a permissions issue. Make sure your WordPress user has the "Editor" or "Administrator" role.',
       });
     }
 

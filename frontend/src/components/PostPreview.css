@@ -359,6 +359,16 @@
 .seo-url { color: #bdc1c6; font-size: 12px; margin-bottom: 6px; }
 .seo-desc { color: #bdc1c6; font-size: 13px; line-height: 1.5; }
 
+/* ── Error display ── */
+.preview-error {
+  padding: 14px 24px;
+  background: rgba(239, 68, 68, 0.08);
+  border-top: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.preview-error-msg { font-size: 14px; color: var(--error); font-weight: 500; }
+.preview-error-hint { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
 /* ── Action buttons ── */
 .preview-actions {
   display: flex;

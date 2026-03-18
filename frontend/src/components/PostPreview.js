@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import './PostPreview.css';
 
-export default function PostPreview({ data, step, businessName, onPublish, onBack, onNewPost, errorInfo }) {
+export default function PostPreview({ data, step, businessName, onPublish, onBack, onNewPost, onAddImages, errorInfo }) {
   const [tab, setTab] = useState('content');
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState(data?.post?.title || '');
   const [editingContent, setEditingContent] = useState(false);
   const [htmlContent, setHtmlContent] = useState(data?.post?.htmlContent || '');
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   if (!data || !data.post) return null;
 
@@ -19,6 +22,28 @@ export default function PostPreview({ data, step, businessName, onPublish, onBac
   function handlePublish() {
     onPublish({ title, htmlContent });
   }
+
+  async function handleAddFiles(files) {
+    const validFiles = Array.from(files).filter(f =>
+      /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)
+    );
+    if (validFiles.length === 0) return;
+    if (!onAddImages) return;
+
+    setUploading(true);
+    try {
+      const result = await onAddImages(validFiles);
+      if (result?.htmlContent) {
+        setHtmlContent(result.htmlContent);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDragOver(e) { e.preventDefault(); setIsDragging(true); }
+  function handleDragLeave(e) { e.preventDefault(); setIsDragging(false); }
+  function handleDrop(e) { e.preventDefault(); setIsDragging(false); handleAddFiles(e.dataTransfer.files); }
 
   return (
     <div className="preview">
@@ -173,6 +198,46 @@ export default function PostPreview({ data, step, businessName, onPublish, onBac
 
           {!hasStockImages && !hasUserImages && (
             <p className="empty-state">No images found. Stock images may not be available without a Pexels API key.</p>
+          )}
+
+          {/* Add more images */}
+          {!isPublished && (
+            <div className="images-section add-images-section">
+              <h3 className="section-label">Add More Images</h3>
+              <div
+                className={`preview-drop-zone ${isDragging ? 'dragging' : ''}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  multiple
+                  onChange={e => { handleAddFiles(e.target.files); e.target.value = ''; }}
+                  style={{ display: 'none' }}
+                  disabled={uploading}
+                />
+                {uploading ? (
+                  <div className="drop-zone-content">
+                    <span className="btn-spinner" />
+                    <span>Uploading...</span>
+                  </div>
+                ) : (
+                  <div className="drop-zone-content">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span>Drop images here or click to add more</span>
+                    <span className="drop-zone-hint">Images will be appended to the post body</span>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}

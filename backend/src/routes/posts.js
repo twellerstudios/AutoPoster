@@ -357,6 +357,63 @@ router.post('/manual-parse', async (req, res) => {
 });
 
 /**
+ * POST /api/posts/preview/:previewId/images — Add more images to an existing preview.
+ */
+router.post('/preview/:previewId/images', (req, res, next) => {
+  req.uploadSessionId = req.params.previewId;
+  next();
+}, upload.array('images', 10), handleMulterError, async (req, res) => {
+  const { previewId } = req.params;
+
+  const preview = previews.get(previewId);
+  if (!preview) {
+    return res.status(404).json({
+      error: 'Preview has expired. Please generate the post again.',
+    });
+  }
+
+  const newImages = (req.files || []).map((file, index) => ({
+    filename: file.filename,
+    originalName: file.originalname,
+    path: file.path,
+    url: `/uploads/${req.uploadSessionId}/${file.filename}`,
+    caption: req.body[`imageCaption_${index}`] || '',
+  }));
+
+  if (newImages.length === 0) {
+    return res.status(400).json({ error: 'No images were uploaded.' });
+  }
+
+  // Add the new images to the preview
+  preview.userImages = [...preview.userImages, ...newImages];
+
+  // Build figure HTML for each new image and append to the post content
+  const figureHtml = newImages.map(img => {
+    const caption = img.caption || img.originalName;
+    return `\n<figure style="margin: 24px 0; text-align: center;">` +
+      `<img src="${img.url}" alt="${caption}" style="max-width: 100%; height: auto; border-radius: 8px;" />` +
+      `<figcaption style="font-size: 0.9em; color: #666; margin-top: 8px;">${caption}</figcaption>` +
+      `</figure>`;
+  }).join('\n');
+
+  // Find the last closing </p> or </section> or </ul> before the end, and insert before the conclusion
+  // Simple approach: append before the last section or at the end
+  preview.post.htmlContent += figureHtml;
+
+  console.log(`[Post] Added ${newImages.length} image(s) to preview ${previewId}`);
+
+  return res.json({
+    success: true,
+    userImages: preview.userImages.map(img => ({
+      url: img.url,
+      originalName: img.originalName,
+      caption: img.caption,
+    })),
+    htmlContent: preview.post.htmlContent,
+  });
+});
+
+/**
  * POST /api/posts/publish — Publish a preview to WordPress.
  */
 router.post('/publish', async (req, res) => {

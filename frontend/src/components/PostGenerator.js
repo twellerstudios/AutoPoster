@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import PostPreview from './PostPreview';
 import './PostGenerator.css';
@@ -197,6 +197,36 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
     }
   }
 
+  // ── Add images to preview ───────────────────────────────────────────────────
+
+  const handleAddPreviewImages = useCallback(async (files) => {
+    if (!previewData?.previewId) return null;
+
+    try {
+      const result = await api.addPreviewImages({
+        previewId: previewData.previewId,
+        images: files,
+        imageCaptions: [],
+      });
+
+      // Update the preview data with new images and content
+      setPreviewData(prev => ({
+        ...prev,
+        post: {
+          ...prev.post,
+          userImages: result.userImages,
+          htmlContent: result.htmlContent,
+        },
+      }));
+
+      showToast(`${files.length} image(s) added to your post!`, 'success');
+      return result;
+    } catch (err) {
+      showToast(err.message || 'Failed to add images.', 'error');
+      return null;
+    }
+  }, [previewData?.previewId, showToast]);
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   function validateForm() {
@@ -383,6 +413,7 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
           onPublish={handlePublish}
           onBack={handleBackToInput}
           onNewPost={handleNewPost}
+          onAddImages={handleAddPreviewImages}
           errorInfo={errorInfo}
         />
       </div>

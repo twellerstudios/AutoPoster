@@ -118,6 +118,39 @@ async function parseManualContent({ sessionId, content }) {
 }
 
 /**
+ * Add more images to an existing preview.
+ */
+async function addPreviewImages({ previewId, images, imageCaptions }) {
+  const formData = new FormData();
+  if (images && images.length > 0) {
+    images.forEach((file, index) => {
+      formData.append('images', file);
+      if (imageCaptions && imageCaptions[index]) {
+        formData.append(`imageCaption_${index}`, imageCaptions[index]);
+      }
+    });
+  }
+
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/posts/preview/${previewId}/images`, {
+      method: 'POST',
+      body: formData,
+    });
+  } catch {
+    throw new Error('Cannot reach the server.');
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.hint = data.hint || '';
+    throw err;
+  }
+  return data;
+}
+
+/**
  * Publish a previously generated preview to WordPress.
  */
 async function publishPost({ previewId, title, htmlContent }) {
@@ -157,6 +190,7 @@ export const api = {
   generatePost: generatePostWithImages,
   getManualPrompt,
   parseManualContent,
+  addPreviewImages,
   publishPost,
   // Settings
   getSettings,

@@ -58,7 +58,20 @@ Requirements:
 - Write naturally — no keyword stuffing
 ${keywordsNote}
 ${userImagesNote}
-Also suggest 2-3 places in the post where stock photos would enhance the content. For each, suggest a specific descriptive search query.
+Include 2-3 inline image placeholders placed naturally throughout the body of the post to break up text, enhance storytelling, and create a more engaging visual experience. Place them BETWEEN sections or after key paragraphs where a visual would reinforce the message. Use this exact HTML format for each:
+
+<figure style="margin: 24px 0; text-align: center;">
+  <img src="STOCK_IMAGE_PLACEHOLDER" alt="[descriptive alt text for the image]" style="max-width: 100%; height: auto; border-radius: 8px;" />
+  <figcaption style="font-size: 0.9em; color: #666; margin-top: 8px;">[A short, meaningful caption]</figcaption>
+</figure>
+
+Spread these images throughout the article — not clustered together. Think of them as visual storytelling beats that complement the written content.
+
+CRITICAL OUTPUT RULES:
+- Output ONLY the HTML blog post content followed by the <seo_data> block below
+- Do NOT include any commentary, suggestions, notes, explanations, or meta-discussion
+- Do NOT add text like "Here is your blog post" or "I hope this helps" or suggestions for improvement
+- Your entire response must be copy-paste ready — nothing but the post HTML and the SEO data block
 
 After the blog post HTML, output a JSON block wrapped in <seo_data> tags with this exact structure:
 <seo_data>
@@ -74,7 +87,7 @@ After the blog post HTML, output a JSON block wrapped in <seo_data> tags with th
 }
 </seo_data>
 
-Write the full HTML blog post now, then the <seo_data> block.`;
+Write the full HTML blog post now, then the <seo_data> block. Nothing else.`;
 }
 
 /**

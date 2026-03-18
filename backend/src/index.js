@@ -3,6 +3,7 @@
  */
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const rateLimit = require('express-rate-limit');
 const { config, validate } = require('./config');
 
@@ -10,21 +11,24 @@ const { config, validate } = require('./config');
 validate();
 
 const app = express();
-app.set('trust proxy', 1); // Trust the React dev proxy / reverse proxies
+app.set('trust proxy', 1);
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 app.use(cors({
-  origin: (origin, cb) => cb(null, true), // Allow all in dev; tighten in prod
+  origin: (origin, cb) => cb(null, true),
   credentials: true,
 }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting — prevent runaway Claude API calls
+// Serve uploaded images for preview
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Rate limiting
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000,
   max: 20,
   message: { error: 'Too many requests, please wait a moment' },
 });
@@ -39,7 +43,7 @@ app.use('/api/posts', require('./routes/posts'));
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    version: '1.0.0',
+    version: '2.0.0',
     businesses: Object.keys(config.businesses),
     timestamp: new Date().toISOString(),
   });

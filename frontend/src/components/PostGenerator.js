@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { api } from '../services/api';
-import PostResult from './PostResult';
+import PostPreview from './PostPreview';
 import './PostGenerator.css';
 
 const TONES = [
@@ -26,22 +26,80 @@ export default function PostGenerator({ businesses, showToast }) {
     tone: 'professional',
     wordCount: 1000,
     keywords: '',
-    publish: true,
   });
-  const [status, setStatus] = useState('idle'); // idle | generating | success | error
-  const [result, setResult] = useState(null);
+
+  // Image upload state
+  const [images, setImages] = useState([]);       // File objects
+  const [imagePreviews, setImagePreviews] = useState([]); // { file, previewUrl, caption }
+  const fileInputRef = useRef(null);
+  const dropZoneRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Workflow state
+  const [step, setStep] = useState('input');      // input | generating | preview | publishing | published
+  const [previewData, setPreviewData] = useState(null);
+  const [publishResult, setPublishResult] = useState(null);
   const [testingConn, setTestingConn] = useState(false);
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }));
   }
 
+  // ── Image handling ──────────────────────────────────────────────────────────
+
+  function addFiles(files) {
+    const validFiles = Array.from(files).filter(f =>
+      /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)
+    );
+    if (validFiles.length === 0) {
+      showToast('Only image files (jpg, png, gif, webp) are allowed', 'error');
+      return;
+    }
+    const newPreviews = validFiles.map(file => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      caption: '',
+    }));
+    setImages(prev => [...prev, ...validFiles]);
+    setImagePreviews(prev => [...prev, ...newPreviews]);
+  }
+
+  function removeImage(index) {
+    URL.revokeObjectURL(imagePreviews[index].previewUrl);
+    setImages(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function updateCaption(index, caption) {
+    setImagePreviews(prev => prev.map((img, i) =>
+      i === index ? { ...img, caption } : img
+    ));
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    setIsDragging(false);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragging(false);
+    addFiles(e.dataTransfer.files);
+  }
+
+  // ── Connection test ─────────────────────────────────────────────────────────
+
   async function handleTestConnection() {
     if (!form.businessId) return;
     setTestingConn(true);
     try {
       const r = await api.testBusiness(form.businessId);
-      showToast(`Connected as "${r.user}" ✓`, 'success');
+      showToast(`Connected as "${r.user}"`, 'success');
     } catch (err) {
       showToast(`Connection failed: ${err.message}`, 'error');
     } finally {
@@ -49,54 +107,128 @@ export default function PostGenerator({ businesses, showToast }) {
     }
   }
 
-  async function handleSubmit(e) {
+  // ── Step 1: Generate preview ────────────────────────────────────────────────
+
+  async function handleGenerate(e) {
     e.preventDefault();
     if (!form.topic.trim()) {
       showToast('Please enter a topic', 'error');
       return;
     }
 
-    setStatus('generating');
-    setResult(null);
+    setStep('generating');
+    setPreviewData(null);
+    setPublishResult(null);
 
     try {
-      const keywords = form.keywords
-        .split(',')
-        .map(k => k.trim())
-        .filter(Boolean);
-
       const data = await api.generatePost({
         businessId: form.businessId,
         topic: form.topic.trim(),
         tone: form.tone,
         wordCount: parseInt(form.wordCount),
-        keywords,
-        publish: form.publish,
+        keywords: form.keywords,
+        images,
+        imageCaptions: imagePreviews.map(img => img.caption),
       });
 
-      setResult(data);
-      setStatus('success');
-      showToast(
-        form.publish ? 'Post published successfully!' : 'Post generated successfully!',
-        'success'
-      );
+      setPreviewData(data);
+      setStep('preview');
+      showToast('Blog post generated! Review it below before publishing.', 'success');
     } catch (err) {
-      setStatus('error');
+      setStep('input');
       showToast(err.message, 'error');
     }
   }
 
+  // ── Step 2: Publish ─────────────────────────────────────────────────────────
+
+  async function handlePublish({ title, htmlContent }) {
+    setStep('publishing');
+
+    try {
+      const data = await api.publishPost({
+        previewId: previewData.previewId,
+        title,
+        htmlContent,
+      });
+
+      setPublishResult(data);
+      setStep('published');
+      showToast('Post published successfully!', 'success');
+    } catch (err) {
+      setStep('preview');
+      showToast(`Publish failed: ${err.message}`, 'error');
+    }
+  }
+
+  // ── Go back to edit ─────────────────────────────────────────────────────────
+
+  function handleBackToInput() {
+    setStep('input');
+    setPreviewData(null);
+    setPublishResult(null);
+  }
+
+  function handleNewPost() {
+    setForm(f => ({ ...f, topic: '', keywords: '' }));
+    setImages([]);
+    setImagePreviews([]);
+    setStep('input');
+    setPreviewData(null);
+    setPublishResult(null);
+  }
+
   const selectedBusiness = businesses.find(b => b.id === form.businessId);
-  const isGenerating = status === 'generating';
+  const isWorking = step === 'generating' || step === 'publishing';
+
+  // ── Preview / Published view ────────────────────────────────────────────────
+
+  if (step === 'preview' || step === 'publishing' || step === 'published') {
+    return (
+      <div className="generator">
+        <div className="generator-header">
+          <div className="step-indicator">
+            <span className="step done">1. Create</span>
+            <span className="step-arrow">&rarr;</span>
+            <span className={`step ${step === 'preview' || step === 'publishing' ? 'active' : 'done'}`}>
+              2. Review
+            </span>
+            <span className="step-arrow">&rarr;</span>
+            <span className={`step ${step === 'published' ? 'done' : ''}`}>
+              3. Publish
+            </span>
+          </div>
+        </div>
+
+        <PostPreview
+          data={step === 'published' ? publishResult : previewData}
+          step={step}
+          businessName={selectedBusiness?.name}
+          onPublish={handlePublish}
+          onBack={handleBackToInput}
+          onNewPost={handleNewPost}
+        />
+      </div>
+    );
+  }
+
+  // ── Input form view ─────────────────────────────────────────────────────────
 
   return (
     <div className="generator">
       <div className="generator-header">
         <h1>Create a Blog Post</h1>
-        <p className="subtitle">Generate SEO-optimised content with Claude AI and publish directly to WordPress.</p>
+        <p className="subtitle">Generate SEO-optimised content with AI, review it, then publish to WordPress.</p>
+        <div className="step-indicator">
+          <span className="step active">1. Create</span>
+          <span className="step-arrow">&rarr;</span>
+          <span className="step">2. Review</span>
+          <span className="step-arrow">&rarr;</span>
+          <span className="step">3. Publish</span>
+        </div>
       </div>
 
-      <form className="form" onSubmit={handleSubmit}>
+      <form className="form" onSubmit={handleGenerate}>
 
         {/* Business selector */}
         <div className="field">
@@ -106,7 +238,7 @@ export default function PostGenerator({ businesses, showToast }) {
               id="businessId"
               value={form.businessId}
               onChange={e => set('businessId', e.target.value)}
-              disabled={isGenerating}
+              disabled={isWorking}
             >
               {businesses.length === 0 && (
                 <option value="">No businesses configured</option>
@@ -119,9 +251,9 @@ export default function PostGenerator({ businesses, showToast }) {
               type="button"
               className="btn-ghost"
               onClick={handleTestConnection}
-              disabled={testingConn || isGenerating || !form.businessId}
+              disabled={testingConn || isWorking || !form.businessId}
             >
-              {testingConn ? 'Testing…' : 'Test Connection'}
+              {testingConn ? 'Testing...' : 'Test Connection'}
             </button>
           </div>
           {selectedBusiness && (
@@ -136,9 +268,9 @@ export default function PostGenerator({ businesses, showToast }) {
             id="topic"
             value={form.topic}
             onChange={e => set('topic', e.target.value)}
-            placeholder="e.g. Top 10 hidden gems in Bali for adventurous travellers"
+            placeholder='e.g. Make me a blog post on "Downs Syndrome Day" with awareness info and resources'
             rows={3}
-            disabled={isGenerating}
+            disabled={isWorking}
             required
           />
           <span className="field-hint">Be specific — the more detail, the better the post</span>
@@ -152,7 +284,7 @@ export default function PostGenerator({ businesses, showToast }) {
               id="tone"
               value={form.tone}
               onChange={e => set('tone', e.target.value)}
-              disabled={isGenerating}
+              disabled={isWorking}
             >
               {TONES.map(t => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -166,7 +298,7 @@ export default function PostGenerator({ businesses, showToast }) {
               id="wordCount"
               value={form.wordCount}
               onChange={e => set('wordCount', e.target.value)}
-              disabled={isGenerating}
+              disabled={isWorking}
             >
               {WORD_COUNTS.map(w => (
                 <option key={w.value} value={w.value}>{w.label}</option>
@@ -183,53 +315,91 @@ export default function PostGenerator({ businesses, showToast }) {
             type="text"
             value={form.keywords}
             onChange={e => set('keywords', e.target.value)}
-            placeholder="travel tips Bali, Bali hidden beaches, adventurous travel"
-            disabled={isGenerating}
+            placeholder="downs syndrome day, world down syndrome, awareness"
+            disabled={isWorking}
           />
           <span className="field-hint">Comma-separated keywords to weave into the post</span>
         </div>
 
-        {/* Publish toggle */}
+        {/* Photo Upload */}
         <div className="field">
-          <div className="toggle-row">
-            <div>
-              <div className="toggle-label">Publish immediately</div>
-              <div className="toggle-desc">Post goes live on WordPress as soon as it's generated</div>
+          <label>Your Photos <span className="optional">(optional)</span></label>
+          <div
+            ref={dropZoneRef}
+            className={`drop-zone ${isDragging ? 'dragging' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
+              onChange={e => addFiles(e.target.files)}
+              style={{ display: 'none' }}
+              disabled={isWorking}
+            />
+            <div className="drop-zone-content">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>Drop images here or click to browse</span>
+              <span className="drop-zone-hint">JPG, PNG, GIF, WEBP — up to 10 images</span>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.publish}
-              className={`toggle ${form.publish ? 'on' : 'off'}`}
-              onClick={() => set('publish', !form.publish)}
-              disabled={isGenerating}
-            >
-              <span className="toggle-thumb" />
-            </button>
           </div>
+
+          {/* Image previews */}
+          {imagePreviews.length > 0 && (
+            <div className="image-previews">
+              {imagePreviews.map((img, index) => (
+                <div key={index} className="image-preview-card">
+                  <div className="image-preview-img">
+                    <img src={img.previewUrl} alt={img.file.name} />
+                    <button
+                      type="button"
+                      className="image-remove-btn"
+                      onClick={() => removeImage(index)}
+                      title="Remove image"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    className="image-caption-input"
+                    placeholder="Add a caption (optional)"
+                    value={img.caption}
+                    onChange={e => updateCaption(index, e.target.value)}
+                    disabled={isWorking}
+                  />
+                  <span className="image-preview-name">{img.file.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Submit */}
         <button
           type="submit"
           className="btn-primary"
-          disabled={isGenerating || businesses.length === 0}
+          disabled={isWorking || businesses.length === 0}
         >
-          {isGenerating ? (
+          {isWorking ? (
             <>
               <span className="btn-spinner" />
-              Generating your post…
+              Generating your post...
             </>
           ) : (
-            form.publish ? 'Generate & Publish' : 'Generate Preview'
+            'Generate Preview'
           )}
         </button>
+        <p className="submit-hint">Your post will be generated for review before publishing.</p>
       </form>
-
-      {/* Result */}
-      {result && status === 'success' && (
-        <PostResult result={result} />
-      )}
     </div>
   );
 }

@@ -10,6 +10,9 @@ backend/.env
 .DS_Store
 Thumbs.db
 
+# Uploads (temp user images)
+backend/uploads/
+
 # Logs
 *.log
 npm-debug.log*

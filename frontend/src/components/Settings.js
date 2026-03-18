@@ -14,7 +14,7 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
 
   // Add business form
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '' });
+  const [addForm, setAddForm] = useState({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '', facebookPageId: '', facebookPageAccessToken: '' });
   const [addingBusiness, setAddingBusiness] = useState(false);
   const [addErrors, setAddErrors] = useState([]);
 
@@ -25,6 +25,7 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
 
   // Test connection
   const [testingId, setTestingId] = useState(null);
+  const [testingFbId, setTestingFbId] = useState(null);
 
   // Delete confirmation
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -120,7 +121,7 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       const result = await api.addBusiness(addForm);
       showToast(result.message, 'success');
       setShowAddForm(false);
-      setAddForm({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '' });
+      setAddForm({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '', facebookPageId: '', facebookPageAccessToken: '' });
       await loadSettings();
       onBusinessesChanged();
     } catch (err) {
@@ -143,6 +144,8 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       wordpressUrl: biz.wordpressUrl,
       wordpressUsername: biz.wordpressUsername,
       wordpressAppPassword: '',
+      facebookPageId: biz.facebookPageId || '',
+      facebookPageAccessToken: '',
     });
   }
 
@@ -151,8 +154,9 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
     setEditingBusiness(true);
     try {
       const body = { ...editForm };
-      // Only send password if user typed a new one
+      // Only send password/token if user typed a new one
       if (!body.wordpressAppPassword) delete body.wordpressAppPassword;
+      if (!body.facebookPageAccessToken) delete body.facebookPageAccessToken;
 
       await api.updateBusiness(editingId, body);
       setEditingId(null);
@@ -177,6 +181,20 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       showToast(err.hint || err.message, 'error');
     } finally {
       setTestingId(null);
+    }
+  }
+
+  // ── Test Facebook Connection ──────────────────────────────────────────────
+
+  async function handleTestFacebook(id) {
+    setTestingFbId(id);
+    try {
+      const result = await api.testBusinessFacebook(id);
+      showToast(result.message || `Connected to Facebook Page "${result.pageName}"`, 'success');
+    } catch (err) {
+      showToast(err.hint || err.message, 'error');
+    } finally {
+      setTestingFbId(null);
     }
   }
 
@@ -341,6 +359,8 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                       <label>Business Name</label>
                       <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required />
                     </div>
+
+                    <h4 className="edit-section-title">WordPress</h4>
                     <div className="edit-field">
                       <label>WordPress URL</label>
                       <input value={editForm.wordpressUrl} onChange={e => setEditForm(f => ({ ...f, wordpressUrl: e.target.value }))} placeholder="https://www.example.com" required />
@@ -353,6 +373,19 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                       <label>Application Password <span className="optional">(leave blank to keep current)</span></label>
                       <input type="password" value={editForm.wordpressAppPassword} onChange={e => setEditForm(f => ({ ...f, wordpressAppPassword: e.target.value }))} placeholder="Leave blank to keep current password" />
                     </div>
+
+                    <h4 className="edit-section-title">Facebook Page <span className="optional">(optional)</span></h4>
+                    <div className="edit-field">
+                      <label>Facebook Page ID</label>
+                      <input value={editForm.facebookPageId} onChange={e => setEditForm(f => ({ ...f, facebookPageId: e.target.value }))} placeholder="e.g. 123456789012345" />
+                      <span className="field-hint">Found in your Facebook Page's About section or Page Settings</span>
+                    </div>
+                    <div className="edit-field">
+                      <label>Page Access Token <span className="optional">(leave blank to keep current)</span></label>
+                      <input type="password" value={editForm.facebookPageAccessToken} onChange={e => setEditForm(f => ({ ...f, facebookPageAccessToken: e.target.value }))} placeholder="Leave blank to keep current token" />
+                      <span className="field-hint">Generate at developers.facebook.com &rarr; Graph API Explorer</span>
+                    </div>
+
                     <div className="edit-actions">
                       <button type="submit" className="btn-primary" disabled={editingBusiness}>
                         {editingBusiness ? 'Saving...' : 'Save Changes'}
@@ -365,11 +398,22 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                   <>
                     <div className="business-info">
                       <h3 className="business-name">{biz.name}</h3>
-                      <span className="business-url">{biz.wordpressUrl}</span>
-                      <span className="business-user">User: {biz.wordpressUsername}</span>
-                      <span className="business-pw">
-                        Password: {biz.wordpressAppPasswordSet ? 'Configured' : 'Not set'}
-                      </span>
+                      <div className="business-platforms">
+                        <div className="platform-status">
+                          <span className="platform-label">WordPress:</span>
+                          <span className="business-url">{biz.wordpressUrl}</span>
+                          <span className="business-user">{biz.wordpressUsername}</span>
+                          <span className={`status-dot ${biz.wordpressAppPasswordSet ? 'configured' : 'not-set'}`}>
+                            {biz.wordpressAppPasswordSet ? 'Configured' : 'Not set'}
+                          </span>
+                        </div>
+                        <div className="platform-status">
+                          <span className="platform-label">Facebook:</span>
+                          <span className={`status-dot ${biz.facebookPageAccessTokenSet ? 'configured' : 'not-set'}`}>
+                            {biz.facebookPageAccessTokenSet ? `Page ID: ${biz.facebookPageId}` : 'Not configured'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                     <div className="business-actions">
                       <button
@@ -377,8 +421,17 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                         onClick={() => handleTestConnection(biz.id)}
                         disabled={testingId === biz.id}
                       >
-                        {testingId === biz.id ? 'Testing...' : 'Test'}
+                        {testingId === biz.id ? 'Testing WP...' : 'Test WP'}
                       </button>
+                      {biz.facebookPageAccessTokenSet && (
+                        <button
+                          className="btn-sm"
+                          onClick={() => handleTestFacebook(biz.id)}
+                          disabled={testingFbId === biz.id}
+                        >
+                          {testingFbId === biz.id ? 'Testing FB...' : 'Test FB'}
+                        </button>
+                      )}
                       <button className="btn-sm" onClick={() => startEditing(biz)}>Edit</button>
                       {confirmDeleteId === biz.id ? (
                         <>
@@ -454,6 +507,28 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                 />
                 <span className="field-hint">WordPress Admin &rarr; Users &rarr; Profile &rarr; Application Passwords &rarr; Add New</span>
               </div>
+
+              <h4 className="edit-section-title" style={{marginTop: '20px'}}>Facebook Page <span className="optional">(optional — add later if you prefer)</span></h4>
+              <div className="edit-field">
+                <label>Facebook Page ID</label>
+                <input
+                  value={addForm.facebookPageId}
+                  onChange={e => setAddForm(f => ({ ...f, facebookPageId: e.target.value }))}
+                  placeholder="e.g. 123456789012345"
+                />
+                <span className="field-hint">Found in your Facebook Page's About section or Settings &rarr; Page ID</span>
+              </div>
+              <div className="edit-field">
+                <label>Page Access Token</label>
+                <input
+                  type="password"
+                  value={addForm.facebookPageAccessToken}
+                  onChange={e => setAddForm(f => ({ ...f, facebookPageAccessToken: e.target.value }))}
+                  placeholder="Long-lived Page Access Token"
+                />
+                <span className="field-hint">Generate at developers.facebook.com &rarr; Graph API Explorer with pages_manage_posts permission</span>
+              </div>
+
               <div className="edit-actions">
                 <button type="submit" className="btn-primary" disabled={addingBusiness}>
                   {addingBusiness ? 'Adding & Testing Connection...' : 'Add Business'}

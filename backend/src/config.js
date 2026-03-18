@@ -53,6 +53,10 @@ function loadBusinessesFromEnv() {
         username: process.env[`${prefix}WP_USERNAME`] || '',
         appPassword: process.env[`${prefix}WP_APP_PASSWORD`] || '',
       },
+      facebook: {
+        pageId: process.env[`${prefix}FB_PAGE_ID`] || '',
+        pageAccessToken: process.env[`${prefix}FB_PAGE_TOKEN`] || '',
+      },
     };
     i++;
   }
@@ -80,6 +84,10 @@ function buildConfig() {
           url: b.wordpressUrl || '',
           username: b.wordpressUsername || '',
           appPassword: b.wordpressAppPassword || '',
+        },
+        facebook: {
+          pageId: b.facebookPageId || '',
+          pageAccessToken: b.facebookPageAccessToken || '',
         },
       };
     });

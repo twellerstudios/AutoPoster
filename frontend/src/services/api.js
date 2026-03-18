@@ -151,10 +151,11 @@ async function addPreviewImages({ previewId, images, imageCaptions }) {
 }
 
 /**
- * Publish a previously generated preview to WordPress.
+ * Publish a previously generated preview to selected platforms.
+ * @param {string[]} platforms - e.g. ['wordpress', 'facebook']
  */
-async function publishPost({ previewId, title, htmlContent }) {
-  return request('POST', '/posts/publish', { previewId, title, htmlContent });
+async function publishPost({ previewId, title, htmlContent, platforms }) {
+  return request('POST', '/posts/publish', { previewId, title, htmlContent, platforms });
 }
 
 // ── Settings API ──────────────────────────────────────────────────────────────
@@ -186,6 +187,7 @@ async function getNetworkInfo() {
 export const api = {
   getBusinesses: () => request('GET', '/businesses'),
   testBusiness: (id) => request('GET', `/businesses/${id}/test`),
+  testBusinessFacebook: (id) => request('GET', `/businesses/${id}/test-facebook`),
   health: () => request('GET', '/health'),
   generatePost: generatePostWithImages,
   getManualPrompt,

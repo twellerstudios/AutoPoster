@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { config, saveSettings, loadSettings, reloadConfig, getNetworkAddresses } = require('../config');
 const { testConnection } = require('../services/wordpressService');
+const { testFacebookConnection } = require('../services/facebookService');
 
 /**
  * Mask a secret string for safe display (show first 4 and last 4 chars).
@@ -42,6 +43,9 @@ router.get('/', (req, res) => {
       wordpressUsername: b.wordpressUsername,
       wordpressAppPasswordSet: Boolean(b.wordpressAppPassword),
       wordpressAppPassword: maskSecret(b.wordpressAppPassword),
+      facebookPageId: b.facebookPageId || '',
+      facebookPageAccessTokenSet: Boolean(b.facebookPageAccessToken),
+      facebookPageAccessToken: maskSecret(b.facebookPageAccessToken),
     })),
   });
 });
@@ -81,7 +85,7 @@ router.put('/', (req, res) => {
  * Body: { name, wordpressUrl, wordpressUsername, wordpressAppPassword }
  */
 router.post('/businesses', async (req, res) => {
-  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword } = req.body;
+  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword, facebookPageId, facebookPageAccessToken } = req.body;
 
   // Validation with helpful messages
   const errors = [];
@@ -128,6 +132,8 @@ router.post('/businesses', async (req, res) => {
     wordpressUrl: wordpressUrl.trim().replace(/\/+$/, ''), // Remove trailing slash
     wordpressUsername: wordpressUsername.trim(),
     wordpressAppPassword: wordpressAppPassword.trim(),
+    facebookPageId: (facebookPageId || '').trim(),
+    facebookPageAccessToken: (facebookPageAccessToken || '').trim(),
   };
 
   // Test the WordPress connection before saving
@@ -189,13 +195,15 @@ router.put('/businesses/:id', (req, res) => {
     });
   }
 
-  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword } = req.body;
+  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword, facebookPageId, facebookPageAccessToken } = req.body;
   const biz = settings.businesses[index];
 
   if (name !== undefined) biz.name = name.trim();
   if (wordpressUrl !== undefined) biz.wordpressUrl = wordpressUrl.trim().replace(/\/+$/, '');
   if (wordpressUsername !== undefined) biz.wordpressUsername = wordpressUsername.trim();
   if (wordpressAppPassword !== undefined) biz.wordpressAppPassword = wordpressAppPassword.trim();
+  if (facebookPageId !== undefined) biz.facebookPageId = facebookPageId.trim();
+  if (facebookPageAccessToken !== undefined) biz.facebookPageAccessToken = facebookPageAccessToken.trim();
 
   settings.businesses[index] = biz;
   saveSettings(settings);

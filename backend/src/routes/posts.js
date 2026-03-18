@@ -16,6 +16,7 @@ const { config } = require('../config');
 const { generateBlogPost, getManualPrompt, parseManualContent, isApiModeAvailable } = require('../services/claudeService');
 const { findImage, findMultipleImages, downloadImage } = require('../services/imageService');
 const { publishPost, uploadImage } = require('../services/wordpressService');
+const { publishToFacebook } = require('../services/facebookService');
 
 // ── Multer config for user image uploads ──────────────────────────────────────
 
@@ -414,10 +415,15 @@ router.post('/preview/:previewId/images', (req, res, next) => {
 });
 
 /**
- * POST /api/posts/publish — Publish a preview to WordPress.
+ * POST /api/posts/publish — Publish a preview to selected platforms.
+ * Body: { previewId, title?, htmlContent?, platforms: ['wordpress', 'facebook'] }
+ * If platforms is omitted, defaults to ['wordpress'] for backward compatibility.
  */
 router.post('/publish', async (req, res) => {
-  const { previewId, title, htmlContent } = req.body;
+  const { previewId, title, htmlContent, platforms } = req.body;
+
+  // Default to WordPress only if not specified (backward compatible)
+  const targetPlatforms = platforms && platforms.length > 0 ? platforms : ['wordpress'];
 
   if (!previewId) {
     return res.status(400).json({
@@ -441,12 +447,26 @@ router.post('/publish', async (req, res) => {
     });
   }
 
-  // Validate WordPress config
-  if (!business.wordpress.url || !business.wordpress.username || !business.wordpress.appPassword) {
-    return res.status(422).json({
-      error: `"${business.name}" has incomplete WordPress settings.`,
-      hint: 'Go to Settings and make sure this business has a WordPress URL, username, and application password configured.',
-    });
+  // Validate platform configs
+  const publishToWp = targetPlatforms.includes('wordpress');
+  const publishToFb = targetPlatforms.includes('facebook');
+
+  if (publishToWp) {
+    if (!business.wordpress.url || !business.wordpress.username || !business.wordpress.appPassword) {
+      return res.status(422).json({
+        error: `"${business.name}" has incomplete WordPress settings.`,
+        hint: 'Go to Settings and make sure this business has a WordPress URL, username, and application password configured.',
+      });
+    }
+  }
+
+  if (publishToFb) {
+    if (!business.facebook.pageId || !business.facebook.pageAccessToken) {
+      return res.status(422).json({
+        error: `"${business.name}" has no Facebook Page configured.`,
+        hint: 'Go to Settings and add a Facebook Page ID and Page Access Token for this business.',
+      });
+    }
   }
 
   try {
@@ -454,107 +474,151 @@ router.post('/publish', async (req, res) => {
     if (title) post.title = title;
     if (htmlContent) post.htmlContent = htmlContent;
 
-    console.log(`[Post] Publishing: "${post.title}" to ${business.name}`);
+    console.log(`[Post] Publishing: "${post.title}" to ${business.name} → [${targetPlatforms.join(', ')}]`);
 
-    // Upload user images to WordPress and collect real URLs
-    const wpImageUrls = {};
-    for (const img of preview.userImages) {
-      try {
-        if (!fs.existsSync(img.path)) {
-          console.warn(`[Post] User image file not found: ${img.path} — skipping`);
-          continue;
-        }
-        const buffer = fs.readFileSync(img.path);
-        const media = await uploadImage(
-          business.wordpress,
-          buffer,
-          img.originalName,
-          img.caption || post.title
-        );
-        wpImageUrls[img.url] = media.sourceUrl;
-        console.log(`[Post] User image uploaded: ${img.originalName} → ${media.sourceUrl}`);
-      } catch (imgErr) {
-        console.warn(`[Post] Failed to upload "${img.originalName}": ${imgErr.message}`);
-      }
-    }
+    const results = { platforms: {} };
+    let wpPostUrl = null;
+    let featuredImageUrl = null;
 
-    // Upload featured stock image
-    let featuredMediaId = null;
-    const featuredImage = preview.stockImages.find(img => img.role === 'featured');
-    if (featuredImage) {
-      try {
-        const buffer = await downloadImage(featuredImage.url);
-        const media = await uploadImage(
-          business.wordpress,
-          buffer,
-          `${post.slug}-featured.jpg`,
-          post.title
-        );
-        featuredMediaId = media.id;
-        post.htmlContent += `\n<p class="photo-credit" style="font-size:0.75em;color:#999;">Featured photo by <a href="${featuredImage.photographerUrl}" target="_blank" rel="noopener">${featuredImage.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
-      } catch (imgErr) {
-        console.warn('[Post] Featured image upload failed (non-fatal):', imgErr.message);
-      }
-    }
-
-    // Upload inline stock images and replace placeholder/broken img tags
-    const inlineImages = preview.stockImages.filter(img => img.role === 'inline');
-    if (inlineImages.length > 0) {
-      const imgTagRegex = /<img\s+[^>]*src="([^"]*)"[^>]*>/gi;
-      const brokenImgs = [];
-      let match;
-      while ((match = imgTagRegex.exec(post.htmlContent)) !== null) {
-        const src = match[1];
-        const isLocalUpload = src.startsWith('/uploads/');
-        const isWpUrl = business.wordpress.url && src.startsWith(business.wordpress.url);
-        if (!isLocalUpload && !isWpUrl) {
-          brokenImgs.push({ fullMatch: match[0], src, index: match.index });
-        }
-      }
-
-      // Replace placeholder/broken img tags with uploaded stock images using real WordPress URLs
-      for (let i = 0; i < Math.min(brokenImgs.length, inlineImages.length); i++) {
-        const stockImg = inlineImages[i];
+    // ── WordPress publishing ──────────────────────────────────────────────
+    if (publishToWp) {
+      // Upload user images to WordPress and collect real URLs
+      const wpImageUrls = {};
+      for (const img of preview.userImages) {
         try {
-          const buffer = await downloadImage(stockImg.url);
-          const filename = `${post.slug}-inline-${i + 1}.jpg`;
+          if (!fs.existsSync(img.path)) {
+            console.warn(`[Post] User image file not found: ${img.path} — skipping`);
+            continue;
+          }
+          const buffer = fs.readFileSync(img.path);
           const media = await uploadImage(
             business.wordpress,
             buffer,
-            filename,
-            brokenImgs[i].fullMatch.match(/alt="([^"]*)"/i)?.[1] || post.title
+            img.originalName,
+            img.caption || post.title
           );
-          // Use the actual WordPress URL from the API response
-          const fixedTag = brokenImgs[i].fullMatch.replace(brokenImgs[i].src, media.sourceUrl);
-          const credit = `<p class="photo-credit" style="font-size:0.75em;color:#999;text-align:center;">Photo by <a href="${stockImg.photographerUrl}" target="_blank" rel="noopener">${stockImg.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
-          post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, fixedTag + '\n' + credit);
-          console.log(`[Post] Inline stock image uploaded: ${filename} → ${media.sourceUrl}`);
+          wpImageUrls[img.url] = media.sourceUrl;
+          console.log(`[Post] User image uploaded: ${img.originalName} → ${media.sourceUrl}`);
         } catch (imgErr) {
-          post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, '');
-          console.warn(`[Post] Inline image upload failed, removed broken tag: ${imgErr.message}`);
+          console.warn(`[Post] Failed to upload "${img.originalName}": ${imgErr.message}`);
         }
       }
 
-      // Remove any remaining broken img tags that we didn't have stock images for
-      for (let i = inlineImages.length; i < brokenImgs.length; i++) {
-        post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, '');
-        console.log('[Post] Removed extra broken img tag without replacement');
+      // Upload featured stock image
+      let featuredMediaId = null;
+      const featuredImage = preview.stockImages.find(img => img.role === 'featured');
+      if (featuredImage) {
+        try {
+          const buffer = await downloadImage(featuredImage.url);
+          const media = await uploadImage(
+            business.wordpress,
+            buffer,
+            `${post.slug}-featured.jpg`,
+            post.title
+          );
+          featuredMediaId = media.id;
+          featuredImageUrl = media.sourceUrl;
+          post.htmlContent += `\n<p class="photo-credit" style="font-size:0.75em;color:#999;">Featured photo by <a href="${featuredImage.photographerUrl}" target="_blank" rel="noopener">${featuredImage.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
+        } catch (imgErr) {
+          console.warn('[Post] Featured image upload failed (non-fatal):', imgErr.message);
+        }
+      }
+
+      // Upload inline stock images and replace placeholder/broken img tags
+      const inlineImages = preview.stockImages.filter(img => img.role === 'inline');
+      if (inlineImages.length > 0) {
+        const imgTagRegex = /<img\s+[^>]*src="([^"]*)"[^>]*>/gi;
+        const brokenImgs = [];
+        let match;
+        while ((match = imgTagRegex.exec(post.htmlContent)) !== null) {
+          const src = match[1];
+          const isLocalUpload = src.startsWith('/uploads/');
+          const isWpUrl = business.wordpress.url && src.startsWith(business.wordpress.url);
+          if (!isLocalUpload && !isWpUrl) {
+            brokenImgs.push({ fullMatch: match[0], src, index: match.index });
+          }
+        }
+
+        for (let i = 0; i < Math.min(brokenImgs.length, inlineImages.length); i++) {
+          const stockImg = inlineImages[i];
+          try {
+            const buffer = await downloadImage(stockImg.url);
+            const filename = `${post.slug}-inline-${i + 1}.jpg`;
+            const media = await uploadImage(
+              business.wordpress,
+              buffer,
+              filename,
+              brokenImgs[i].fullMatch.match(/alt="([^"]*)"/i)?.[1] || post.title
+            );
+            const fixedTag = brokenImgs[i].fullMatch.replace(brokenImgs[i].src, media.sourceUrl);
+            const credit = `<p class="photo-credit" style="font-size:0.75em;color:#999;text-align:center;">Photo by <a href="${stockImg.photographerUrl}" target="_blank" rel="noopener">${stockImg.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
+            post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, fixedTag + '\n' + credit);
+            console.log(`[Post] Inline stock image uploaded: ${filename} → ${media.sourceUrl}`);
+          } catch (imgErr) {
+            post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, '');
+            console.warn(`[Post] Inline image upload failed, removed broken tag: ${imgErr.message}`);
+          }
+        }
+
+        for (let i = inlineImages.length; i < brokenImgs.length; i++) {
+          post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, '');
+          console.log('[Post] Removed extra broken img tag without replacement');
+        }
+      }
+
+      // Replace local /uploads/ URLs with real WordPress URLs
+      for (const [localUrl, wpUrl] of Object.entries(wpImageUrls)) {
+        post.htmlContent = post.htmlContent.replace(
+          new RegExp(localUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+          wpUrl
+        );
+      }
+
+      // Publish to WordPress
+      const wpResult = await publishPost(business.wordpress, post, featuredMediaId);
+      wpPostUrl = wpResult.url;
+      console.log(`[Post] WordPress published! ID: ${wpResult.id} → ${wpResult.url}`);
+
+      results.platforms.wordpress = {
+        success: true,
+        id: wpResult.id,
+        url: wpResult.url,
+        editUrl: wpResult.editUrl,
+      };
+    }
+
+    // ── Facebook publishing ───────────────────────────────────────────────
+    if (publishToFb) {
+      try {
+        // If we published to WP, use the WP post URL as the link
+        // If we have a featured stock image URL, use that too
+        const fbOptions = {};
+        if (wpPostUrl) fbOptions.linkUrl = wpPostUrl;
+
+        // Use the featured stock image for the FB post if available
+        const featuredImage = preview.stockImages.find(img => img.role === 'featured');
+        if (featuredImageUrl) {
+          fbOptions.imageUrl = featuredImageUrl;
+        } else if (featuredImage) {
+          fbOptions.imageUrl = featuredImage.url;
+        }
+
+        const fbResult = await publishToFacebook(business.facebook, post, fbOptions);
+        console.log(`[Post] Facebook published! ID: ${fbResult.id} → ${fbResult.url}`);
+
+        results.platforms.facebook = {
+          success: true,
+          id: fbResult.id,
+          url: fbResult.url,
+        };
+      } catch (fbErr) {
+        console.error('[Post] Facebook publish failed:', fbErr.message);
+        results.platforms.facebook = {
+          success: false,
+          error: fbErr.response?.data?.error?.message || fbErr.message,
+        };
       }
     }
-
-    // Replace local /uploads/ URLs with real WordPress URLs
-    for (const [localUrl, wpUrl] of Object.entries(wpImageUrls)) {
-      const found = post.htmlContent.includes(localUrl);
-      console.log(`[Post] URL replace: "${localUrl}" → "${wpUrl}" (found in HTML: ${found})`);
-      post.htmlContent = post.htmlContent.replace(
-        new RegExp(localUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-        wpUrl
-      );
-    }
-
-    // Publish
-    const result = await publishPost(business.wordpress, post, featuredMediaId);
-    console.log(`[Post] Published! ID: ${result.id} → ${result.url}`);
 
     // Clean up
     if (preview.sessionDir && fs.existsSync(preview.sessionDir)) {
@@ -562,14 +626,17 @@ router.post('/publish', async (req, res) => {
     }
     previews.delete(previewId);
 
+    // Build response — backward compatible
+    const wpData = results.platforms.wordpress || {};
     return res.json({
       success: true,
       action: 'published',
+      platforms: results.platforms,
       post: {
-        id: result.id,
+        id: wpData.id || null,
         title: post.title,
-        url: result.url,
-        editUrl: result.editUrl,
+        url: wpData.url || null,
+        editUrl: wpData.editUrl || null,
         slug: post.slug,
         tags: post.tags,
         categories: post.categories,
@@ -580,7 +647,6 @@ router.post('/publish', async (req, res) => {
   } catch (err) {
     console.error('[Post] Publish error:', err.message);
 
-    // Provide user-friendly WordPress error messages
     if (err.response?.status === 401 || err.response?.status === 403) {
       return res.status(502).json({
         error: 'WordPress rejected your credentials.',
@@ -604,9 +670,9 @@ router.post('/publish', async (req, res) => {
 
     if (err.response?.data) {
       return res.status(502).json({
-        error: 'WordPress returned an error while publishing.',
+        error: 'An error occurred while publishing.',
         detail: err.response.data,
-        hint: 'This might be a permissions issue. Make sure your WordPress user has the "Editor" or "Administrator" role.',
+        hint: 'This might be a permissions issue. Check your settings for the platforms you selected.',
       });
     }
 

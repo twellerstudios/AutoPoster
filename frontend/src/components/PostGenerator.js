@@ -41,6 +41,9 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
   const [testingConn, setTestingConn] = useState(false);
   const [errorInfo, setErrorInfo] = useState(null);
 
+  // Platform selection for publishing
+  const [selectedPlatforms, setSelectedPlatforms] = useState(['wordpress']);
+
   // Manual mode state
   const [manualPrompt, setManualPrompt] = useState('');
   const [manualSessionId, setManualSessionId] = useState('');
@@ -178,6 +181,10 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
   // ── Publish ─────────────────────────────────────────────────────────────────
 
   async function handlePublish({ title, htmlContent }) {
+    if (selectedPlatforms.length === 0) {
+      showToast('Please select at least one platform to publish to.', 'error');
+      return;
+    }
     setStep('publishing');
     setErrorInfo(null);
 
@@ -186,15 +193,41 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
         previewId: previewData.previewId,
         title,
         htmlContent,
+        platforms: selectedPlatforms,
       });
       setPublishResult(data);
       setStep('published');
-      showToast('Post published successfully!', 'success');
+
+      // Build success message based on results
+      const platformResults = data.platforms || {};
+      const successPlatforms = Object.entries(platformResults)
+        .filter(([, v]) => v.success)
+        .map(([k]) => k.charAt(0).toUpperCase() + k.slice(1));
+      const failedPlatforms = Object.entries(platformResults)
+        .filter(([, v]) => !v.success)
+        .map(([k]) => k.charAt(0).toUpperCase() + k.slice(1));
+
+      if (failedPlatforms.length > 0) {
+        showToast(
+          `Published to ${successPlatforms.join(', ')}. Failed on: ${failedPlatforms.join(', ')}. Check the results for details.`,
+          'warning'
+        );
+      } else {
+        showToast(`Published to ${successPlatforms.join(' & ')}!`, 'success');
+      }
     } catch (err) {
       setStep('preview');
       setErrorInfo({ message: err.message, hint: err.hint });
       showToast(err.hint || `Publish failed: ${err.message}`, 'error');
     }
+  }
+
+  function togglePlatform(platform) {
+    setSelectedPlatforms(prev =>
+      prev.includes(platform)
+        ? prev.filter(p => p !== platform)
+        : [...prev, platform]
+    );
   }
 
   // ── Add images to preview ───────────────────────────────────────────────────
@@ -275,6 +308,7 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
     setErrorInfo(null);
     setManualPrompt('');
     setPastedContent('');
+    setSelectedPlatforms(['wordpress']);
   }
 
   const selectedBusiness = businesses.find(b => b.id === form.businessId);
@@ -410,11 +444,14 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
           data={step === 'published' ? publishResult : previewData}
           step={step}
           businessName={selectedBusiness?.name}
+          business={selectedBusiness}
           onPublish={handlePublish}
           onBack={handleBackToInput}
           onNewPost={handleNewPost}
           onAddImages={handleAddPreviewImages}
           errorInfo={errorInfo}
+          selectedPlatforms={selectedPlatforms}
+          onTogglePlatform={togglePlatform}
         />
       </div>
     );

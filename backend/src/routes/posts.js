@@ -544,6 +544,8 @@ router.post('/publish', async (req, res) => {
 
     // Replace local /uploads/ URLs with real WordPress URLs
     for (const [localUrl, wpUrl] of Object.entries(wpImageUrls)) {
+      const found = post.htmlContent.includes(localUrl);
+      console.log(`[Post] URL replace: "${localUrl}" → "${wpUrl}" (found in HTML: ${found})`);
       post.htmlContent = post.htmlContent.replace(
         new RegExp(localUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
         wpUrl

@@ -33,15 +33,25 @@ async function uploadImage(wpConfig, imageBuffer, filename, altText) {
   const { url, username, appPassword } = wpConfig;
   const credentials = Buffer.from(`${username}:${appPassword}`).toString('base64');
 
+  // Detect content type from filename extension
+  const ext = (filename || '').split('.').pop().toLowerCase();
+  const mimeTypes = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+  };
+  const contentType = mimeTypes[ext] || 'image/jpeg';
+
   const form = new FormData();
   form.append('file', imageBuffer, {
     filename: filename || 'featured-image.jpg',
-    contentType: 'image/jpeg',
+    contentType,
   });
 
   // Alt text via title field
   if (altText) form.append('title', altText);
   if (altText) form.append('alt_text', altText);
+
+  console.log(`[WP Upload] Sending file: "${filename}" (${contentType}, ${imageBuffer.length} bytes)`);
 
   const response = await axios.post(
     `${url.replace(/\/$/, '')}/wp-json/wp/v2/media`,
@@ -55,9 +65,17 @@ async function uploadImage(wpConfig, imageBuffer, filename, altText) {
     }
   );
 
+  const sourceUrl = response.data.source_url;
+  console.log(`[WP Upload] Success — media ID: ${response.data.id}, source_url: ${sourceUrl}`);
+
+  if (!sourceUrl) {
+    console.error('[WP Upload] WARNING: source_url is missing from WordPress response!');
+    console.error('[WP Upload] Full response keys:', Object.keys(response.data).join(', '));
+  }
+
   return {
     id: response.data.id,
-    sourceUrl: response.data.source_url,
+    sourceUrl,
   };
 }
 

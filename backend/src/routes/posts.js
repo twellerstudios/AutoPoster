@@ -439,6 +439,57 @@ router.post('/publish', async (req, res) => {
       }
     }
 
+    // Upload inline stock images and replace broken/placeholder img tags
+    const inlineImages = preview.stockImages.filter(img => img.role === 'inline');
+    if (inlineImages.length > 0) {
+      // Find all <img> tags whose src is NOT a valid http URL or points to a non-existent resource
+      const imgTagRegex = /<img\s+[^>]*src="([^"]*)"[^>]*>/gi;
+      const brokenImgs = [];
+      let match;
+      while ((match = imgTagRegex.exec(post.htmlContent)) !== null) {
+        const src = match[1];
+        // Skip user-uploaded images (local /uploads/ paths already handled above)
+        // and skip images that are already valid WordPress URLs
+        const isLocalUpload = src.startsWith('/uploads/');
+        const isWpUrl = business.wordpress.url && src.startsWith(business.wordpress.url);
+        if (!isLocalUpload && !isWpUrl) {
+          brokenImgs.push({ fullMatch: match[0], src, index: match.index });
+        }
+      }
+
+      // Replace broken img tags with uploaded stock images
+      for (let i = 0; i < Math.min(brokenImgs.length, inlineImages.length); i++) {
+        const stockImg = inlineImages[i];
+        try {
+          const buffer = await downloadImage(stockImg.url);
+          const filename = `${post.slug}-inline-${i + 1}.jpg`;
+          const mediaId = await uploadImage(
+            business.wordpress,
+            buffer,
+            filename,
+            brokenImgs[i].fullMatch.match(/alt="([^"]*)"/i)?.[1] || post.title
+          );
+          // Get the WordPress URL for the uploaded image
+          const wpUrl = `${business.wordpress.url}/wp-content/uploads/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${filename}`;
+          // Replace the broken src with the real WordPress URL
+          const fixedTag = brokenImgs[i].fullMatch.replace(brokenImgs[i].src, wpUrl);
+          const credit = `<p class="photo-credit" style="font-size:0.75em;color:#999;text-align:center;">Photo by <a href="${stockImg.photographerUrl}" target="_blank" rel="noopener">${stockImg.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
+          post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, fixedTag + '\n' + credit);
+          console.log(`[Post] Inline stock image uploaded: ${filename}`);
+        } catch (imgErr) {
+          // Remove the broken img tag entirely if we can't replace it
+          post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, '');
+          console.warn(`[Post] Inline image upload failed, removed broken tag: ${imgErr.message}`);
+        }
+      }
+
+      // Remove any remaining broken img tags that we didn't have stock images for
+      for (let i = inlineImages.length; i < brokenImgs.length; i++) {
+        post.htmlContent = post.htmlContent.replace(brokenImgs[i].fullMatch, '');
+        console.log('[Post] Removed extra broken img tag without replacement');
+      }
+    }
+
     // Replace local image URLs with WordPress URLs
     for (const [localUrl, wpData] of Object.entries(wpImageUrls)) {
       post.htmlContent = post.htmlContent.replace(

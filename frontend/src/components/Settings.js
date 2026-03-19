@@ -10,11 +10,17 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
   // API key form
   const [anthropicKey, setAnthropicKey] = useState('');
   const [pexelsKey, setPexelsKey] = useState('');
+  const [bufferToken, setBufferToken] = useState('');
   const [savingKeys, setSavingKeys] = useState(false);
+
+  // Buffer
+  const [testingBuffer, setTestingBuffer] = useState(false);
+  const [bufferChannels, setBufferChannels] = useState([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
 
   // Add business form
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '', facebookPageId: '', facebookPageAccessToken: '' });
+  const [addForm, setAddForm] = useState({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '', facebookPageId: '', facebookPageAccessToken: '', bufferChannelIds: [] });
   const [addingBusiness, setAddingBusiness] = useState(false);
   const [addErrors, setAddErrors] = useState([]);
 
@@ -81,6 +87,7 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       const body = {};
       if (anthropicKey) body.anthropicApiKey = anthropicKey;
       if (pexelsKey) body.pexelsApiKey = pexelsKey;
+      if (bufferToken) body.bufferApiToken = bufferToken;
 
       if (Object.keys(body).length === 0) {
         showToast('Enter at least one API key to save.', 'warning');
@@ -91,6 +98,7 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       await api.updateSettings(body);
       setAnthropicKey('');
       setPexelsKey('');
+      setBufferToken('');
       await loadSettings();
       showToast('API keys saved successfully.', 'success');
     } catch (err) {
@@ -121,7 +129,7 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       const result = await api.addBusiness(addForm);
       showToast(result.message, 'success');
       setShowAddForm(false);
-      setAddForm({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '', facebookPageId: '', facebookPageAccessToken: '' });
+      setAddForm({ name: '', wordpressUrl: '', wordpressUsername: '', wordpressAppPassword: '', facebookPageId: '', facebookPageAccessToken: '', bufferChannelIds: [] });
       await loadSettings();
       onBusinessesChanged();
     } catch (err) {
@@ -146,7 +154,12 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       wordpressAppPassword: '',
       facebookPageId: biz.facebookPageId || '',
       facebookPageAccessToken: '',
+      bufferChannelIds: biz.bufferChannelIds || [],
     });
+    // Load Buffer channels if token is set
+    if (settings?.bufferApiTokenSet) {
+      loadBufferChannels();
+    }
   }
 
   async function handleSaveEdit(e) {
@@ -181,6 +194,32 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
       showToast(err.hint || err.message, 'error');
     } finally {
       setTestingId(null);
+    }
+  }
+
+  // ── Test Buffer Connection ───────────────────────────────────────────────
+
+  async function handleTestBuffer() {
+    setTestingBuffer(true);
+    try {
+      const result = await api.testBuffer();
+      showToast(result.message || `Connected to Buffer with ${result.channelCount} channel(s)`, 'success');
+    } catch (err) {
+      showToast(err.hint || err.message, 'error');
+    } finally {
+      setTestingBuffer(false);
+    }
+  }
+
+  async function loadBufferChannels() {
+    setLoadingChannels(true);
+    try {
+      const result = await api.getBufferChannels();
+      setBufferChannels(result.channels || []);
+    } catch (err) {
+      showToast(err.hint || `Failed to load channels: ${err.message}`, 'error');
+    } finally {
+      setLoadingChannels(false);
     }
   }
 
@@ -326,7 +365,34 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
             </div>
           </div>
 
-          <button type="submit" className="btn-primary btn-save-keys" disabled={savingKeys || (!anthropicKey && !pexelsKey)}>
+          <div className="api-key-row">
+            <div className="api-key-field">
+              <label>Buffer API Token <span className="optional">(optional — for social media publishing)</span></label>
+              <div className="key-input-row">
+                <input
+                  type="password"
+                  value={bufferToken}
+                  onChange={e => setBufferToken(e.target.value)}
+                  placeholder={settings?.bufferApiTokenSet ? `Current: ${settings.bufferApiToken}` : 'Enter Buffer API token'}
+                />
+                {settings?.bufferApiTokenSet && (
+                  <>
+                    <button type="button" className="btn-sm" onClick={handleTestBuffer} disabled={testingBuffer}>
+                      {testingBuffer ? 'Testing...' : 'Test'}
+                    </button>
+                    <button type="button" className="btn-sm danger" onClick={() => handleClearKey('bufferApiToken')}>
+                      Remove
+                    </button>
+                  </>
+                )}
+              </div>
+              <span className="field-hint">
+                Sign up at buffer.com (free), connect your social accounts, then get a token from Settings. Publishes to Facebook, Instagram & more via Buffer.
+              </span>
+            </div>
+          </div>
+
+          <button type="submit" className="btn-primary btn-save-keys" disabled={savingKeys || (!anthropicKey && !pexelsKey && !bufferToken)}>
             {savingKeys ? 'Saving...' : 'Save API Keys'}
           </button>
         </form>
@@ -386,6 +452,47 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                       <span className="field-hint">Generate at developers.facebook.com &rarr; Graph API Explorer</span>
                     </div>
 
+                    {settings?.bufferApiTokenSet && (
+                      <>
+                        <h4 className="edit-section-title">Buffer Channels <span className="optional">(optional)</span></h4>
+                        {loadingChannels ? (
+                          <p className="field-hint">Loading channels...</p>
+                        ) : bufferChannels.length > 0 ? (
+                          <div className="edit-field">
+                            <label>Select channels to publish to</label>
+                            <div className="buffer-channels-list">
+                              {bufferChannels.map(ch => (
+                                <label key={ch.id} className="buffer-channel-item">
+                                  <input
+                                    type="checkbox"
+                                    checked={(editForm.bufferChannelIds || []).includes(ch.id)}
+                                    onChange={e => {
+                                      const ids = editForm.bufferChannelIds || [];
+                                      if (e.target.checked) {
+                                        setEditForm(f => ({ ...f, bufferChannelIds: [...ids, ch.id] }));
+                                      } else {
+                                        setEditForm(f => ({ ...f, bufferChannelIds: ids.filter(id => id !== ch.id) }));
+                                      }
+                                    }}
+                                  />
+                                  <span className="buffer-channel-name">{ch.name}</span>
+                                  <span className="buffer-channel-service">{ch.service}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <span className="field-hint">These are the social accounts connected in your Buffer dashboard</span>
+                          </div>
+                        ) : (
+                          <div className="edit-field">
+                            <p className="field-hint">No channels found. Connect social accounts in your Buffer dashboard first.</p>
+                            <button type="button" className="btn-sm" onClick={loadBufferChannels}>
+                              Refresh Channels
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+
                     <div className="edit-actions">
                       <button type="submit" className="btn-primary" disabled={editingBusiness}>
                         {editingBusiness ? 'Saving...' : 'Save Changes'}
@@ -411,6 +518,14 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                           <span className="platform-label">Facebook:</span>
                           <span className={`status-dot ${biz.facebookPageAccessTokenSet ? 'configured' : 'not-set'}`}>
                             {biz.facebookPageAccessTokenSet ? `Page ID: ${biz.facebookPageId}` : 'Not configured'}
+                          </span>
+                        </div>
+                        <div className="platform-status">
+                          <span className="platform-label">Buffer:</span>
+                          <span className={`status-dot ${(biz.bufferChannelIds || []).length > 0 && settings?.bufferApiTokenSet ? 'configured' : 'not-set'}`}>
+                            {(biz.bufferChannelIds || []).length > 0 && settings?.bufferApiTokenSet
+                              ? `${biz.bufferChannelIds.length} channel(s)`
+                              : 'Not configured'}
                           </span>
                         </div>
                       </div>
@@ -528,6 +643,44 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                 />
                 <span className="field-hint">Generate at developers.facebook.com &rarr; Graph API Explorer with pages_manage_posts permission</span>
               </div>
+
+              {settings?.bufferApiTokenSet && (
+                <>
+                  <h4 className="edit-section-title" style={{marginTop: '20px'}}>Buffer Channels <span className="optional">(optional)</span></h4>
+                  {bufferChannels.length > 0 ? (
+                    <div className="edit-field">
+                      <label>Select channels to publish to</label>
+                      <div className="buffer-channels-list">
+                        {bufferChannels.map(ch => (
+                          <label key={ch.id} className="buffer-channel-item">
+                            <input
+                              type="checkbox"
+                              checked={(addForm.bufferChannelIds || []).includes(ch.id)}
+                              onChange={e => {
+                                const ids = addForm.bufferChannelIds || [];
+                                if (e.target.checked) {
+                                  setAddForm(f => ({ ...f, bufferChannelIds: [...ids, ch.id] }));
+                                } else {
+                                  setAddForm(f => ({ ...f, bufferChannelIds: ids.filter(id => id !== ch.id) }));
+                                }
+                              }}
+                            />
+                            <span className="buffer-channel-name">{ch.name}</span>
+                            <span className="buffer-channel-service">{ch.service}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="edit-field">
+                      <button type="button" className="btn-sm" onClick={loadBufferChannels} disabled={loadingChannels}>
+                        {loadingChannels ? 'Loading...' : 'Load Buffer Channels'}
+                      </button>
+                      <span className="field-hint">Click to load your connected social accounts from Buffer</span>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div className="edit-actions">
                 <button type="submit" className="btn-primary" disabled={addingBusiness}>

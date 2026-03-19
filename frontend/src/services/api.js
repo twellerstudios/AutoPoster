@@ -188,6 +188,8 @@ export const api = {
   getBusinesses: () => request('GET', '/businesses'),
   testBusiness: (id) => request('GET', `/businesses/${id}/test`),
   testBusinessFacebook: (id) => request('GET', `/businesses/${id}/test-facebook`),
+  testBuffer: () => request('GET', '/businesses/buffer/test'),
+  getBufferChannels: () => request('GET', '/businesses/buffer/channels'),
   health: () => request('GET', '/health'),
   generatePost: generatePostWithImages,
   getManualPrompt,

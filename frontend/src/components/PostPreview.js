@@ -118,6 +118,16 @@ export default function PostPreview({ data, step, businessName, business, onPubl
               Facebook: {data.platforms.facebook.error || 'Publishing failed'}
             </div>
           )}
+          {data?.platforms?.buffer?.success && (
+            <div className="platform-success">
+              Buffer: {data.platforms.buffer.summary || 'Published successfully'}
+            </div>
+          )}
+          {data?.platforms?.buffer && !data.platforms.buffer.success && (
+            <div className="platform-error">
+              Buffer: {data.platforms.buffer.error || 'Publishing failed'}
+            </div>
+          )}
           {/* Fallback for backward compat */}
           {!data?.platforms && post.url && (
             <>
@@ -340,6 +350,21 @@ export default function PostPreview({ data, step, businessName, business, onPubl
               </span>
               <span className="platform-name">Facebook</span>
               {!(business?.facebookConfigured) && (
+                <span className="platform-hint">Not configured</span>
+              )}
+            </label>
+            <label className={`platform-checkbox ${selectedPlatforms.includes('buffer') ? 'checked' : ''} ${!(business?.bufferConfigured) ? 'disabled' : ''}`}>
+              <input
+                type="checkbox"
+                checked={selectedPlatforms.includes('buffer')}
+                onChange={() => onTogglePlatform('buffer')}
+                disabled={!(business?.bufferConfigured)}
+              />
+              <span className="platform-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.84 8.16L12.32 13.68a.72.72 0 01-.64 0L.16 8.16a.32.32 0 010-.56L11.68 2.08a.72.72 0 01.64 0L23.84 7.6a.32.32 0 010 .56zm0 4.16l-2.72-1.36-8.48 4.24a1.44 1.44 0 01-1.28 0L2.88 10.96.16 12.32a.32.32 0 000 .56l11.52 5.52a.72.72 0 00.64 0l11.52-5.52a.32.32 0 000-.56zm0 4.16l-2.72-1.36-8.48 4.24a1.44 1.44 0 01-1.28 0L2.88 15.12.16 16.48a.32.32 0 000 .56l11.52 5.52a.72.72 0 00.64 0l11.52-5.52a.32.32 0 000-.56z"/></svg>
+              </span>
+              <span className="platform-name">Buffer</span>
+              {!(business?.bufferConfigured) && (
                 <span className="platform-hint">Not configured</span>
               )}
             </label>

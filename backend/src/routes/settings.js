@@ -14,6 +14,7 @@ const router = express.Router();
 const { config, saveSettings, loadSettings, reloadConfig, getNetworkAddresses } = require('../config');
 const { testConnection } = require('../services/wordpressService');
 const { testFacebookConnection } = require('../services/facebookService');
+const { testBufferConnection, getChannels } = require('../services/bufferService');
 
 /**
  * Mask a secret string for safe display (show first 4 and last 4 chars).
@@ -36,6 +37,8 @@ router.get('/', (req, res) => {
     anthropicApiKeySet: Boolean(settings.anthropicApiKey),
     pexelsApiKey: maskSecret(settings.pexelsApiKey),
     pexelsApiKeySet: Boolean(settings.pexelsApiKey),
+    bufferApiToken: maskSecret(settings.bufferApiToken),
+    bufferApiTokenSet: Boolean(settings.bufferApiToken),
     businesses: (settings.businesses || []).map(b => ({
       id: b.id,
       name: b.name,
@@ -46,6 +49,7 @@ router.get('/', (req, res) => {
       facebookPageId: b.facebookPageId || '',
       facebookPageAccessTokenSet: Boolean(b.facebookPageAccessToken),
       facebookPageAccessToken: maskSecret(b.facebookPageAccessToken),
+      bufferChannelIds: b.bufferChannelIds || [],
     })),
   });
 });
@@ -57,7 +61,7 @@ router.get('/', (req, res) => {
  */
 router.put('/', (req, res) => {
   const settings = loadSettings() || { businesses: [], anthropicApiKey: '', pexelsApiKey: '' };
-  const { anthropicApiKey, pexelsApiKey, aiMode } = req.body;
+  const { anthropicApiKey, pexelsApiKey, bufferApiToken, aiMode } = req.body;
 
   if (aiMode !== undefined) {
     settings.aiMode = aiMode;
@@ -68,6 +72,9 @@ router.put('/', (req, res) => {
   if (pexelsApiKey !== undefined) {
     settings.pexelsApiKey = pexelsApiKey;
   }
+  if (bufferApiToken !== undefined) {
+    settings.bufferApiToken = bufferApiToken;
+  }
 
   saveSettings(settings);
   reloadConfig();
@@ -77,6 +84,7 @@ router.put('/', (req, res) => {
     message: 'Settings saved. Changes take effect immediately.',
     anthropicApiKeySet: Boolean(settings.anthropicApiKey),
     pexelsApiKeySet: Boolean(settings.pexelsApiKey),
+    bufferApiTokenSet: Boolean(settings.bufferApiToken),
   });
 });
 
@@ -85,7 +93,7 @@ router.put('/', (req, res) => {
  * Body: { name, wordpressUrl, wordpressUsername, wordpressAppPassword }
  */
 router.post('/businesses', async (req, res) => {
-  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword, facebookPageId, facebookPageAccessToken } = req.body;
+  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword, facebookPageId, facebookPageAccessToken, bufferChannelIds } = req.body;
 
   // Validation with helpful messages
   const errors = [];
@@ -134,6 +142,7 @@ router.post('/businesses', async (req, res) => {
     wordpressAppPassword: wordpressAppPassword.trim(),
     facebookPageId: (facebookPageId || '').trim(),
     facebookPageAccessToken: (facebookPageAccessToken || '').trim(),
+    bufferChannelIds: Array.isArray(bufferChannelIds) ? bufferChannelIds : [],
   };
 
   // Test the WordPress connection before saving
@@ -195,7 +204,7 @@ router.put('/businesses/:id', (req, res) => {
     });
   }
 
-  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword, facebookPageId, facebookPageAccessToken } = req.body;
+  const { name, wordpressUrl, wordpressUsername, wordpressAppPassword, facebookPageId, facebookPageAccessToken, bufferChannelIds } = req.body;
   const biz = settings.businesses[index];
 
   if (name !== undefined) biz.name = name.trim();
@@ -204,6 +213,7 @@ router.put('/businesses/:id', (req, res) => {
   if (wordpressAppPassword !== undefined) biz.wordpressAppPassword = wordpressAppPassword.trim();
   if (facebookPageId !== undefined) biz.facebookPageId = facebookPageId.trim();
   if (facebookPageAccessToken !== undefined) biz.facebookPageAccessToken = facebookPageAccessToken.trim();
+  if (bufferChannelIds !== undefined) biz.bufferChannelIds = Array.isArray(bufferChannelIds) ? bufferChannelIds : [];
 
   settings.businesses[index] = biz;
   saveSettings(settings);

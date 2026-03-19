@@ -72,6 +72,7 @@ function buildConfig() {
   let businesses;
   let anthropicApiKey;
   let pexelsApiKey;
+  let bufferApiToken;
 
   if (saved) {
     // Use saved settings
@@ -89,15 +90,20 @@ function buildConfig() {
           pageId: b.facebookPageId || '',
           pageAccessToken: b.facebookPageAccessToken || '',
         },
+        buffer: {
+          channelIds: b.bufferChannelIds || [],
+        },
       };
     });
     anthropicApiKey = saved.anthropicApiKey || process.env.ANTHROPIC_API_KEY || '';
     pexelsApiKey = saved.pexelsApiKey || process.env.PEXELS_API_KEY || '';
+    bufferApiToken = saved.bufferApiToken || process.env.BUFFER_API_TOKEN || '';
   } else {
     // First run — load from .env and create settings.json
     businesses = loadBusinessesFromEnv();
     anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
     pexelsApiKey = process.env.PEXELS_API_KEY || '';
+    bufferApiToken = process.env.BUFFER_API_TOKEN || '';
 
     // Persist to settings.json so UI can manage from here
     const initial = {
@@ -120,6 +126,7 @@ function buildConfig() {
     nodeEnv: process.env.NODE_ENV || 'development',
     anthropicApiKey,
     pexelsApiKey,
+    bufferApiToken,
     businesses,
   };
 }

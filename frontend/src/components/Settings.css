@@ -465,6 +465,48 @@
   border-top: 1px solid var(--border);
 }
 
+/* ── Buffer channel list ── */
+.buffer-channels-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.buffer-channel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.buffer-channel-item:hover {
+  border-color: var(--accent);
+}
+
+.buffer-channel-item input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.buffer-channel-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.buffer-channel-service {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+  padding: 1px 6px;
+  background: rgba(148, 163, 184, 0.1);
+  border-radius: 4px;
+}
+
 /* ── Footer ── */
 .settings-footer {
   display: flex;

@@ -17,6 +17,7 @@ const { generateBlogPost, getManualPrompt, parseManualContent, isApiModeAvailabl
 const { findImage, findMultipleImages, downloadImage } = require('../services/imageService');
 const { publishPost, uploadImage } = require('../services/wordpressService');
 const { publishToFacebook } = require('../services/facebookService');
+const { publishToBuffer } = require('../services/bufferService');
 
 // ── Multer config for user image uploads ──────────────────────────────────────
 
@@ -450,6 +451,7 @@ router.post('/publish', async (req, res) => {
   // Validate platform configs
   const publishToWp = targetPlatforms.includes('wordpress');
   const publishToFb = targetPlatforms.includes('facebook');
+  const publishToBuf = targetPlatforms.includes('buffer');
 
   if (publishToWp) {
     if (!business.wordpress.url || !business.wordpress.username || !business.wordpress.appPassword) {
@@ -465,6 +467,21 @@ router.post('/publish', async (req, res) => {
       return res.status(422).json({
         error: `"${business.name}" has no Facebook Page configured.`,
         hint: 'Go to Settings and add a Facebook Page ID and Page Access Token for this business.',
+      });
+    }
+  }
+
+  if (publishToBuf) {
+    if (!config.bufferApiToken) {
+      return res.status(422).json({
+        error: 'Buffer API token is not configured.',
+        hint: 'Go to Settings and add your Buffer API token.',
+      });
+    }
+    if (!business.buffer.channelIds || business.buffer.channelIds.length === 0) {
+      return res.status(422).json({
+        error: `"${business.name}" has no Buffer channels configured.`,
+        hint: 'Go to Settings and select which Buffer channels to use for this business.',
       });
     }
   }
@@ -616,6 +633,40 @@ router.post('/publish', async (req, res) => {
         results.platforms.facebook = {
           success: false,
           error: fbErr.response?.data?.error?.message || fbErr.message,
+        };
+      }
+    }
+
+    // ── Buffer publishing ──────────────────────────────────────────────────
+    if (publishToBuf) {
+      try {
+        const bufferOptions = {};
+        if (wpPostUrl) bufferOptions.linkUrl = wpPostUrl;
+
+        const bufferResults = await publishToBuffer(
+          config.bufferApiToken,
+          business.buffer.channelIds,
+          post,
+          bufferOptions
+        );
+
+        const successCount = bufferResults.filter(r => r.success).length;
+        const failedResults = bufferResults.filter(r => !r.success);
+
+        console.log(`[Post] Buffer published to ${successCount}/${bufferResults.length} channel(s)`);
+
+        results.platforms.buffer = {
+          success: successCount > 0,
+          channels: bufferResults,
+          summary: failedResults.length > 0
+            ? `Published to ${successCount} channel(s), ${failedResults.length} failed`
+            : `Published to ${successCount} channel(s)`,
+        };
+      } catch (bufErr) {
+        console.error('[Post] Buffer publish failed:', bufErr.message);
+        results.platforms.buffer = {
+          success: false,
+          error: bufErr.message,
         };
       }
     }

@@ -184,6 +184,14 @@ async function getNetworkInfo() {
   return request('GET', '/settings/network');
 }
 
+async function getBufferLog() {
+  return request('GET', '/settings/buffer-log');
+}
+
+async function clearBufferLog() {
+  return request('DELETE', '/settings/buffer-log');
+}
+
 export const api = {
   getBusinesses: () => request('GET', '/businesses'),
   testBusiness: (id) => request('GET', `/businesses/${id}/test`),
@@ -203,4 +211,6 @@ export const api = {
   updateBusiness,
   deleteBusiness,
   getNetworkInfo,
+  getBufferLog,
+  clearBufferLog,
 };

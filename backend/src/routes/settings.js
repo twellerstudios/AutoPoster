@@ -11,6 +11,8 @@
  */
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const { config, saveSettings, loadSettings, reloadConfig, getNetworkAddresses } = require('../config');
 const { testConnection } = require('../services/wordpressService');
 const { testFacebookConnection } = require('../services/facebookService');
@@ -271,6 +273,37 @@ router.get('/network', (req, res) => {
       ? 'No network interfaces found. Make sure you are connected to a network.'
       : 'Use any of these URLs to access AutoPoster from other devices on the same network.',
   });
+});
+
+/**
+ * GET /api/settings/buffer-log — Return the Buffer debug log contents.
+ */
+router.get('/buffer-log', (req, res) => {
+  const logPath = path.join(__dirname, '..', '..', 'buffer-debug.log');
+  try {
+    if (!fs.existsSync(logPath)) {
+      return res.json({ log: '', empty: true, message: 'No Buffer log yet. Try publishing to Buffer first.' });
+    }
+    const content = fs.readFileSync(logPath, 'utf8');
+    res.json({ log: content, empty: !content.trim() });
+  } catch (err) {
+    res.status(500).json({ error: `Could not read log: ${err.message}` });
+  }
+});
+
+/**
+ * DELETE /api/settings/buffer-log — Clear the Buffer debug log.
+ */
+router.delete('/buffer-log', (req, res) => {
+  const logPath = path.join(__dirname, '..', '..', 'buffer-debug.log');
+  try {
+    if (fs.existsSync(logPath)) {
+      fs.writeFileSync(logPath, '');
+    }
+    res.json({ success: true, message: 'Buffer log cleared.' });
+  } catch (err) {
+    res.status(500).json({ error: `Could not clear log: ${err.message}` });
+  }
 });
 
 module.exports = router;

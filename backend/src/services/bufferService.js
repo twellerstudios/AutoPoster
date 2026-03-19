@@ -219,7 +219,16 @@ async function createBufferPost(apiToken, channelId, text) {
 
   logBuffer(`CREATE POST → channel ${channelId}`, { query: query.trim(), variables });
 
-  const response = await bufferRequest(apiToken, query, variables);
+  let response;
+  try {
+    response = await bufferRequest(apiToken, query, variables);
+  } catch (httpErr) {
+    // Capture the actual response body from 4xx/5xx errors
+    const detail = httpErr.response?.data || httpErr.message;
+    logBuffer(`CREATE POST HTTP ERROR → channel ${channelId}`, detail);
+    const msg = typeof detail === 'object' ? JSON.stringify(detail) : String(detail);
+    throw new Error(msg);
+  }
 
   logBuffer(`CREATE POST RESPONSE → channel ${channelId}`, response.data);
 

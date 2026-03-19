@@ -457,6 +457,7 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
             </button>
             {showLog && (
               <>
+                <button className="btn-sm" onClick={() => { navigator.clipboard.writeText(bufferLog || ''); }}>Copy Log</button>
                 <button className="btn-sm danger" onClick={handleClearBufferLog}>Clear Log</button>
                 <button className="btn-sm" onClick={() => setShowLog(false)}>Hide</button>
               </>

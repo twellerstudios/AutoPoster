@@ -664,6 +664,14 @@ router.post('/publish', async (req, res) => {
         const bufferOptions = {};
         if (wpPostUrl) bufferOptions.linkUrl = wpPostUrl;
 
+        // Pass featured image for platforms that need it (Instagram, etc.)
+        const bufFeaturedImage = preview.stockImages.find(img => img.role === 'featured');
+        if (featuredImageUrl) {
+          bufferOptions.imageUrl = featuredImageUrl;
+        } else if (bufFeaturedImage) {
+          bufferOptions.imageUrl = bufFeaturedImage.url;
+        }
+
         const bufferResults = await publishToBuffer(
           config.bufferApiToken,
           business.buffer.channelIds,

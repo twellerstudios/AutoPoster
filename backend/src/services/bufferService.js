@@ -151,32 +151,91 @@ async function testBufferConnection(apiToken) {
 }
 
 /**
+ * Platform-specific character limits and requirements.
+ */
+const PLATFORM_CONFIG = {
+  facebook:  { maxChars: 2000, needsPostType: true, needsMedia: false },
+  instagram: { maxChars: 2200, needsPostType: true, needsMedia: true },
+  tiktok:    { maxChars: 150,  needsPostType: false, needsMedia: true, videoOnly: true },
+  twitter:   { maxChars: 280,  needsPostType: false, needsMedia: false },
+  linkedin:  { maxChars: 3000, needsPostType: false, needsMedia: false },
+  threads:   { maxChars: 500,  needsPostType: false, needsMedia: false },
+  pinterest: { maxChars: 500,  needsPostType: false, needsMedia: true },
+  mastodon:  { maxChars: 500,  needsPostType: false, needsMedia: false },
+  bluesky:   { maxChars: 300,  needsPostType: false, needsMedia: false },
+  googlebusiness: { maxChars: 1500, needsPostType: false, needsMedia: false },
+  youtube:   { maxChars: 5000, needsPostType: false, needsMedia: true, videoOnly: true },
+};
+
+/**
  * Publish a post to one or more Buffer channels.
  *
  * @param {string} apiToken - Buffer API token
  * @param {string[]} channelIds - Array of Buffer channel IDs to publish to
  * @param {object} post - { title, htmlContent, metaDescription }
- * @param {object} options - { linkUrl? } - optional link to include
+ * @param {object} options - { linkUrl?, imageUrl? } - optional link and featured image
  * @returns {Promise<Array<{channelId, success, postId?, error?}>>}
  */
 async function publishToBuffer(apiToken, channelIds, post, options = {}) {
-  const text = buildBufferMessage(post.title, post.htmlContent, options.linkUrl);
-  logBuffer('PUBLISH START', { channelIds, title: post.title, textLength: text.length, textPreview: text.substring(0, 200) });
+  // Fetch channels to get service types for each channel ID
+  let channelMap = {};
+  try {
+    const allChannels = await getChannels(apiToken);
+    for (const ch of allChannels) {
+      channelMap[ch.id] = ch.service;
+    }
+  } catch (err) {
+    logBuffer('CHANNEL LOOKUP FAILED', { error: err.message });
+  }
+
+  logBuffer('PUBLISH START', {
+    channelIds,
+    title: post.title,
+    imageUrl: options.imageUrl || null,
+    channelServices: channelIds.map(id => `${id} → ${channelMap[id] || 'unknown'}`),
+  });
   const results = [];
 
   for (const channelId of channelIds) {
+    const service = (channelMap[channelId] || 'unknown').toLowerCase();
+    const platformCfg = PLATFORM_CONFIG[service] || { maxChars: 2000, needsPostType: false, needsMedia: false };
+
+    // Skip video-only platforms (TikTok, YouTube) — we only have text/image posts
+    if (platformCfg.videoOnly) {
+      const msg = `Skipped: ${service} requires video content`;
+      logBuffer(`PUBLISH SKIP → channel ${channelId} (${service})`, msg);
+      results.push({ channelId, service, success: false, error: msg });
+      continue;
+    }
+
+    // Skip platforms that require media if we don't have an image (e.g. Instagram without featured image)
+    if (platformCfg.needsMedia && !options.imageUrl) {
+      const msg = `Skipped: ${service} requires an image but none available`;
+      logBuffer(`PUBLISH SKIP → channel ${channelId} (${service})`, msg);
+      results.push({ channelId, service, success: false, error: msg });
+      continue;
+    }
+
+    // Build platform-tailored caption
+    const text = buildBufferMessage(post.title, post.htmlContent, options.linkUrl, platformCfg.maxChars);
+
     try {
-      const result = await createBufferPost(apiToken, channelId, text);
-      logBuffer(`PUBLISH OK → channel ${channelId}`, result);
+      const result = await createBufferPost(apiToken, channelId, text, {
+        postType: platformCfg.needsPostType ? 'post' : null,
+        imageUrl: options.imageUrl || null,
+      });
+      logBuffer(`PUBLISH OK → channel ${channelId} (${service})`, result);
       results.push({
         channelId,
+        service,
         success: true,
         postId: result.postId,
       });
     } catch (err) {
-      logBuffer(`PUBLISH FAIL → channel ${channelId}`, { error: err.message });
+      logBuffer(`PUBLISH FAIL → channel ${channelId} (${service})`, { error: err.message });
       results.push({
         channelId,
+        service,
         success: false,
         error: err.message,
       });
@@ -189,20 +248,30 @@ async function publishToBuffer(apiToken, channelIds, post, options = {}) {
 
 /**
  * Create a single post on a Buffer channel.
- * Uses channelId (singular), schedulingType, and mode as required by Buffer's API.
+ * Uses inline GraphQL args with enum values as required by Buffer's API.
  */
-async function createBufferPost(apiToken, channelId, text) {
+async function createBufferPost(apiToken, channelId, text, extras = {}) {
   // Escape text for inline GraphQL string literal
   const escapedText = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 
-  // Buffer's schema uses inline input args with enum values (no quotes on schedulingType/mode)
+  // Build optional input fields
+  let extraFields = '';
+  if (extras.postType) {
+    extraFields += `\n        postType: ${extras.postType},`;
+  }
+  if (extras.imageUrl) {
+    const escapedUrl = extras.imageUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    extraFields += `\n        assets: [{ uri: "${escapedUrl}" }],`;
+  }
+
+  // Buffer's schema uses inline input args with enum values (no quotes on schedulingType/mode/postType)
   const query = `
     mutation CreatePost {
       createPost(input: {
         text: "${escapedText}",
         channelId: "${channelId}",
         schedulingType: automatic,
-        mode: shareNext
+        mode: shareNext,${extraFields}
       }) {
         ... on PostActionSuccess {
           post {
@@ -249,11 +318,9 @@ async function createBufferPost(apiToken, channelId, text) {
 }
 
 /**
- * Convert HTML to plain text and build a social-media-friendly message.
+ * Convert HTML to plain text and build a platform-tailored message.
  */
-function buildBufferMessage(title, htmlContent, linkUrl) {
-  const MAX_LENGTH = 2000;
-
+function buildBufferMessage(title, htmlContent, linkUrl, maxLength = 2000) {
   const plainText = htmlToPlainText(htmlContent);
 
   let message = '';
@@ -262,16 +329,16 @@ function buildBufferMessage(title, htmlContent, linkUrl) {
     message += `${title}\n\n`;
   }
 
-  const availableLength = MAX_LENGTH - message.length - (linkUrl ? 100 : 0);
-  if (plainText.length > availableLength) {
-    message += plainText.substring(0, availableLength - 20).trim() + '...\n\n';
-  } else {
-    message += plainText + '\n\n';
+  const linkSuffix = linkUrl ? `\n\nRead the full post: ${linkUrl}` : '';
+  const availableLength = maxLength - message.length - linkSuffix.length;
+
+  if (availableLength > 0 && plainText.length > availableLength) {
+    message += plainText.substring(0, availableLength - 4).trim() + '...';
+  } else if (availableLength > 0) {
+    message += plainText;
   }
 
-  if (linkUrl) {
-    message += `Read the full post: ${linkUrl}`;
-  }
+  message += linkSuffix;
 
   return message.trim();
 }

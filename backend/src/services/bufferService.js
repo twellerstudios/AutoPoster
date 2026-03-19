@@ -192,9 +192,18 @@ async function publishToBuffer(apiToken, channelIds, post, options = {}) {
  * Uses channelId (singular), schedulingType, and mode as required by Buffer's API.
  */
 async function createBufferPost(apiToken, channelId, text) {
+  // Escape text for inline GraphQL string literal
+  const escapedText = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+
+  // Buffer's schema uses inline input args with enum values (no quotes on schedulingType/mode)
   const query = `
-    mutation CreatePost($input: PostCreateInput!) {
-      createPost(input: $input) {
+    mutation CreatePost {
+      createPost(input: {
+        text: "${escapedText}",
+        channelId: "${channelId}",
+        schedulingType: automatic,
+        mode: shareNext
+      }) {
         ... on PostActionSuccess {
           post {
             id
@@ -208,20 +217,11 @@ async function createBufferPost(apiToken, channelId, text) {
     }
   `;
 
-  const variables = {
-    input: {
-      text,
-      channelId,
-      schedulingType: 'automatic',
-      mode: 'shareNext',
-    },
-  };
-
-  logBuffer(`CREATE POST → channel ${channelId}`, { query: query.trim(), variables });
+  logBuffer(`CREATE POST → channel ${channelId}`, { query: query.trim(), textLength: text.length });
 
   let response;
   try {
-    response = await bufferRequest(apiToken, query, variables);
+    response = await bufferRequest(apiToken, query);
   } catch (httpErr) {
     // Capture the actual response body from 4xx/5xx errors
     const detail = httpErr.response?.data || httpErr.message;

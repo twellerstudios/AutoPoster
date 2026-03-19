@@ -4,13 +4,14 @@
  * GET  /api/businesses/:id/test-facebook — Test Facebook connection
  * GET  /api/businesses/buffer/test    — Test Buffer API connection
  * GET  /api/businesses/buffer/channels — List available Buffer channels
+ * GET  /api/businesses/buffer/schema   — Introspect Buffer GraphQL schema
  */
 const express = require('express');
 const router = express.Router();
 const { config } = require('../config');
 const { testConnection } = require('../services/wordpressService');
 const { testFacebookConnection } = require('../services/facebookService');
-const { testBufferConnection, getChannels } = require('../services/bufferService');
+const { testBufferConnection, getChannels, introspectSchema } = require('../services/bufferService');
 
 // List all businesses (safe — no credentials exposed)
 router.get('/', (req, res) => {
@@ -167,6 +168,32 @@ router.get('/buffer/channels', async (req, res) => {
     }
 
     res.status(502).json({ ok: false, error: 'Failed to fetch Buffer channels', hint });
+  }
+});
+
+// Introspect Buffer GraphQL schema (diagnostic endpoint)
+router.get('/buffer/schema', async (req, res) => {
+  if (!config.bufferApiToken) {
+    return res.status(422).json({
+      error: 'Buffer API token is not configured.',
+      hint: 'Add your Buffer API token in Settings first.',
+    });
+  }
+
+  try {
+    const schema = await introspectSchema(config.bufferApiToken);
+    res.json({ ok: true, schema });
+  } catch (err) {
+    const status = err.response?.status;
+    let hint = '';
+
+    if (status === 401 || status === 403) {
+      hint = 'Your Buffer API token is invalid or expired.';
+    } else {
+      hint = `Schema introspection failed: ${err.message}`;
+    }
+
+    res.status(502).json({ ok: false, error: 'Schema introspection failed', hint });
   }
 });
 

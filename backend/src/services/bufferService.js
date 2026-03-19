@@ -257,11 +257,11 @@ async function createBufferPost(apiToken, channelId, text, extras = {}) {
   // Build optional input fields
   let extraFields = '';
   if (extras.postType) {
-    extraFields += `\n        postType: ${extras.postType},`;
+    extraFields += `\n        type: ${extras.postType},`;
   }
   if (extras.imageUrl) {
     const escapedUrl = extras.imageUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    extraFields += `\n        assets: [{ uri: "${escapedUrl}" }],`;
+    extraFields += `\n        assets: { images: [{ uri: "${escapedUrl}" }] },`;
   }
 
   // Buffer's schema uses inline input args with enum values (no quotes on schedulingType/mode/postType)
@@ -372,4 +372,40 @@ function htmlToPlainText(html) {
     .trim();
 }
 
-module.exports = { getChannels, testBufferConnection, publishToBuffer };
+/**
+ * Introspect the Buffer GraphQL schema to discover field names for CreatePostInput and AssetsInput.
+ */
+async function introspectSchema(apiToken) {
+  const query = `
+    {
+      createPostInput: __type(name: "CreatePostInput") {
+        name
+        inputFields {
+          name
+          type {
+            name
+            kind
+            ofType { name kind ofType { name kind } }
+          }
+        }
+      }
+      assetsInput: __type(name: "AssetsInput") {
+        name
+        inputFields {
+          name
+          type {
+            name
+            kind
+            ofType { name kind ofType { name kind } }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await bufferRequest(apiToken, query);
+  logBuffer('SCHEMA INTROSPECTION', response.data);
+  return response.data;
+}
+
+module.exports = { getChannels, testBufferConnection, publishToBuffer, introspectSchema };

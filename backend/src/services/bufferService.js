@@ -38,13 +38,45 @@ function bufferRequest(apiToken, query, variables = {}) {
 }
 
 /**
+ * Fetch the first organization ID for the authenticated account.
+ */
+async function getOrganizationId(apiToken) {
+  const query = `
+    query GetOrganizations {
+      account {
+        organizations {
+          id
+          name
+        }
+      }
+    }
+  `;
+
+  const response = await bufferRequest(apiToken, query);
+
+  if (response.data.errors && response.data.errors.length > 0) {
+    throw new Error(response.data.errors[0].message || 'Failed to fetch Buffer account');
+  }
+
+  const orgs = response.data.data?.account?.organizations || [];
+  if (orgs.length === 0) {
+    throw new Error('No organizations found in your Buffer account. Please set up your Buffer account first.');
+  }
+
+  return orgs[0];
+}
+
+/**
  * Fetch all channels (connected social accounts) from Buffer.
  * Returns array of { id, name, service, avatar }.
  */
 async function getChannels(apiToken) {
+  // First get the organization ID (required by the channels query)
+  const org = await getOrganizationId(apiToken);
+
   const query = `
-    query GetChannels {
-      channels(input: {}) {
+    query GetChannels($input: ChannelsInput!) {
+      channels(input: $input) {
         id
         name
         service
@@ -53,7 +85,13 @@ async function getChannels(apiToken) {
     }
   `;
 
-  const response = await bufferRequest(apiToken, query);
+  const variables = {
+    input: {
+      organizationId: org.id,
+    },
+  };
+
+  const response = await bufferRequest(apiToken, query, variables);
 
   if (response.data.errors && response.data.errors.length > 0) {
     throw new Error(response.data.errors[0].message || 'Failed to fetch Buffer channels');
@@ -63,19 +101,16 @@ async function getChannels(apiToken) {
 }
 
 /**
- * Test the Buffer API connection by fetching the account info.
+ * Test the Buffer API connection by fetching the account info and channels.
  */
 async function testBufferConnection(apiToken) {
-  const query = `
-    query TestConnection {
-      account {
-        id
-        organizations {
-          id
-          name
-        }
-      }
-      channels(input: {}) {
+  // First get the organization
+  const org = await getOrganizationId(apiToken);
+
+  // Then fetch channels using the org ID
+  const channelQuery = `
+    query GetChannels($input: ChannelsInput!) {
+      channels(input: $input) {
         id
         name
         service
@@ -83,21 +118,21 @@ async function testBufferConnection(apiToken) {
     }
   `;
 
-  const response = await bufferRequest(apiToken, query);
+  const response = await bufferRequest(apiToken, channelQuery, {
+    input: { organizationId: org.id },
+  });
 
   if (response.data.errors && response.data.errors.length > 0) {
     throw new Error(response.data.errors[0].message || 'Buffer API error');
   }
 
-  const data = response.data.data;
-  const channels = data.channels || [];
-  const org = data.account?.organizations?.[0];
+  const channels = response.data.data.channels || [];
 
   return {
     ok: true,
     channelCount: channels.length,
     channels: channels.map(c => ({ id: c.id, name: c.name, service: c.service })),
-    organization: org?.name || null,
+    organization: org.name || null,
   };
 }
 

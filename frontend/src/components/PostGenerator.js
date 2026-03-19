@@ -363,9 +363,25 @@ export default function PostGenerator({ businesses, showToast, hasApiKey, onGoTo
               <label>Your AI Prompt</label>
               <button
                 className="btn-sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(manualPrompt);
-                  showToast('Prompt copied! Now paste it into claude.ai', 'success');
+                onClick={async () => {
+                  try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                      await navigator.clipboard.writeText(manualPrompt);
+                    } else {
+                      // Fallback for mobile / non-HTTPS contexts
+                      const ta = document.createElement('textarea');
+                      ta.value = manualPrompt;
+                      ta.style.position = 'fixed';
+                      ta.style.left = '-9999px';
+                      document.body.appendChild(ta);
+                      ta.select();
+                      document.execCommand('copy');
+                      document.body.removeChild(ta);
+                    }
+                    showToast('Prompt copied! Now paste it into claude.ai', 'success');
+                  } catch {
+                    showToast('Could not copy automatically — please long-press the text above and copy manually.', 'error');
+                  }
                 }}
               >
                 Copy to Clipboard

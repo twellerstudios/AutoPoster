@@ -128,6 +128,25 @@ async function findStockImages(post) {
   return stockImages;
 }
 
+// ── Helper: replace STOCK_IMAGE_PLACEHOLDER with real Pexels URLs ────────────
+
+function injectStockImages(post, stockImages) {
+  if (!post.htmlContent || stockImages.length === 0) return;
+
+  // Inline images (not featured) are what the prompt asked Claude to place in the HTML
+  const inlineImages = stockImages.filter(img => img.role === 'inline');
+  let idx = 0;
+
+  post.htmlContent = post.htmlContent.replace(/STOCK_IMAGE_PLACEHOLDER/g, () => {
+    if (idx < inlineImages.length) {
+      return inlineImages[idx++].url;
+    }
+    // Fallback: use the featured image if we run out of inline images
+    const featured = stockImages.find(img => img.role === 'featured');
+    return featured ? featured.url : '';
+  });
+}
+
 // ── Helper: store a preview ───────────────────────────────────────────────────
 
 function storePreview({ post, stockImages, userImages, businessId, sessionDir, uploadSessionId }) {
@@ -216,6 +235,7 @@ router.post('/generate', (req, res, next) => {
     console.log(`[Post] Generated: "${post.title}"`);
 
     const stockImages = await findStockImages(post);
+    injectStockImages(post, stockImages);
     const sessionDir = path.join(uploadsDir, req.uploadSessionId);
     const previewId = storePreview({ post, stockImages, userImages, businessId, sessionDir, uploadSessionId: req.uploadSessionId });
 
@@ -336,6 +356,7 @@ router.post('/manual-parse', async (req, res) => {
     console.log(`[Post] Manual content parsed: "${post.title}"`);
 
     const stockImages = await findStockImages(post);
+    injectStockImages(post, stockImages);
     const previewId = storePreview({
       post,
       stockImages,

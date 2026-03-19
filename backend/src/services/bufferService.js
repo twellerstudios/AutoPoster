@@ -17,8 +17,22 @@
  * 5. Select which Buffer channels to use per business
  */
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const BUFFER_API_URL = 'https://api.buffer.com';
+const LOG_FILE = path.join(__dirname, '..', '..', 'buffer-debug.log');
+
+/**
+ * Append a human-readable entry to the Buffer debug log file.
+ */
+function logBuffer(label, data) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ${label}\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}\n${'─'.repeat(60)}\n`;
+  try {
+    fs.appendFileSync(LOG_FILE, line);
+  } catch { /* ignore write errors */ }
+}
 
 /**
  * Create an axios-like helper for Buffer GraphQL requests.
@@ -147,17 +161,20 @@ async function testBufferConnection(apiToken) {
  */
 async function publishToBuffer(apiToken, channelIds, post, options = {}) {
   const text = buildBufferMessage(post.title, post.htmlContent, options.linkUrl);
+  logBuffer('PUBLISH START', { channelIds, title: post.title, textLength: text.length, textPreview: text.substring(0, 200) });
   const results = [];
 
   for (const channelId of channelIds) {
     try {
       const result = await createBufferPost(apiToken, channelId, text);
+      logBuffer(`PUBLISH OK → channel ${channelId}`, result);
       results.push({
         channelId,
         success: true,
         postId: result.postId,
       });
     } catch (err) {
+      logBuffer(`PUBLISH FAIL → channel ${channelId}`, { error: err.message });
       results.push({
         channelId,
         success: false,
@@ -166,11 +183,13 @@ async function publishToBuffer(apiToken, channelIds, post, options = {}) {
     }
   }
 
+  logBuffer('PUBLISH DONE', { total: results.length, succeeded: results.filter(r => r.success).length });
   return results;
 }
 
 /**
  * Create a single post on a Buffer channel.
+ * Uses channelId (singular), schedulingType, and mode as required by Buffer's API.
  */
 async function createBufferPost(apiToken, channelId, text) {
   const query = `
@@ -192,11 +211,17 @@ async function createBufferPost(apiToken, channelId, text) {
   const variables = {
     input: {
       text,
-      channelIds: [channelId],
+      channelId,
+      schedulingType: 'automatic',
+      mode: 'shareNext',
     },
   };
 
+  logBuffer(`CREATE POST → channel ${channelId}`, { query: query.trim(), variables });
+
   const response = await bufferRequest(apiToken, query, variables);
+
+  logBuffer(`CREATE POST RESPONSE → channel ${channelId}`, response.data);
 
   if (response.data.errors && response.data.errors.length > 0) {
     throw new Error(response.data.errors[0].message || 'Buffer API error');

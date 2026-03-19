@@ -279,9 +279,24 @@ export default function Settings({ showToast, onBusinessesChanged, onNavigate })
                 <span className="network-iface">{addr.interface}</span>
                 <button
                   className="btn-sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(addr.url);
-                    showToast('URL copied to clipboard', 'success');
+                  onClick={async () => {
+                    try {
+                      if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(addr.url);
+                      } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = addr.url;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                      }
+                      showToast('URL copied to clipboard', 'success');
+                    } catch {
+                      showToast('Could not copy — please copy the URL manually.', 'error');
+                    }
                   }}
                 >
                   Copy

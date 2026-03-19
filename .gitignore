@@ -3,12 +3,16 @@ backend/node_modules/
 frontend/node_modules/
 frontend/build/
 
-# Environment — NEVER commit real credentials
+# Environment & data — NEVER commit real credentials
 backend/.env
+backend/data/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Uploads (temp user images)
+backend/uploads/
 
 # Logs
 *.log

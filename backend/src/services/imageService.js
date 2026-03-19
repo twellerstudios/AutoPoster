@@ -1,6 +1,5 @@
 /**
- * Image service — fetches a relevant free stock photo from Pexels.
- * Falls back gracefully if no API key is configured.
+ * Image service — fetches relevant free stock photos from Pexels.
  */
 const axios = require('axios');
 const { config } = require('../config');
@@ -26,7 +25,6 @@ async function findImage(query) {
     const photos = response.data?.photos;
     if (!photos || photos.length === 0) return null;
 
-    // Pick the best-sized image (large2x for quality, large for fallback)
     const photo = photos[0];
     return {
       url: photo.src.large2x || photo.src.large,
@@ -38,6 +36,22 @@ async function findImage(query) {
     console.warn('[Image] Pexels fetch failed:', err.message);
     return null;
   }
+}
+
+/**
+ * Find multiple images for different queries (for inline content images).
+ * @param {string[]} queries
+ * @returns {Promise<Array>}
+ */
+async function findMultipleImages(queries) {
+  const results = [];
+  for (const query of queries.slice(0, 3)) {
+    const image = await findImage(query);
+    if (image) {
+      results.push(image);
+    }
+  }
+  return results;
 }
 
 /**
@@ -53,4 +67,4 @@ async function downloadImage(url) {
   return Buffer.from(response.data);
 }
 
-module.exports = { findImage, downloadImage };
+module.exports = { findImage, findMultipleImages, downloadImage };

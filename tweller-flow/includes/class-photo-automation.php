@@ -81,6 +81,13 @@ class TwellerFlow_Photo_Automation {
                 return current_user_can( 'manage_options' );
             },
         ));
+
+        // Endpoint for backend to query sessions by date (for photo-to-session matching)
+        register_rest_route( 'tweller-flow/v1', '/automation/sessions', array(
+            'methods'  => 'GET',
+            'callback' => array( __CLASS__, 'rest_sessions_by_date' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
     }
 
     /**
@@ -239,6 +246,48 @@ class TwellerFlow_Photo_Automation {
             'ok'      => true,
             'message' => 'Review approved for session ' . $code,
         ));
+    }
+
+    /**
+     * REST: Query sessions by date or recent range (for photo-to-session matching).
+     * Used by the auto-import backend to find which session photos belong to.
+     */
+    public static function rest_sessions_by_date( $request ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+
+        $date  = sanitize_text_field( $request->get_param( 'date' ) ?? '' );
+        $range = sanitize_text_field( $request->get_param( 'range' ) ?? '' );
+
+        if ( $range === 'recent' ) {
+            // Return sessions from the last 7 days + next 7 days
+            $from = date( 'Y-m-d', strtotime( '-7 days' ) );
+            $to   = date( 'Y-m-d', strtotime( '+7 days' ) );
+            $sessions = $wpdb->get_results( $wpdb->prepare(
+                "SELECT id, tracking_code, client_name, client_email, client_phone,
+                        package_type, session_date, session_time, location, members_count,
+                        current_stage, current_stage_index, estimated_delivery, gallery_url
+                 FROM $table
+                 WHERE session_date BETWEEN %s AND %s
+                 ORDER BY session_date ASC, session_time ASC",
+                $from, $to
+            ));
+        } elseif ( $date ) {
+            // Return sessions for a specific date
+            $sessions = $wpdb->get_results( $wpdb->prepare(
+                "SELECT id, tracking_code, client_name, client_email, client_phone,
+                        package_type, session_date, session_time, location, members_count,
+                        current_stage, current_stage_index, estimated_delivery, gallery_url
+                 FROM $table
+                 WHERE session_date = %s
+                 ORDER BY session_time ASC",
+                $date
+            ));
+        } else {
+            return new WP_Error( 'missing_params', 'Provide "date" (YYYY-MM-DD) or "range=recent"', array( 'status' => 400 ) );
+        }
+
+        return rest_ensure_response( $sessions ?: array() );
     }
 
     /**

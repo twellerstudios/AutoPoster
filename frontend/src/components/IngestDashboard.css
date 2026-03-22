@@ -1,0 +1,394 @@
+.ingest-dashboard {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.ingest-header h2 {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+  color: #f1f5f9;
+}
+
+.ingest-subtitle {
+  color: #94a3b8;
+  margin: 0 0 24px;
+  font-size: 0.875rem;
+}
+
+/* Pipeline Visual */
+.pipeline-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 16px;
+  background: #1e293b;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.pipeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.4;
+  transition: opacity 0.3s;
+}
+
+.pipeline-step.active {
+  opacity: 1;
+}
+
+.step-icon {
+  font-size: 1.5rem;
+}
+
+.step-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.pipeline-arrow {
+  color: #475569;
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+/* Sections */
+.ingest-section {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.ingest-section h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  color: #f1f5f9;
+}
+
+.section-desc {
+  color: #94a3b8;
+  font-size: 0.8125rem;
+  margin: 0 0 16px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-header h3 {
+  margin: 0;
+}
+
+/* Watcher */
+.watcher-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  background: #6366f1;
+  color: white;
+  transition: all 0.2s;
+}
+
+.watcher-btn:hover {
+  background: #4f46e5;
+}
+
+.watcher-btn.watching {
+  background: #ef4444;
+}
+
+.watcher-btn.watching:hover {
+  background: #dc2626;
+}
+
+.watcher-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.active {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  animation: pulse 2s infinite;
+}
+
+.status-dot.inactive {
+  background: #475569;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.known-drives {
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 0.8125rem;
+}
+
+.config-warning {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #422006;
+  border: 1px solid #92400e;
+  border-radius: 8px;
+  color: #fbbf24;
+  font-size: 0.8125rem;
+}
+
+.config-warning code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+/* Import Progress */
+.import-active {
+  border: 1px solid #6366f1;
+}
+
+.import-progress {
+  height: 6px;
+  background: #334155;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: #6366f1;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Manual Import Form */
+.manual-import-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-row label {
+  font-size: 0.8125rem;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.form-row .optional {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.form-row input {
+  padding: 10px 14px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-row input:focus {
+  border-color: #6366f1;
+}
+
+.form-row input::placeholder {
+  color: #475569;
+}
+
+.import-btn {
+  padding: 10px 24px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background 0.2s;
+}
+
+.import-btn:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.import-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Bookings */
+.bookings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.booking-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  background: #0f172a;
+  border-radius: 8px;
+}
+
+.booking-client {
+  font-weight: 600;
+  color: #f1f5f9;
+  min-width: 140px;
+}
+
+.booking-date {
+  color: #94a3b8;
+  font-size: 0.8125rem;
+  min-width: 120px;
+}
+
+.booking-title {
+  color: #64748b;
+  font-size: 0.8125rem;
+  flex: 1;
+}
+
+/* Recent Imports */
+.imports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-card {
+  padding: 14px;
+  background: #0f172a;
+  border-radius: 8px;
+  border-left: 3px solid #475569;
+}
+
+.import-card.completed {
+  border-left-color: #22c55e;
+}
+
+.import-card.completed_with_errors {
+  border-left-color: #f59e0b;
+}
+
+.import-card.failed {
+  border-left-color: #ef4444;
+}
+
+.import-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.import-status {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.import-status.completed { color: #22c55e; }
+.import-status.completed_with_errors { color: #f59e0b; }
+.import-status.failed { color: #ef4444; }
+
+.import-time {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.import-client {
+  color: #f1f5f9;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  margin-bottom: 2px;
+}
+
+.import-dest {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-family: monospace;
+  margin-bottom: 4px;
+}
+
+.import-stats {
+  color: #94a3b8;
+  font-size: 0.8125rem;
+}
+
+.import-booking {
+  color: #818cf8;
+  font-size: 0.8125rem;
+  margin-top: 4px;
+}
+
+/* Setup */
+.setup-info {
+  background: #0f172a;
+  border: 1px dashed #334155;
+}
+
+.setup-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #94a3b8;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.setup-steps code {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.setup-steps strong {
+  color: #cbd5e1;
+}
+
+.ingest-loading {
+  text-align: center;
+  color: #94a3b8;
+  padding: 48px 0;
+}

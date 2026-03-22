@@ -35,6 +35,7 @@ app.use('/api/', apiLimiter);
 app.use('/api/businesses', require('./routes/businesses'));
 app.use('/api/posts', require('./routes/posts'));
 app.use('/api/lightroom', require('./routes/lightroom'));
+app.use('/api/ingest', require('./routes/ingest'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -44,6 +45,8 @@ app.get('/api/health', (req, res) => {
     version: '1.1.0',
     businesses: Object.keys(config.businesses),
     geminiConfigured: !!process.env.GEMINI_API_KEY,
+    ingestConfigured: !!process.env.GOOGLE_CALENDAR_API_KEY,
+    importDestination: process.env.IMPORT_DESTINATION || 'D:\\Photography\\Sessions',
     timestamp: new Date().toISOString(),
   });
 });

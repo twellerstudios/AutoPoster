@@ -18,6 +18,14 @@ export const api = {
   health: () => request('GET', '/health'),
   generatePost: (payload) => request('POST', '/posts/generate', payload),
   lightroomStatus: () => request('GET', '/lightroom/status'),
+  // Ingest / Auto-import
+  ingestStatus: () => request('GET', '/ingest/status'),
+  ingestStart: () => request('POST', '/ingest/start'),
+  ingestStop: () => request('POST', '/ingest/stop'),
+  ingestImport: (payload) => request('POST', '/ingest/import', payload),
+  ingestBookings: (daysBack = 7, daysForward = 7) =>
+    request('GET', `/ingest/bookings?daysBack=${daysBack}&daysForward=${daysForward}`),
+
   lightroomUpload: async (formData) => {
     const res = await fetch(`${BASE}/api/lightroom/upload`, {
       method: 'POST',

@@ -53,27 +53,22 @@ router.post('/generate', async (req, res) => {
       return res.json({ success: true, action: 'generated', post });
     }
 
-    // Step 2: Fetch & upload feature image
+    // Step 2: Stock image fetching (currently disabled — photos handled manually via Lightroom)
     let mediaId = null;
-    try {
-      const image = await findImage(post.imageSearchQuery);
-      if (image) {
-        console.log(`[Post] Uploading image: ${image.url}`);
-        const buffer = await downloadImage(image.url);
-        mediaId = await uploadImage(
-          business.wordpress,
-          buffer,
-          `${post.slug}.jpg`,
-          post.title
-        );
-        console.log(`[Post] Image uploaded, media ID: ${mediaId}`);
-
-        // Append photographer credit to post content
-        post.htmlContent += `\n<p class="photo-credit" style="font-size:0.75em;color:#999;">Photo by <a href="${image.photographerUrl}" target="_blank" rel="noopener">${image.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
-      }
-    } catch (imgErr) {
-      console.warn('[Post] Image step failed (non-fatal):', imgErr.message);
-    }
+    // To re-enable, uncomment the block below:
+    // try {
+    //   const image = await findImage(post.imageSearchQuery);
+    //   if (image) {
+    //     console.log(`[Post] Uploading image: ${image.url}`);
+    //     const buffer = await downloadImage(image.url);
+    //     mediaId = await uploadImage(
+    //       business.wordpress, buffer, `${post.slug}.jpg`, post.title
+    //     );
+    //     post.htmlContent += `\n<p class="photo-credit" style="font-size:0.75em;color:#999;">Photo by <a href="${image.photographerUrl}" target="_blank" rel="noopener">${image.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a></p>`;
+    //   }
+    // } catch (imgErr) {
+    //   console.warn('[Post] Image step failed (non-fatal):', imgErr.message);
+    // }
 
     // Step 3: Publish to WordPress
     const result = await publishPost(business.wordpress, post, mediaId);

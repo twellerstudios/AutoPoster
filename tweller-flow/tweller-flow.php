@@ -27,6 +27,7 @@ require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-session.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-notifications.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-tracker-shortcode.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-webhook-handler.php';
+require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-photo-automation.php';
 
 if ( is_admin() ) {
     require_once TWELLER_FLOW_PLUGIN_DIR . 'admin/class-admin.php';
@@ -59,6 +60,9 @@ function tweller_flow_init() {
 
     // Register webhook endpoint
     TwellerFlow_Webhook_Handler::init();
+
+    // Initialize photo automation
+    TwellerFlow_Photo_Automation::init();
 
     // Enqueue public styles/scripts
     add_action( 'wp_enqueue_scripts', 'tweller_flow_public_assets' );

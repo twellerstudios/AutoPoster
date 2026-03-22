@@ -193,6 +193,12 @@ class TwellerFlow_Admin {
             update_option( 'tweller_flow_delivery_days', intval( $_POST['delivery_days'] ) );
             update_option( 'tweller_flow_tracker_page', esc_url_raw( $_POST['tracker_page_url'] ) );
             update_option( 'tweller_flow_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );
+
+            // Save automation settings
+            if ( isset( $_POST['automation_backend_url'] ) ) {
+                TwellerFlow_Photo_Automation::save_settings( $_POST );
+            }
+
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-settings&saved=1' ) );
             exit;
         }
@@ -320,6 +326,7 @@ class TwellerFlow_Admin {
         $tracker   = get_option( 'tweller_flow_tracker_page', '' );
         $secret    = get_option( 'tweller_flow_webhook_secret', '' );
         $packages  = get_option( 'tweller_flow_packages', array() );
+        $automation = TwellerFlow_Photo_Automation::get_settings();
 
         include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/settings.php';
     }

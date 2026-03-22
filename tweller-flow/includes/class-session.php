@@ -66,6 +66,9 @@ class TwellerFlow_Session {
 
             // Send booking confirmation
             TwellerFlow_Notifications::on_stage_change( $session_id, 'booked' );
+
+            // Trigger automation hooks (creates session folders, etc.)
+            do_action( 'tweller_flow_session_created', $session_id, $data );
         }
 
         return $session_id;

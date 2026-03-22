@@ -30,17 +30,34 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
+// ── Photo Automation Pipeline ─────────────────────────────────────────────────
+
+const { AutomationPipeline } = require('./services/automationPipeline');
+const pipeline = new AutomationPipeline();
+app.locals.pipeline = pipeline;
+
+// Start the folder watcher (non-blocking)
+pipeline.start().catch(err => {
+  console.warn('[Automation] Pipeline start warning:', err.message);
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 app.use('/api/businesses', require('./routes/businesses'));
 app.use('/api/posts', require('./routes/posts'));
+app.use('/api/automation', require('./routes/automation'));
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    version: '1.0.0',
+    version: '1.1.0',
     businesses: Object.keys(config.businesses),
+    automation: {
+      watching: pipeline.watcher.isWatching,
+      watchDir: pipeline.watchDir || null,
+      imagenEnabled: !!(process.env.IMAGEN_AI_API_KEY && process.env.IMAGEN_AI_PROFILE_ID),
+    },
     timestamp: new Date().toISOString(),
   });
 });

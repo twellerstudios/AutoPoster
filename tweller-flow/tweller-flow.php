@@ -39,7 +39,55 @@ if ( is_admin() ) {
 function tweller_flow_activate() {
     TwellerFlow_Database::create_tables();
     TwellerFlow_Database::seed_defaults();
+
+    // Auto-create the Session Tracker page if it doesn't exist
+    tweller_flow_ensure_tracker_page();
+
     flush_rewrite_rules();
+}
+
+/**
+ * Create the session tracker page with the [tweller_tracker] shortcode.
+ * Runs on activation and can be called to repair a missing page.
+ */
+function tweller_flow_ensure_tracker_page() {
+    $existing_url = get_option( 'tweller_flow_tracker_page', '' );
+
+    // If a tracker page URL is already configured, check the page still exists
+    if ( $existing_url ) {
+        $page_id = url_to_postid( $existing_url );
+        if ( $page_id && get_post_status( $page_id ) === 'publish' ) {
+            return; // page exists and is published, nothing to do
+        }
+    }
+
+    // Check if a page with the shortcode already exists
+    $existing = get_posts( array(
+        'post_type'   => 'page',
+        'post_status' => 'publish',
+        's'           => '[tweller_tracker]',
+        'numberposts' => 1,
+    ) );
+
+    if ( ! empty( $existing ) ) {
+        $page_url = get_permalink( $existing[0]->ID );
+        update_option( 'tweller_flow_tracker_page', $page_url );
+        return;
+    }
+
+    // Create the page
+    $page_id = wp_insert_post( array(
+        'post_title'   => 'Session Tracker',
+        'post_name'    => 'session-tracker',
+        'post_content' => '[tweller_tracker]',
+        'post_status'  => 'publish',
+        'post_type'    => 'page',
+    ) );
+
+    if ( $page_id && ! is_wp_error( $page_id ) ) {
+        $page_url = get_permalink( $page_id );
+        update_option( 'tweller_flow_tracker_page', $page_url );
+    }
 }
 register_activation_hook( __FILE__, 'tweller_flow_activate' );
 
@@ -50,6 +98,24 @@ function tweller_flow_deactivate() {
     flush_rewrite_rules();
 }
 register_deactivation_hook( __FILE__, 'tweller_flow_deactivate' );
+
+/**
+ * Show admin notice if tracker page is missing
+ */
+function tweller_flow_admin_notice_tracker() {
+    $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
+    if ( ! empty( $tracker_url ) ) {
+        return;
+    }
+    // Try to auto-create it
+    tweller_flow_ensure_tracker_page();
+    $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
+    if ( ! empty( $tracker_url ) ) {
+        return;
+    }
+    echo '<div class="notice notice-warning"><p><strong>Tweller Flow:</strong> The Session Tracker page is missing. Please create a page with the <code>[tweller_tracker]</code> shortcode and set its URL in <a href="' . admin_url( 'admin.php?page=tweller-flow-settings' ) . '">Settings</a>.</p></div>';
+}
+add_action( 'admin_notices', 'tweller_flow_admin_notice_tracker' );
 
 /**
  * Initialize plugin

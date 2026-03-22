@@ -36,20 +36,20 @@
                 <ul class="tw-footer__links">
                     <li><a href="<?php echo esc_url( home_url( '/' ) ); ?>">Home</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/#about' ) ); ?>">About</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/services/' ) ); ?>">Services</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/#services' ) ); ?>">Services</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/#gallery' ) ); ?>">Gallery</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/blog/' ) ); ?>">Blog</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/#specials' ) ); ?>">Book Now</a></li>
                 </ul>
             </div>
 
             <div class="tw-footer__col">
                 <h4 class="tw-footer__heading">Services</h4>
                 <ul class="tw-footer__links">
-                    <li><a href="<?php echo esc_url( home_url( '/services/' ) ); ?>">Wedding Photography</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/services/' ) ); ?>">Family Portraits</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/services/' ) ); ?>">Cinematic Videography</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/services/' ) ); ?>">Event Coverage</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/services/' ) ); ?>">Web & Graphic Design</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/#services' ) ); ?>">Wedding Photography</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/#services' ) ); ?>">Family Portraits</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/#services' ) ); ?>">Cinematic Videography</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/#services' ) ); ?>">Event Coverage</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/#services' ) ); ?>">Web & Graphic Design</a></li>
                 </ul>
             </div>
 

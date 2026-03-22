@@ -58,9 +58,9 @@ if ( $banner_enabled ) :
                     ?>
                     <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="tw-nav__link tw-nav__link--active">Home</a>
                     <a href="<?php echo esc_url( home_url( '/#about' ) ); ?>" class="tw-nav__link">About</a>
-                    <a href="<?php echo esc_url( home_url( '/services/' ) ); ?>" class="tw-nav__link">Services</a>
+                    <a href="<?php echo esc_url( home_url( '/#services' ) ); ?>" class="tw-nav__link">Services</a>
                     <a href="<?php echo esc_url( home_url( '/#gallery' ) ); ?>" class="tw-nav__link">Gallery</a>
-                    <a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>" class="tw-nav__link">Contact</a>
+                    <a href="<?php echo esc_url( home_url( '/#testimonials' ) ); ?>" class="tw-nav__link">Reviews</a>
                     <a href="<?php echo esc_url( home_url( '/#specials' ) ); ?>" class="tw-btn tw-btn--outline tw-nav__cta">Book Now</a>
                     <?php
                 }

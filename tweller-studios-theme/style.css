@@ -261,15 +261,17 @@ p {
     left: 0;
     width: 100%;
     z-index: 1000;
-    padding: 1.5rem 0;
+    padding: 1rem 0;
     transition: var(--transition-smooth);
+    background-color: var(--tw-white);
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
 }
 
 .tw-header--scrolled {
-    background-color: rgba(10, 10, 10, 0.95);
+    background-color: var(--tw-white);
     backdrop-filter: blur(20px);
-    padding: 1rem 0;
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+    padding: 0.75rem 0;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .tw-header__inner {
@@ -282,7 +284,7 @@ p {
     font-family: var(--font-heading);
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--tw-white);
+    color: var(--tw-black);
     letter-spacing: 1px;
 }
 
@@ -310,7 +312,7 @@ p {
     font-weight: 500;
     letter-spacing: 2px;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--tw-gray-600);
     position: relative;
     padding: 0.25rem 0;
 }
@@ -328,7 +330,7 @@ p {
 
 .tw-nav__link:hover,
 .tw-nav__link--active {
-    color: var(--tw-white);
+    color: var(--tw-black);
 }
 
 .tw-nav__link:hover::after,
@@ -338,6 +340,13 @@ p {
 
 .tw-nav__cta {
     padding: 0.75rem 1.75rem;
+    color: var(--tw-gold);
+    border-color: var(--tw-gold);
+}
+
+.tw-nav__cta:hover {
+    background-color: var(--tw-gold);
+    color: var(--tw-black);
 }
 
 /* Mobile Menu Toggle */
@@ -356,7 +365,7 @@ p {
     display: block;
     width: 25px;
     height: 2px;
-    background-color: var(--tw-white);
+    background-color: var(--tw-black);
     transition: var(--transition-smooth);
 }
 
@@ -1056,6 +1065,114 @@ p {
     margin: 0 auto;
 }
 
+/* Ensure all page content text is visible on white backgrounds */
+.tw-page-content h1,
+.tw-page-content h2,
+.tw-page-content h3,
+.tw-page-content h4,
+.tw-page-content h5,
+.tw-page-content h6 {
+    color: var(--tw-black);
+    margin-bottom: 1rem;
+}
+
+.tw-page-content p,
+.tw-page-content li,
+.tw-page-content td,
+.tw-page-content th,
+.tw-page-content span,
+.tw-page-content div,
+.tw-page-content label {
+    color: var(--tw-gray-700);
+}
+
+.tw-page-content a {
+    color: var(--tw-gold-dark);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.tw-page-content a:hover {
+    color: var(--tw-gold);
+}
+
+.tw-page-content ul,
+.tw-page-content ol {
+    margin-left: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.tw-page-content ul {
+    list-style: disc;
+}
+
+.tw-page-content ol {
+    list-style: decimal;
+}
+
+.tw-page-content li {
+    margin-bottom: 0.5rem;
+}
+
+.tw-page-content img {
+    margin: 2rem 0;
+    border-radius: 2px;
+}
+
+.tw-page-content blockquote {
+    border-left: 3px solid var(--tw-gold);
+    padding-left: 1.5rem;
+    margin: 2rem 0;
+    font-family: var(--font-accent);
+    font-style: italic;
+    font-size: 1.15rem;
+    color: var(--tw-gray-600);
+}
+
+/* WordPress block editor compatibility */
+.tw-page-content .wp-block-group,
+.tw-page-content .wp-block-column,
+.tw-page-content .wp-block-columns {
+    color: var(--tw-gray-700);
+}
+
+/* SureCart forms on pages */
+.tw-page-content .sc-form label,
+.tw-page-content .sc-form input,
+.tw-page-content .sc-form select,
+.tw-page-content .sc-form textarea,
+.tw-page-content .sc-product-name,
+.tw-page-content .sc-product-price,
+.tw-page-content .sc-line-item__title,
+.tw-page-content .sc-line-item__price,
+.tw-page-content [class*="surecart"],
+.tw-page-content [class*="sc-"] {
+    color: var(--tw-gray-900);
+}
+
+/* WordPress forms */
+.tw-page-content input[type="text"],
+.tw-page-content input[type="email"],
+.tw-page-content input[type="tel"],
+.tw-page-content input[type="url"],
+.tw-page-content input[type="number"],
+.tw-page-content select,
+.tw-page-content textarea {
+    color: var(--tw-gray-900);
+    border: 1px solid var(--tw-gray-300);
+    padding: 0.75rem 1rem;
+    font-family: var(--font-body);
+    width: 100%;
+    background: var(--tw-white);
+}
+
+.tw-page-content input:focus,
+.tw-page-content select:focus,
+.tw-page-content textarea:focus {
+    outline: none;
+    border-color: var(--tw-gold);
+}
+
 /* Blog */
 .tw-posts-grid {
     display: grid;
@@ -1198,6 +1315,107 @@ p {
 .tw-form__textarea {
     min-height: 150px;
     resize: vertical;
+}
+
+/* ========================================================================
+   LIGHTBOX
+   ======================================================================== */
+
+.tw-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(10, 10, 10, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    cursor: zoom-out;
+}
+
+.tw-lightbox--active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tw-lightbox__img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border: none;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.tw-lightbox--active .tw-lightbox__img {
+    transform: scale(1);
+}
+
+.tw-lightbox__close {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    width: 50px;
+    height: 50px;
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: var(--tw-white);
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-fast);
+    line-height: 1;
+}
+
+.tw-lightbox__close:hover {
+    background: var(--tw-gold);
+    border-color: var(--tw-gold);
+    color: var(--tw-black);
+}
+
+.tw-lightbox__nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: var(--tw-white);
+    width: 50px;
+    height: 50px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-fast);
+}
+
+.tw-lightbox__nav:hover {
+    background: var(--tw-gold);
+    border-color: var(--tw-gold);
+    color: var(--tw-black);
+}
+
+.tw-lightbox__nav--prev {
+    left: 1.5rem;
+}
+
+.tw-lightbox__nav--next {
+    right: 1.5rem;
+}
+
+.tw-lightbox__caption {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.85rem;
+    letter-spacing: 1px;
 }
 
 /* ========================================================================

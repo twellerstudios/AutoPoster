@@ -25,7 +25,7 @@ $hero_btn2_url = get_theme_mod( 'tweller_hero_btn2_url', '#gallery' );
     <?php if ( $hero_bg ) : ?>
         <div class="tw-hero__bg" style="background-image: url('<?php echo esc_url( $hero_bg ); ?>')"></div>
     <?php else : ?>
-        <div class="tw-hero__bg" style="background-color: var(--tw-black)"></div>
+        <div class="tw-hero__bg" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?w=1920&q=80&auto=format&fit=crop'); background-color: var(--tw-black);"></div>
     <?php endif; ?>
     <div class="tw-hero__overlay"></div>
 
@@ -61,9 +61,11 @@ $hero_btn2_url = get_theme_mod( 'tweller_hero_btn2_url', '#gallery' );
 $active_specials = tweller_get_active_specials();
 
 if ( ! empty( $active_specials ) ) :
+    $first_special = true;
     foreach ( $active_specials as $key => $special ) :
 ?>
-<section class="tw-section tw-specials" id="specials-<?php echo esc_attr( $key ); ?>">
+<section class="tw-section tw-specials" id="<?php echo $first_special ? 'specials' : 'specials-' . esc_attr( $key ); ?>">
+<?php $first_special = false; ?>
     <div class="tw-container">
         <div class="tw-specials__header tw-reveal">
             <div class="tw-specials__icon"><?php echo $special['icon']; ?></div>
@@ -114,42 +116,42 @@ endif;
 
         <div class="tw-services__grid">
             <div class="tw-service-card tw-reveal tw-reveal--delay-1">
-                <div class="tw-service-card__bg" style="background-image: url('<?php echo esc_url( TWELLER_URI . '/assets/images/service-wedding.jpg' ); ?>'); background-color: var(--tw-gray-800);"></div>
+                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-1606216794074-735e91aa2c92?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
                 <div class="tw-service-card__overlay"></div>
                 <div class="tw-service-card__content">
                     <h3 class="tw-service-card__title">Wedding Photography</h3>
                     <p class="tw-service-card__desc">Every glance, every laugh, every tear of joy — captured naturally so you can relive your day exactly as it felt.</p>
-                    <a href="<?php echo esc_url( home_url( '/services/' ) ); ?>" class="tw-service-card__link">Learn More &rarr;</a>
+                    <a href="#specials" class="tw-service-card__link">View Packages &rarr;</a>
                 </div>
             </div>
 
             <div class="tw-service-card tw-reveal tw-reveal--delay-2">
-                <div class="tw-service-card__bg" style="background-image: url('<?php echo esc_url( TWELLER_URI . '/assets/images/service-family.jpg' ); ?>'); background-color: var(--tw-gray-800);"></div>
+                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-1581579438747-104c53d7fbc4?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
                 <div class="tw-service-card__overlay"></div>
                 <div class="tw-service-card__content">
                     <h3 class="tw-service-card__title">Family Portraits</h3>
                     <p class="tw-service-card__desc">The messy hair, the real laughs, the way your kids look right now — that's what makes a family portrait worth keeping.</p>
-                    <a href="<?php echo esc_url( home_url( '/services/' ) ); ?>" class="tw-service-card__link">Learn More &rarr;</a>
+                    <a href="#specials" class="tw-service-card__link">View Packages &rarr;</a>
                 </div>
             </div>
 
             <div class="tw-service-card tw-reveal tw-reveal--delay-3">
-                <div class="tw-service-card__bg" style="background-image: url('<?php echo esc_url( TWELLER_URI . '/assets/images/service-video.jpg' ); ?>'); background-color: var(--tw-gray-800);"></div>
+                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
                 <div class="tw-service-card__overlay"></div>
                 <div class="tw-service-card__content">
                     <h3 class="tw-service-card__title">Cinematic Videography</h3>
                     <p class="tw-service-card__desc">Moving images that move you. We turn your moments into films you'll want to watch again and again.</p>
-                    <a href="<?php echo esc_url( home_url( '/services/' ) ); ?>" class="tw-service-card__link">Learn More &rarr;</a>
+                    <a href="#specials" class="tw-service-card__link">View Packages &rarr;</a>
                 </div>
             </div>
 
             <div class="tw-service-card tw-reveal tw-reveal--delay-4">
-                <div class="tw-service-card__bg" style="background-image: url('<?php echo esc_url( TWELLER_URI . '/assets/images/service-event.jpg' ); ?>'); background-color: var(--tw-gray-800);"></div>
+                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
                 <div class="tw-service-card__overlay"></div>
                 <div class="tw-service-card__content">
                     <h3 class="tw-service-card__title">Event Coverage</h3>
                     <p class="tw-service-card__desc">Birthdays, reunions, milestones — we blend in and capture the energy so you can actually enjoy the party.</p>
-                    <a href="<?php echo esc_url( home_url( '/services/' ) ); ?>" class="tw-service-card__link">Learn More &rarr;</a>
+                    <a href="#specials" class="tw-service-card__link">View Packages &rarr;</a>
                 </div>
             </div>
         </div>
@@ -176,9 +178,7 @@ $stat3_label = get_theme_mod( 'tweller_about_stat3_label', 'Years Experience' );
                 <?php if ( $about_image ) : ?>
                     <img src="<?php echo esc_url( $about_image ); ?>" alt="About Tweller Studios">
                 <?php else : ?>
-                    <div style="width: 100%; height: 600px; background-color: var(--tw-gray-100); display: flex; align-items: center; justify-content: center; color: var(--tw-gray-400);">
-                        <p>Upload image via Customizer &rarr; About Section</p>
-                    </div>
+                    <img src="https://images.unsplash.com/photo-1554048612-b6a482bc67e5?w=800&q=80&auto=format&fit=crop" alt="Photographer behind the scenes">
                 <?php endif; ?>
             </div>
 
@@ -186,7 +186,7 @@ $stat3_label = get_theme_mod( 'tweller_about_stat3_label', 'Years Experience' );
                 <span class="section-label">Our Story</span>
                 <h2 class="section-title">The People Behind the Lens</h2>
                 <p class="tw-about__text"><?php echo wp_kses_post( $about_text ); ?></p>
-                <a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>" class="tw-btn tw-btn--primary">Get to Know Us</a>
+                <a href="#specials" class="tw-btn tw-btn--primary">Book a Session</a>
 
                 <div class="tw-about__stats">
                     <div class="tw-stat">
@@ -243,23 +243,28 @@ $stat3_label = get_theme_mod( 'tweller_about_stat3_label', 'Years Experience' );
                 endwhile;
                 wp_reset_postdata();
             else :
-                // Placeholder gallery items
-                for ( $i = 1; $i <= 5; $i++ ) : ?>
+                // Default gallery images from Unsplash (replace with your own!)
+                $default_gallery = array(
+                    array( 'src' => 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=800&q=80&auto=format&fit=crop', 'alt' => 'Couple portrait session' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-1609220136736-443140cffec6?w=600&q=80&auto=format&fit=crop', 'alt' => 'Family lifestyle photography' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80&auto=format&fit=crop', 'alt' => 'Wedding day moments' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-1544126592-807ade215a0b?w=600&q=80&auto=format&fit=crop', 'alt' => 'Newborn session' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&q=80&auto=format&fit=crop', 'alt' => 'Outdoor portrait' ),
+                );
+                foreach ( $default_gallery as $gimg ) : ?>
                     <div class="tw-gallery__item">
-                        <div style="width: 100%; height: 100%; background-color: var(--tw-gray-300); display: flex; align-items: center; justify-content: center;">
-                            <span style="color: var(--tw-gray-600); font-size: 0.8rem;">Gallery Image <?php echo $i; ?></span>
-                        </div>
+                        <img src="<?php echo esc_url( $gimg['src'] ); ?>" alt="<?php echo esc_attr( $gimg['alt'] ); ?>">
                         <div class="tw-gallery__item-overlay">
                             <span>View</span>
                         </div>
                     </div>
-                <?php endfor;
+                <?php endforeach;
             endif;
             ?>
         </div>
 
         <div class="text-center tw-reveal" style="margin-top: 3rem;">
-            <a href="<?php echo esc_url( home_url( '/#gallery' ) ); ?>" class="tw-btn tw-btn--dark">View Full Gallery</a>
+            <a href="<?php echo esc_url( home_url( '/#specials' ) ); ?>" class="tw-btn tw-btn--dark">Book a Session</a>
         </div>
     </div>
 </section>
@@ -299,7 +304,7 @@ $cta_btn_url = get_theme_mod( 'tweller_cta_btn_url', '/contact' );
     <?php if ( $cta_bg ) : ?>
         <div class="tw-cta__bg" style="background-image: url('<?php echo esc_url( $cta_bg ); ?>')"></div>
     <?php else : ?>
-        <div class="tw-cta__bg" style="background-color: var(--tw-gray-900)"></div>
+        <div class="tw-cta__bg" style="background-image: url('https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-900);"></div>
     <?php endif; ?>
     <div class="tw-cta__overlay"></div>
     <div class="tw-container">

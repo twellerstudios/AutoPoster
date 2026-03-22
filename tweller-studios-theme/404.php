@@ -19,7 +19,7 @@ get_header(); ?>
         </p>
         <div class="tw-hero__buttons" style="opacity: 1; animation: none;">
             <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="tw-btn tw-btn--primary">Back Home</a>
-            <a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>" class="tw-btn tw-btn--white">Contact Us</a>
+            <a href="<?php echo esc_url( home_url( '/#specials' ) ); ?>" class="tw-btn tw-btn--white">View Specials</a>
         </div>
     </div>
 </section>

@@ -19,8 +19,8 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Rate limiting — prevent runaway Claude API calls
 const apiLimiter = rateLimit({
@@ -34,13 +34,16 @@ app.use('/api/', apiLimiter);
 
 app.use('/api/businesses', require('./routes/businesses'));
 app.use('/api/posts', require('./routes/posts'));
+app.use('/api/lightroom', require('./routes/lightroom'));
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
+    status: 'ok',
     ok: true,
-    version: '1.0.0',
+    version: '1.1.0',
     businesses: Object.keys(config.businesses),
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
     timestamp: new Date().toISOString(),
   });
 });

@@ -136,7 +136,7 @@ endif;
             </div>
 
             <div class="tw-service-card tw-reveal tw-reveal--delay-3">
-                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
+                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-4WoyTPMYb_E?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
                 <div class="tw-service-card__overlay"></div>
                 <div class="tw-service-card__content">
                     <h3 class="tw-service-card__title">Cinematic Videography</h3>
@@ -146,7 +146,7 @@ endif;
             </div>
 
             <div class="tw-service-card tw-reveal tw-reveal--delay-4">
-                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
+                <div class="tw-service-card__bg" style="background-image: url('https://images.unsplash.com/photo-DBkpJvEkuew?w=800&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-800);"></div>
                 <div class="tw-service-card__overlay"></div>
                 <div class="tw-service-card__content">
                     <h3 class="tw-service-card__title">Event Coverage</h3>
@@ -178,7 +178,7 @@ $stat3_label = get_theme_mod( 'tweller_about_stat3_label', 'Years Experience' );
                 <?php if ( $about_image ) : ?>
                     <img src="<?php echo esc_url( $about_image ); ?>" alt="About Tweller Studios">
                 <?php else : ?>
-                    <img src="https://images.unsplash.com/photo-1554048612-b6a482bc67e5?w=800&q=80&auto=format&fit=crop" alt="Photographer behind the scenes">
+                    <img src="https://images.unsplash.com/photo-NBsEkisX-jQ?w=800&q=80&auto=format&fit=crop" alt="Photographer behind the scenes">
                 <?php endif; ?>
             </div>
 
@@ -245,11 +245,11 @@ $stat3_label = get_theme_mod( 'tweller_about_stat3_label', 'Years Experience' );
             else :
                 // Default gallery images from Unsplash (replace with your own!)
                 $default_gallery = array(
-                    array( 'src' => 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=800&q=80&auto=format&fit=crop', 'alt' => 'Couple portrait session' ),
-                    array( 'src' => 'https://images.unsplash.com/photo-1609220136736-443140cffec6?w=600&q=80&auto=format&fit=crop', 'alt' => 'Family lifestyle photography' ),
-                    array( 'src' => 'https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80&auto=format&fit=crop', 'alt' => 'Wedding day moments' ),
-                    array( 'src' => 'https://images.unsplash.com/photo-1544126592-807ade215a0b?w=600&q=80&auto=format&fit=crop', 'alt' => 'Newborn session' ),
-                    array( 'src' => 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&q=80&auto=format&fit=crop', 'alt' => 'Outdoor portrait' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-6393pBD-6sE?w=800&q=80&auto=format&fit=crop', 'alt' => 'Couple portrait session' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-FaiZNiofP-U?w=600&q=80&auto=format&fit=crop', 'alt' => 'Happy child laughing' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-M2T1j-6Fn8w?w=600&q=80&auto=format&fit=crop', 'alt' => 'Wedding rings on roses' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-NR_biTwkWDo?w=600&q=80&auto=format&fit=crop', 'alt' => 'Newborn session' ),
+                    array( 'src' => 'https://images.unsplash.com/photo-OCV0rpL6hGQ?w=600&q=80&auto=format&fit=crop', 'alt' => 'Golden hour outdoor portrait' ),
                 );
                 foreach ( $default_gallery as $gimg ) : ?>
                     <div class="tw-gallery__item">
@@ -304,7 +304,7 @@ $cta_btn_url = get_theme_mod( 'tweller_cta_btn_url', '/contact' );
     <?php if ( $cta_bg ) : ?>
         <div class="tw-cta__bg" style="background-image: url('<?php echo esc_url( $cta_bg ); ?>')"></div>
     <?php else : ?>
-        <div class="tw-cta__bg" style="background-image: url('https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-900);"></div>
+        <div class="tw-cta__bg" style="background-image: url('https://images.unsplash.com/photo-4ShXInrtdV4?w=1920&q=80&auto=format&fit=crop'); background-color: var(--tw-gray-900);"></div>
     <?php endif; ?>
     <div class="tw-cta__overlay"></div>
     <div class="tw-container">

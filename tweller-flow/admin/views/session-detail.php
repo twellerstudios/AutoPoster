@@ -36,7 +36,7 @@
         <h2>Pipeline</h2>
         <div class="tf-pipeline">
             <?php
-            $current_idx = $session->current_stage_index;
+            $current_idx = (int) $session->current_stage_index;
             foreach ( $stage_keys as $idx => $key ) :
                 $stage_info = $stages[ $key ];
                 $is_completed = $idx < $current_idx;

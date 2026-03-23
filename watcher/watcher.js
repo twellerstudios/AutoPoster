@@ -40,6 +40,7 @@ const POLL_INTERVAL = (config.pollIntervalSeconds || 30) * 1000;
 const folderState = new Map(); // folderName -> { photoCount, lastNotified, stage }
 const exportState = new Map(); // folderName -> { exportCount, lastNotified }
 const cullState = new Map();   // folderName -> { greenCount, totalPhotos, lastNotified }
+const editState = new Map();   // folderName -> { editedCount, greenCount, lastChanged, completed }
 const createdSessions = new Set(); // tracking codes we already created folders for
 
 // ── WordPress API ──────────────────────────────────────
@@ -146,6 +147,101 @@ function hasGreenLabel(xmpPath) {
  * Find XMP sidecar for a given photo file.
  * Lightroom writes sidecars as: photo.cr3 -> photo.cr3.xmp or photo.xmp
  */
+/**
+ * Check if an XMP sidecar contains Lightroom develop/edit settings.
+ * Imagen returns XMP files with Camera Raw Settings (crs: namespace)
+ * containing adjustments like Exposure, Contrast, etc.
+ * We check for non-default values to confirm actual edits were applied.
+ */
+function hasEditSettings(xmpPath) {
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            const stat = fs.statSync(xmpPath);
+            if (stat.size < 50) return false;
+
+            const content = fs.readFileSync(xmpPath, 'utf-8');
+
+            if (!content.includes('</x:xmpmeta>') && !content.includes('xpacket end')) {
+                return false;
+            }
+
+            // Check for Camera Raw Settings namespace (Imagen/LR develop settings)
+            // Look for any non-zero/non-default develop adjustments
+            const editIndicators = [
+                /crs:ToneCurvePV2012/i,              // tone curve (strong indicator of AI edit)
+                /crs:ProcessVersion/i,                // processing version set
+                /crs:Exposure2012\s*=\s*"(?!0\.00|0")/i,  // non-zero exposure
+                /crs:Contrast2012\s*=\s*"(?!0")/i,         // non-zero contrast
+                /crs:Highlights2012\s*=\s*"(?!0")/i,       // non-zero highlights
+                /crs:Shadows2012\s*=\s*"(?!0")/i,          // non-zero shadows
+                /crs:Whites2012\s*=\s*"(?!0")/i,           // non-zero whites
+                /crs:Blacks2012\s*=\s*"(?!0")/i,           // non-zero blacks
+                /crs:Clarity2012\s*=\s*"(?!0")/i,          // non-zero clarity
+                /crs:Vibrance\s*=\s*"(?!0")/i,             // non-zero vibrance
+                /crs:Saturation\s*=\s*"(?!\+?0")/i,        // non-zero saturation
+                /crs:ColorGradeHighlightHue/i,             // color grading
+                /crs:LookName/i,                           // LR preset/look applied
+            ];
+
+            // If at least 2 indicators are present, edits have been applied
+            let matchCount = 0;
+            for (const pattern of editIndicators) {
+                if (pattern.test(content)) {
+                    matchCount++;
+                    if (matchCount >= 2) return true;
+                }
+            }
+
+            return false;
+        } catch (err) {
+            if (attempt < MAX_RETRIES - 1 && (err.code === 'EBUSY' || err.code === 'EACCES' || err.code === 'EPERM')) {
+                const waitMs = 500 * (attempt + 1);
+                const waitUntil = Date.now() + waitMs;
+                while (Date.now() < waitUntil) { /* busy-wait */ }
+                continue;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+/**
+ * Count how many green-labeled RAW photos have Imagen/LR develop settings applied.
+ * Returns { editedCount, greenCount }
+ */
+function countEditedPhotos(folderPath) {
+    const RAW_EXT = new Set(['.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf']);
+    let editedCount = 0;
+    let greenCount = 0;
+
+    try {
+        const files = fs.readdirSync(folderPath, { recursive: true });
+        for (const f of files) {
+            const fullPath = path.join(folderPath, f);
+            if (!fs.statSync(fullPath).isFile()) continue;
+
+            const ext = path.extname(f).toLowerCase();
+            if (!RAW_EXT.has(ext)) continue;
+
+            const xmpPath = findXmpSidecar(fullPath);
+            if (!xmpPath) continue;
+
+            if (hasGreenLabel(xmpPath)) {
+                greenCount++;
+                if (hasEditSettings(xmpPath)) {
+                    editedCount++;
+                }
+            }
+        }
+    } catch {
+        // folder may not exist yet
+    }
+
+    return { editedCount, greenCount };
+}
+
 function findXmpSidecar(photoPath) {
     // Try photo.cr3.xmp first (Lightroom default for RAW files)
     const xmpWithExt = photoPath + '.xmp';
@@ -361,6 +457,114 @@ async function scan() {
                 cullState.set(folder, {
                     greenCount,
                     totalRawCount,
+                    lastChanged: Date.now(),
+                    completed: true,
+                });
+            }
+        }
+    }
+
+    // ── Auto-advance: culled → editing ──────────────────
+    // After culling completes, auto-advance to 'editing' after a short delay.
+    // In the typical workflow, the photographer uploads to Imagen right after culling.
+    for (const folder of folders) {
+        const folderPath = path.join(WATCH_DIR, folder);
+        const session = matchFolderToSession(folder, sessions);
+        if (!session) continue;
+        if (session.current_stage !== 'culled') continue;
+
+        const prev = editState.get(folder);
+        if (prev && prev.completed) continue;
+
+        // Auto-advance to 'editing' after 30s in 'culled' stage
+        if (!prev) {
+            editState.set(folder, {
+                editedCount: 0,
+                greenCount: 0,
+                lastChanged: Date.now(),
+            });
+        } else {
+            const elapsed = Date.now() - prev.lastChanged;
+            const AUTO_EDIT_DELAY_MS = (config.editAutoAdvanceSeconds || 30) * 1000;
+
+            if (elapsed >= AUTO_EDIT_DELAY_MS) {
+                log(`Auto-advancing "${folder}" → ${session.client_name}: culled → editing (ready for Imagen)`);
+                await wpAdvanceStage(
+                    session.tracking_code,
+                    'editing',
+                    'Auto-advanced: photos ready for Imagen editing'
+                );
+                editState.set(folder, {
+                    editedCount: 0,
+                    greenCount: 0,
+                    lastChanged: Date.now(),
+                });
+            }
+        }
+    }
+
+    // ── Detect editing complete: editing → edited ───────
+    // Watch for XMP develop settings (crs: namespace) appearing on green-labeled photos.
+    // Imagen writes edits to the LR catalog; if "Auto write XMP" is enabled in LR,
+    // the develop settings will appear in XMP sidecars.
+    // Also supports a manual trigger: drop a file named ".editing-done" in the session folder.
+    for (const folder of folders) {
+        const folderPath = path.join(WATCH_DIR, folder);
+        const session = matchFolderToSession(folder, sessions);
+        if (!session) continue;
+        if (session.current_stage !== 'editing') continue;
+
+        const prev = editState.get(folder);
+        if (prev && prev.completed) continue;
+
+        // Manual trigger: photographer drops a .editing-done file in the folder
+        const manualTrigger = path.join(folderPath, '.editing-done');
+        if (fs.existsSync(manualTrigger)) {
+            const cull = cullState.get(folder);
+            const photoCount = cull ? cull.greenCount : 0;
+            log(`Manual edit-complete trigger "${folder}" → ${session.client_name}: .editing-done file found`);
+            await wpAdvanceStage(
+                session.tracking_code,
+                'edited',
+                `Editing complete (manual trigger): ${photoCount} photos edited`,
+                { photo_count: photoCount }
+            );
+            editState.set(folder, { editedCount: photoCount, greenCount: photoCount, lastChanged: Date.now(), completed: true });
+            // Remove trigger file so it doesn't re-fire
+            try { fs.unlinkSync(manualTrigger); } catch { /* ignore */ }
+            continue;
+        }
+
+        // XMP-based detection: check if green-labeled photos now have develop settings
+        const { editedCount, greenCount } = countEditedPhotos(folderPath);
+
+        if (editedCount === 0) continue;
+
+        if (!prev || prev.editedCount !== editedCount) {
+            log(`Editing "${folder}" → ${session.client_name}: ${editedCount}/${greenCount} photos have develop settings`);
+            editState.set(folder, {
+                editedCount,
+                greenCount,
+                lastChanged: Date.now(),
+            });
+        } else if (prev && prev.editedCount === editedCount && editedCount > 0) {
+            // Edit count stable — check if enough photos are edited
+            const elapsed = Date.now() - prev.lastChanged;
+            const EDIT_STABLE_MS = (config.editStableSeconds || 120) * 1000;
+            const editRatio = greenCount > 0 ? editedCount / greenCount : 0;
+
+            // Advance when: stable for 2 min AND at least 80% of green photos have edits
+            if (elapsed >= EDIT_STABLE_MS && editRatio >= 0.8) {
+                log(`Editing complete "${folder}" → ${session.client_name}: ${editedCount}/${greenCount} photos edited (stable for ${Math.round(elapsed / 1000)}s)`);
+                await wpAdvanceStage(
+                    session.tracking_code,
+                    'edited',
+                    `Editing complete: ${editedCount}/${greenCount} photos edited by Imagen`,
+                    { photo_count: editedCount }
+                );
+                editState.set(folder, {
+                    editedCount,
+                    greenCount,
                     lastChanged: Date.now(),
                     completed: true,
                 });

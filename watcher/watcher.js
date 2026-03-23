@@ -106,16 +106,40 @@ function countPhotosInFolder(folderPath) {
 /**
  * Read an XMP sidecar file and check if it has a green color label.
  * Lightroom Classic writes xmp:Label="Green" in sidecar .xmp files.
+ *
+ * Uses a short delay + retry to avoid conflicting with Lightroom's file writes.
  */
 function hasGreenLabel(xmpPath) {
-    try {
-        const content = fs.readFileSync(xmpPath, 'utf-8');
-        // Match both attribute form and element form
-        return /xmp:Label\s*=\s*"Green"/i.test(content) ||
-               /<xmp:Label>\s*Green\s*<\/xmp:Label>/i.test(content);
-    } catch {
-        return false;
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            // Check file size first — a 0-byte or tiny file means LR is mid-write
+            const stat = fs.statSync(xmpPath);
+            if (stat.size < 50) return false; // XMP files are always > 50 bytes
+
+            const content = fs.readFileSync(xmpPath, 'utf-8');
+
+            // Sanity check: valid XMP should contain the closing tag
+            if (!content.includes('</x:xmpmeta>') && !content.includes('xpacket end')) {
+                // File is truncated / mid-write — skip it
+                return false;
+            }
+
+            // Match both attribute form and element form
+            return /xmp:Label\s*=\s*"Green"/i.test(content) ||
+                   /<xmp:Label>\s*Green\s*<\/xmp:Label>/i.test(content);
+        } catch (err) {
+            // EBUSY / EACCES / EPERM = file locked by Lightroom, retry after brief pause
+            if (attempt < MAX_RETRIES - 1 && (err.code === 'EBUSY' || err.code === 'EACCES' || err.code === 'EPERM')) {
+                const waitMs = 500 * (attempt + 1); // 500ms, 1000ms
+                const waitUntil = Date.now() + waitMs;
+                while (Date.now() < waitUntil) { /* busy-wait */ }
+                continue;
+            }
+            return false;
+        }
     }
+    return false;
 }
 
 /**
@@ -414,9 +438,26 @@ function startWatcher() {
     });
 
     let debounceTimer = null;
+    let xmpDebounceTimer = null;
+    let scanInProgress = false;
 
     function isXmpFile(filePath) {
         return path.extname(filePath).toLowerCase() === '.xmp';
+    }
+
+    // Wrap scan to prevent overlapping scans (which would hammer XMP files)
+    async function safeScan(reason) {
+        if (scanInProgress) {
+            log(`Scan already in progress, skipping (${reason})`);
+            return;
+        }
+        scanInProgress = true;
+        try {
+            log(reason);
+            await scan();
+        } finally {
+            scanInProgress = false;
+        }
     }
 
     watcher.on('add', (filePath) => {
@@ -425,24 +466,24 @@ function startWatcher() {
         // Debounce: wait 10s after last file add before scanning
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            log('New files detected, scanning...');
-            scan();
+            safeScan('New files detected, scanning...');
         }, 10000);
     });
 
     // Also trigger on XMP changes (Lightroom writes labels to existing sidecars)
+    // Use a LONGER debounce (15s) — Lightroom writes XMP files in batches
+    // and we need to wait for the full batch to finish before reading them
     watcher.on('change', (filePath) => {
         if (!isXmpFile(filePath)) return;
 
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            log('XMP sidecar updated, scanning for label changes...');
-            scan();
-        }, 5000);
+        clearTimeout(xmpDebounceTimer);
+        xmpDebounceTimer = setTimeout(() => {
+            safeScan('XMP sidecars updated, scanning for label changes...');
+        }, 15000); // 15s after the LAST xmp change — gives LR time to finish the batch
     });
 
-    // Also poll periodically
-    setInterval(scan, POLL_INTERVAL);
+    // Also poll periodically (uses safeScan to avoid overlapping with event-driven scans)
+    setInterval(() => safeScan('Periodic scan...'), POLL_INTERVAL);
 
     // Graceful shutdown
     process.on('SIGINT', () => {

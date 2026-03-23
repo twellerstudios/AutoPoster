@@ -7,17 +7,13 @@ class TwellerFlow_Tracker_Shortcode {
         add_shortcode( 'tweller_tracker', array( __CLASS__, 'render' ) );
     }
 
-    /**
-     * Render the [tweller_tracker] shortcode
-     */
     public static function render( $atts ) {
         wp_enqueue_style( 'tweller-flow-tracker' );
         wp_enqueue_script( 'tweller-flow-tracker' );
 
-        // Pass REST API URL to JS
         wp_localize_script( 'tweller-flow-tracker', 'twellerFlowTracker', array(
-            'apiUrl'  => rest_url( 'tweller-flow/v1/track/' ),
-            'nonce'   => wp_create_nonce( 'wp_rest' ),
+            'apiUrl' => rest_url( 'tweller-flow/v1/track/' ),
+            'nonce'  => wp_create_nonce( 'wp_rest' ),
         ));
 
         $code = isset( $_GET['code'] ) ? sanitize_text_field( $_GET['code'] ) : '';
@@ -38,9 +34,6 @@ class TwellerFlow_Tracker_Shortcode {
         return ob_get_clean();
     }
 
-    /**
-     * Render the tracking code lookup form
-     */
     private static function render_lookup_form() {
         ?>
         <div class="tf-tracker tf-tracker--lookup">
@@ -50,14 +43,7 @@ class TwellerFlow_Tracker_Shortcode {
             </div>
             <form class="tf-tracker__form" method="get">
                 <div class="tf-tracker__input-group">
-                    <input type="text"
-                           name="code"
-                           placeholder="Enter tracking code (e.g., A1B2C3)"
-                           class="tf-tracker__input"
-                           maxlength="10"
-                           required
-                           pattern="[A-Za-z0-9]+"
-                           style="text-transform: uppercase;">
+                    <input type="text" name="code" placeholder="e.g. A1B2C3" class="tf-tracker__input" maxlength="10" required pattern="[A-Za-z0-9]+" style="text-transform:uppercase;">
                     <button type="submit" class="tf-tracker__btn">Track</button>
                 </div>
             </form>
@@ -65,20 +51,16 @@ class TwellerFlow_Tracker_Shortcode {
         <?php
     }
 
-    /**
-     * Render not found state
-     */
     private static function render_not_found( $code ) {
         ?>
         <div class="tf-tracker tf-tracker--error">
             <div class="tf-tracker__header">
                 <h2>Session Not Found</h2>
-                <p>We couldn't find a session with the tracking code <strong><?php echo esc_html( $code ); ?></strong>.</p>
-                <p>Please double-check your code and try again.</p>
+                <p>We couldn't find a session with code <strong><?php echo esc_html( $code ); ?></strong>. Please check and try again.</p>
             </div>
             <form class="tf-tracker__form" method="get">
                 <div class="tf-tracker__input-group">
-                    <input type="text" name="code" placeholder="Enter tracking code" class="tf-tracker__input" maxlength="10" required style="text-transform: uppercase;">
+                    <input type="text" name="code" placeholder="Enter tracking code" class="tf-tracker__input" maxlength="10" required style="text-transform:uppercase;">
                     <button type="submit" class="tf-tracker__btn">Try Again</button>
                 </div>
             </form>
@@ -86,16 +68,12 @@ class TwellerFlow_Tracker_Shortcode {
         <?php
     }
 
-    /**
-     * Render the full tracker display
-     */
     private static function render_tracker( $session ) {
         $client_stages    = TwellerFlow_Database::get_client_stages();
         $client_stage     = TwellerFlow_Database::get_client_stage( $session->current_stage );
         $client_stage_idx = TwellerFlow_Database::get_client_stage_index( $session->current_stage );
         $history          = TwellerFlow_Session::get_history( $session->id );
 
-        // Build client history timeline
         $stage_timestamps = array();
         foreach ( $history as $entry ) {
             $cl = TwellerFlow_Database::get_client_stage( $entry->stage );
@@ -109,12 +87,10 @@ class TwellerFlow_Tracker_Shortcode {
         $pkg_name = $pkg['name'] ?? ucfirst( $session->package_type );
 
         $stage_icons = array(
-            'Booked'      => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-            'Session Day' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
-            'Editing'     => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
-            'Review'      => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
-            'Ready'       => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
-            'Delivered'   => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+            'Booked'       => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+            'Editing'      => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+            'Done Editing' => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+            'Delivered'    => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
         );
         ?>
         <div class="tf-tracker" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
@@ -123,14 +99,10 @@ class TwellerFlow_Tracker_Shortcode {
                 <p class="tf-tracker__greeting">Hi <?php echo esc_html( $session->client_name ); ?>! Here's the progress of your <strong><?php echo esc_html( $pkg_name ); ?></strong>.</p>
                 <div class="tf-tracker__meta">
                     <?php if ( $session->session_date ) : ?>
-                        <span class="tf-tracker__meta-item">
-                            📅 <?php echo date( 'F j, Y', strtotime( $session->session_date ) ); ?>
-                        </span>
+                        <span class="tf-tracker__meta-item">Session: <?php echo date( 'F j, Y', strtotime( $session->session_date ) ); ?></span>
                     <?php endif; ?>
                     <?php if ( $session->estimated_delivery ) : ?>
-                        <span class="tf-tracker__meta-item">
-                            🎯 Est. delivery: <?php echo date( 'F j, Y', strtotime( $session->estimated_delivery ) ); ?>
-                        </span>
+                        <span class="tf-tracker__meta-item">Est. delivery: <?php echo date( 'F j, Y', strtotime( $session->estimated_delivery ) ); ?></span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -139,8 +111,6 @@ class TwellerFlow_Tracker_Shortcode {
                 <?php foreach ( $client_stages as $idx => $stage_name ) :
                     $is_completed = $idx < $client_stage_idx;
                     $is_current   = $idx === $client_stage_idx;
-                    $is_upcoming  = $idx > $client_stage_idx;
-
                     $status_class = $is_completed ? 'completed' : ( $is_current ? 'current' : 'upcoming' );
                     $timestamp    = $stage_timestamps[ $stage_name ] ?? '';
                     $icon         = $stage_icons[ $stage_name ] ?? '';

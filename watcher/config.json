@@ -1,0 +1,7 @@
+{
+  "watchDir": "D:\\Photos\\Sessions",
+  "wordpressUrl": "https://twellerstudios.com",
+  "apiKey": "",
+  "pollIntervalSeconds": 30,
+  "photoExtensions": [".jpg", ".jpeg", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".raf", ".tif", ".tiff", ".png"]
+}

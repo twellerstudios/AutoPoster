@@ -3,9 +3,6 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class TwellerFlow_Database {
 
-    /**
-     * Create plugin database tables
-     */
     public static function create_tables() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
@@ -33,6 +30,8 @@ class TwellerFlow_Database {
             current_stage_index int DEFAULT 0,
             estimated_delivery date DEFAULT NULL,
             gallery_url varchar(500) DEFAULT '',
+            folder_name varchar(255) DEFAULT '',
+            photo_count int DEFAULT 0,
             notes text,
             surecart_order_id varchar(100) DEFAULT '',
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
@@ -74,27 +73,20 @@ class TwellerFlow_Database {
         dbDelta( $sql_notifications );
     }
 
-    /**
-     * Seed default options
-     */
     public static function seed_defaults() {
         $defaults = array(
             'tweller_flow_stages' => array(
-                'booked'           => array( 'label' => 'Booked',           'client_label' => 'Booked',        'icon' => 'calendar',    'notify' => true ),
-                'deposit_received' => array( 'label' => 'Deposit Received', 'client_label' => 'Booked',        'icon' => 'dollar-sign', 'notify' => true ),
-                'session_scheduled'=> array( 'label' => 'Session Scheduled','client_label' => 'Booked',        'icon' => 'clock',       'notify' => false ),
-                'session_complete' => array( 'label' => 'Session Complete', 'client_label' => 'Session Day',   'icon' => 'camera',      'notify' => true ),
-                'importing'        => array( 'label' => 'Importing',        'client_label' => 'Editing',       'icon' => 'download',    'notify' => false ),
-                'culling'          => array( 'label' => 'Culling',          'client_label' => 'Editing',       'icon' => 'filter',      'notify' => false ),
-                'ai_editing'       => array( 'label' => 'AI Editing',       'client_label' => 'Editing',       'icon' => 'wand',        'notify' => false ),
-                'edit_review'      => array( 'label' => 'Edit Review',      'client_label' => 'Review',        'icon' => 'eye',         'notify' => false ),
-                'final_edits'      => array( 'label' => 'Final Edits',      'client_label' => 'Review',        'icon' => 'edit',        'notify' => false ),
-                'gallery_created'  => array( 'label' => 'Gallery Created',  'client_label' => 'Ready',         'icon' => 'image',       'notify' => true ),
-                'client_notified'  => array( 'label' => 'Client Notified',  'client_label' => 'Ready',         'icon' => 'bell',        'notify' => false ),
-                'delivered'        => array( 'label' => 'Delivered',         'client_label' => 'Delivered',     'icon' => 'check-circle','notify' => true ),
+                'booked'     => array( 'label' => 'Booked',     'client_label' => 'Booked',       'icon' => 'calendar',     'notify' => true ),
+                'imported'   => array( 'label' => 'Imported',   'client_label' => 'Editing',      'icon' => 'download',     'notify' => false ),
+                'culling'    => array( 'label' => 'Culling',    'client_label' => 'Editing',      'icon' => 'filter',       'notify' => false ),
+                'culled'     => array( 'label' => 'Culled',     'client_label' => 'Editing',      'icon' => 'check-square', 'notify' => false ),
+                'editing'    => array( 'label' => 'Editing',    'client_label' => 'Editing',      'icon' => 'edit-2',       'notify' => false ),
+                'edited'     => array( 'label' => 'Edited',     'client_label' => 'Done Editing', 'icon' => 'check-circle', 'notify' => true ),
+                'delivering' => array( 'label' => 'Delivering', 'client_label' => 'Done Editing', 'icon' => 'send',         'notify' => false ),
+                'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',    'icon' => 'check-circle', 'notify' => true ),
             ),
             'tweller_flow_client_stages' => array(
-                'Booked', 'Session Day', 'Editing', 'Review', 'Ready', 'Delivered'
+                'Booked', 'Editing', 'Done Editing', 'Delivered'
             ),
             'tweller_flow_packages' => array(
                 'mini' => array(
@@ -133,36 +125,27 @@ class TwellerFlow_Database {
         );
 
         foreach ( $defaults as $key => $value ) {
-            if ( get_option( $key ) === false ) {
+            // Always update stages to ensure new pipeline is in place
+            if ( $key === 'tweller_flow_stages' || $key === 'tweller_flow_client_stages' ) {
+                update_option( $key, $value );
+            } elseif ( get_option( $key ) === false ) {
                 add_option( $key, $value );
             }
         }
     }
 
-    /**
-     * Get all stage definitions
-     */
     public static function get_stages() {
         return get_option( 'tweller_flow_stages', array() );
     }
 
-    /**
-     * Get stage keys as indexed array
-     */
     public static function get_stage_keys() {
         return array_keys( self::get_stages() );
     }
 
-    /**
-     * Get client-facing stages
-     */
     public static function get_client_stages() {
         return get_option( 'tweller_flow_client_stages', array() );
     }
 
-    /**
-     * Map internal stage to client stage
-     */
     public static function get_client_stage( $internal_stage ) {
         $stages = self::get_stages();
         if ( isset( $stages[ $internal_stage ] ) ) {
@@ -171,9 +154,6 @@ class TwellerFlow_Database {
         return 'Unknown';
     }
 
-    /**
-     * Get client stage index (0-based)
-     */
     public static function get_client_stage_index( $internal_stage ) {
         $client_stages = self::get_client_stages();
         $client_label  = self::get_client_stage( $internal_stage );

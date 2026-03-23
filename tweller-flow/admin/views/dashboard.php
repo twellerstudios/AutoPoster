@@ -1,87 +1,77 @@
 <?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
-<div class="wrap tf-admin">
-    <h1>Tweller Flow Dashboard</h1>
+<div class="wrap tf-wrap">
+    <div class="tf-page-header">
+        <h1>Dashboard</h1>
+        <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-new' ); ?>" class="tf-btn tf-btn--primary tf-btn--lg">+ New Session</a>
+    </div>
 
-    <div class="tf-stats-grid">
-        <div class="tf-stat-card tf-stat-card--primary">
-            <div class="tf-stat-card__number"><?php echo $active_count; ?></div>
-            <div class="tf-stat-card__label">Active Sessions</div>
+    <!-- Stats -->
+    <div class="tf-grid tf-grid--4 tf-mb-6">
+        <div class="tf-stat tf-stat--blue">
+            <span class="tf-stat__value"><?php echo $active_count; ?></span>
+            <span class="tf-stat__label">Active Sessions</span>
         </div>
-        <div class="tf-stat-card">
-            <div class="tf-stat-card__number"><?php echo $total_count; ?></div>
-            <div class="tf-stat-card__label">Total Sessions</div>
+        <div class="tf-stat">
+            <span class="tf-stat__value"><?php echo $total_count; ?></span>
+            <span class="tf-stat__label">Total Sessions</span>
         </div>
-        <div class="tf-stat-card tf-stat-card--green">
-            <div class="tf-stat-card__number">$<?php echo number_format( $revenue['month_revenue'], 0 ); ?></div>
-            <div class="tf-stat-card__label">This Month</div>
+        <div class="tf-stat tf-stat--green">
+            <span class="tf-stat__value">$<?php echo number_format( $revenue['month_revenue'], 0 ); ?></span>
+            <span class="tf-stat__label">This Month</span>
         </div>
-        <div class="tf-stat-card">
-            <div class="tf-stat-card__number">$<?php echo number_format( $revenue['total_revenue'], 0 ); ?></div>
-            <div class="tf-stat-card__label">Total Revenue</div>
+        <div class="tf-stat tf-stat--amber">
+            <span class="tf-stat__value">$<?php echo number_format( $revenue['total_revenue'], 0 ); ?></span>
+            <span class="tf-stat__label">All Time</span>
         </div>
     </div>
 
-    <div class="tf-dashboard-grid">
+    <div class="tf-grid tf-grid--sidebar">
+        <!-- Pipeline Overview -->
         <div class="tf-card">
-            <h2>Pipeline Overview</h2>
-            <div class="tf-pipeline">
-                <?php foreach ( $stages as $key => $stage ) :
-                    $count = $stage_counts[ $key ] ?? 0;
-                    if ( $count === 0 ) continue;
-                ?>
-                    <div class="tf-pipeline__item">
-                        <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-sessions&stage=' . $key ); ?>">
-                            <span class="tf-pipeline__count"><?php echo $count; ?></span>
-                            <span class="tf-pipeline__label"><?php echo esc_html( $stage['label'] ); ?></span>
-                        </a>
-                    </div>
-                <?php endforeach; ?>
-                <?php if ( empty( array_filter( $stage_counts ) ) ) : ?>
-                    <p class="tf-empty">No active sessions. <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-new' ); ?>">Create your first session</a>.</p>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <div class="tf-card">
-            <h2>Recent Activity</h2>
-            <?php if ( empty( $recent ) ) : ?>
-                <p class="tf-empty">No sessions yet.</p>
+            <h2>Pipeline</h2>
+            <?php if ( empty( array_filter( $stage_counts ) ) ) : ?>
+                <div class="tf-empty">
+                    <div class="tf-empty__text">No sessions in progress</div>
+                    <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-new' ); ?>" class="tf-btn tf-btn--primary">Create First Session</a>
+                </div>
             <?php else : ?>
-                <table class="tf-table">
-                    <thead>
-                        <tr>
-                            <th>Client</th>
-                            <th>Stage</th>
-                            <th>Updated</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ( $recent as $s ) :
-                            $stage_info = $stages[ $s->current_stage ] ?? array( 'label' => $s->current_stage );
-                        ?>
-                            <tr>
-                                <td>
-                                    <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-session&id=' . $s->id ); ?>">
-                                        <strong><?php echo esc_html( $s->client_name ); ?></strong>
-                                    </a>
-                                    <br><small class="tf-muted"><?php echo esc_html( $s->tracking_code ); ?></small>
-                                </td>
-                                <td><span class="tf-badge tf-badge--<?php echo esc_attr( $s->current_stage ); ?>"><?php echo esc_html( $stage_info['label'] ); ?></span></td>
-                                <td><small><?php echo human_time_diff( strtotime( $s->updated_at ), current_time( 'timestamp' ) ); ?> ago</small></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <div class="tf-pipeline-overview">
+                    <?php foreach ( $stages as $key => $stage ) :
+                        $count = $stage_counts[ $key ] ?? 0;
+                        if ( $count === 0 ) continue;
+                    ?>
+                        <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-sessions&stage=' . $key ); ?>" class="tf-pipeline-chip">
+                            <span class="tf-pipeline-chip__count"><?php echo $count; ?></span>
+                            <span><?php echo esc_html( $stage['label'] ); ?></span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
-            <p><a href="<?php echo admin_url( 'admin.php?page=tweller-flow-sessions' ); ?>" class="button">View All Sessions</a></p>
         </div>
-    </div>
 
-    <div class="tf-card">
-        <h2>Quick Actions</h2>
-        <div class="tf-quick-actions">
-            <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-new' ); ?>" class="button button-primary button-hero">+ New Session</a>
-            <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-settings' ); ?>" class="button button-hero">Settings</a>
+        <!-- Recent Activity -->
+        <div class="tf-card">
+            <h2>Recent</h2>
+            <?php if ( empty( $recent ) ) : ?>
+                <div class="tf-empty">
+                    <div class="tf-empty__text">No sessions yet</div>
+                </div>
+            <?php else : ?>
+                <?php foreach ( $recent as $s ) :
+                    $stage_info = $stages[ $s->current_stage ] ?? array( 'label' => $s->current_stage );
+                ?>
+                    <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-session&id=' . $s->id ); ?>" style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #F3F4F6; text-decoration:none; color:inherit;">
+                        <div>
+                            <div style="font-weight:600; font-size:14px; color:#111827;"><?php echo esc_html( $s->client_name ); ?></div>
+                            <div style="font-size:12px; color:#9CA3AF;"><?php echo human_time_diff( strtotime( $s->updated_at ), current_time( 'timestamp' ) ); ?> ago</div>
+                        </div>
+                        <span class="tf-badge tf-badge--<?php echo esc_attr( $s->current_stage ); ?>"><?php echo esc_html( $stage_info['label'] ); ?></span>
+                    </a>
+                <?php endforeach; ?>
+                <div class="tf-mt-4">
+                    <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-sessions' ); ?>" class="tf-btn tf-btn--secondary tf-btn--sm">View All</a>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>

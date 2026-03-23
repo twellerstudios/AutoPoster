@@ -3,9 +3,6 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class TwellerFlow_Session {
 
-    /**
-     * Generate a unique tracking code
-     */
     public static function generate_tracking_code() {
         $code = strtoupper( substr( md5( uniqid( mt_rand(), true ) ), 0, 6 ) );
         global $wpdb;
@@ -17,9 +14,6 @@ class TwellerFlow_Session {
         return $code;
     }
 
-    /**
-     * Create a new session
-     */
     public static function create( $data ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
@@ -51,6 +45,8 @@ class TwellerFlow_Session {
             'current_stage_index'=> 0,
             'estimated_delivery' => $estimated_delivery,
             'gallery_url'        => '',
+            'folder_name'        => '',
+            'photo_count'        => 0,
             'notes'              => sanitize_textarea_field( $data['notes'] ?? '' ),
             'surecart_order_id'  => sanitize_text_field( $data['surecart_order_id'] ?? '' ),
             'created_at'         => current_time( 'mysql' ),
@@ -61,40 +57,26 @@ class TwellerFlow_Session {
         $session_id = $wpdb->insert_id;
 
         if ( $session_id ) {
-            // Record initial stage
             self::record_stage_history( $session_id, 'booked', 0, 'Session created' );
-
-            // Send booking confirmation
             TwellerFlow_Notifications::on_stage_change( $session_id, 'booked' );
-
-            // Trigger automation hooks (creates session folders, etc.)
             do_action( 'tweller_flow_session_created', $session_id, $data );
         }
 
         return $session_id;
     }
 
-    /**
-     * Get session by ID
-     */
     public static function get( $id ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
         return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $id ) );
     }
 
-    /**
-     * Get session by tracking code
-     */
     public static function get_by_code( $code ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
         return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE tracking_code = %s", $code ) );
     }
 
-    /**
-     * Get all sessions with optional filters
-     */
     public static function get_all( $args = array() ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
@@ -143,9 +125,6 @@ class TwellerFlow_Session {
         return $wpdb->get_results( $sql );
     }
 
-    /**
-     * Count sessions
-     */
     public static function count( $args = array() ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
@@ -166,21 +145,13 @@ class TwellerFlow_Session {
         return (int) $wpdb->get_var( $sql );
     }
 
-    /**
-     * Update a session
-     */
     public static function update( $id, $data ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
-
         $data['updated_at'] = current_time( 'mysql' );
-
         return $wpdb->update( $table, $data, array( 'id' => $id ) );
     }
 
-    /**
-     * Delete a session
-     */
     public static function delete( $id ) {
         global $wpdb;
         $sessions_table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
@@ -192,9 +163,6 @@ class TwellerFlow_Session {
         return $wpdb->delete( $sessions_table, array( 'id' => $id ) );
     }
 
-    /**
-     * Advance session to next stage
-     */
     public static function advance_stage( $id, $notes = '' ) {
         $session = self::get( $id );
         if ( ! $session ) return false;
@@ -204,7 +172,7 @@ class TwellerFlow_Session {
         $next_idx     = $current_idx + 1;
 
         if ( $next_idx >= count( $stage_keys ) ) {
-            return false; // Already at final stage
+            return false;
         }
 
         $next_stage = $stage_keys[ $next_idx ];
@@ -216,7 +184,6 @@ class TwellerFlow_Session {
 
         self::record_stage_history( $id, $next_stage, $next_idx, $notes );
 
-        // Trigger notifications if configured
         $stages = TwellerFlow_Database::get_stages();
         if ( ! empty( $stages[ $next_stage ]['notify'] ) ) {
             TwellerFlow_Notifications::on_stage_change( $id, $next_stage );
@@ -225,9 +192,6 @@ class TwellerFlow_Session {
         return $next_stage;
     }
 
-    /**
-     * Set session to a specific stage
-     */
     public static function set_stage( $id, $stage, $notes = '' ) {
         $stage_keys = TwellerFlow_Database::get_stage_keys();
         $idx = array_search( $stage, $stage_keys );
@@ -248,13 +212,9 @@ class TwellerFlow_Session {
         return $stage;
     }
 
-    /**
-     * Record stage change in history
-     */
     public static function record_stage_history( $id, $stage, $stage_index, $notes = '' ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_STAGE_HISTORY;
-
         $wpdb->insert( $table, array(
             'session_id'  => $id,
             'stage'       => $stage,
@@ -265,9 +225,6 @@ class TwellerFlow_Session {
         ));
     }
 
-    /**
-     * Get stage history for a session
-     */
     public static function get_history( $id ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_STAGE_HISTORY;
@@ -277,9 +234,6 @@ class TwellerFlow_Session {
         ));
     }
 
-    /**
-     * REST: Get tracking info (public, limited fields)
-     */
     public static function rest_track( $request ) {
         $code    = sanitize_text_field( $request['code'] );
         $session = self::get_by_code( $code );
@@ -320,9 +274,6 @@ class TwellerFlow_Session {
         ));
     }
 
-    /**
-     * REST: List sessions (admin only)
-     */
     public static function rest_list( $request ) {
         $sessions = self::get_all( array(
             'search'   => $request->get_param( 'search' ),
@@ -333,9 +284,6 @@ class TwellerFlow_Session {
         return rest_ensure_response( $sessions );
     }
 
-    /**
-     * REST: Advance stage (admin only)
-     */
     public static function rest_advance( $request ) {
         $id    = intval( $request['id'] );
         $notes = sanitize_text_field( $request->get_param( 'notes' ) ?? '' );
@@ -346,18 +294,12 @@ class TwellerFlow_Session {
         return rest_ensure_response( array( 'new_stage' => $result ) );
     }
 
-    /**
-     * Get active sessions count (not delivered)
-     */
     public static function count_active() {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
         return (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE current_stage != 'delivered'" );
     }
 
-    /**
-     * Get sessions by stage for dashboard stats
-     */
     public static function get_stage_counts() {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
@@ -369,9 +311,6 @@ class TwellerFlow_Session {
         return $counts;
     }
 
-    /**
-     * Get revenue stats
-     */
     public static function get_revenue_stats() {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
@@ -382,14 +321,10 @@ class TwellerFlow_Session {
             "SELECT SUM(total_amount) FROM $table WHERE created_at >= %s",
             $this_month
         ));
-        $deposits = $wpdb->get_var(
-            "SELECT SUM(deposit_amount) FROM $table WHERE payment_status = 'deposit'"
-        );
 
         return array(
-            'total_revenue'     => floatval( $total ?? 0 ),
-            'month_revenue'     => floatval( $month ?? 0 ),
-            'pending_deposits'  => floatval( $deposits ?? 0 ),
+            'total_revenue' => floatval( $total ?? 0 ),
+            'month_revenue' => floatval( $month ?? 0 ),
         );
     }
 }

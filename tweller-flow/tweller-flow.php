@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Tweller Flow
  * Plugin URI: https://twellerstudios.com
- * Description: Photography session workflow management — booking tracker, client notifications, and session pipeline for Tweller Studios.
- * Version: 1.0.0
+ * Description: Photography session workflow — booking, pipeline tracking, client notifications, and folder watcher integration.
+ * Version: 2.0.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_VERSION', '1.0.0' );
+define( 'TWELLER_FLOW_VERSION', '2.0.0' );
 define( 'TWELLER_FLOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_TABLE_SESSIONS', 'tweller_sessions' );
@@ -39,29 +39,23 @@ if ( is_admin() ) {
 function tweller_flow_activate() {
     TwellerFlow_Database::create_tables();
     TwellerFlow_Database::seed_defaults();
-
-    // Auto-create the Session Tracker page if it doesn't exist
     tweller_flow_ensure_tracker_page();
-
     flush_rewrite_rules();
 }
 
 /**
- * Create the session tracker page with the [tweller_tracker] shortcode.
- * Runs on activation and can be called to repair a missing page.
+ * Create the session tracker page with [tweller_tracker] shortcode.
  */
 function tweller_flow_ensure_tracker_page() {
     $existing_url = get_option( 'tweller_flow_tracker_page', '' );
 
-    // If a tracker page URL is already configured, check the page still exists
     if ( $existing_url ) {
         $page_id = url_to_postid( $existing_url );
         if ( $page_id && get_post_status( $page_id ) === 'publish' ) {
-            return; // page exists and is published, nothing to do
+            return;
         }
     }
 
-    // Check if a page with the shortcode already exists
     $existing = get_posts( array(
         'post_type'   => 'page',
         'post_status' => 'publish',
@@ -75,7 +69,6 @@ function tweller_flow_ensure_tracker_page() {
         return;
     }
 
-    // Create the page
     $page_id = wp_insert_post( array(
         'post_title'   => 'Session Tracker',
         'post_name'    => 'session-tracker',
@@ -85,8 +78,7 @@ function tweller_flow_ensure_tracker_page() {
     ) );
 
     if ( $page_id && ! is_wp_error( $page_id ) ) {
-        $page_url = get_permalink( $page_id );
-        update_option( 'tweller_flow_tracker_page', $page_url );
+        update_option( 'tweller_flow_tracker_page', get_permalink( $page_id ) );
     }
 }
 register_activation_hook( __FILE__, 'tweller_flow_activate' );
@@ -104,16 +96,11 @@ register_deactivation_hook( __FILE__, 'tweller_flow_deactivate' );
  */
 function tweller_flow_admin_notice_tracker() {
     $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
-    if ( ! empty( $tracker_url ) ) {
-        return;
-    }
-    // Try to auto-create it
+    if ( ! empty( $tracker_url ) ) return;
     tweller_flow_ensure_tracker_page();
     $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
-    if ( ! empty( $tracker_url ) ) {
-        return;
-    }
-    echo '<div class="notice notice-warning"><p><strong>Tweller Flow:</strong> The Session Tracker page is missing. Please create a page with the <code>[tweller_tracker]</code> shortcode and set its URL in <a href="' . admin_url( 'admin.php?page=tweller-flow-settings' ) . '">Settings</a>.</p></div>';
+    if ( ! empty( $tracker_url ) ) return;
+    echo '<div class="notice notice-warning"><p><strong>Tweller Flow:</strong> Session Tracker page missing. Create a page with <code>[tweller_tracker]</code> and set URL in <a href="' . admin_url( 'admin.php?page=tweller-flow-settings' ) . '">Settings</a>.</p></div>';
 }
 add_action( 'admin_notices', 'tweller_flow_admin_notice_tracker' );
 
@@ -121,16 +108,9 @@ add_action( 'admin_notices', 'tweller_flow_admin_notice_tracker' );
  * Initialize plugin
  */
 function tweller_flow_init() {
-    // Register shortcode
     TwellerFlow_Tracker_Shortcode::init();
-
-    // Register webhook endpoint
     TwellerFlow_Webhook_Handler::init();
-
-    // Initialize photo automation
     TwellerFlow_Photo_Automation::init();
-
-    // Enqueue public styles/scripts
     add_action( 'wp_enqueue_scripts', 'tweller_flow_public_assets' );
 }
 add_action( 'init', 'tweller_flow_init' );

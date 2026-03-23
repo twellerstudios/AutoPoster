@@ -1,6 +1,6 @@
 /**
- * Tweller Flow Client Tracker
- * Auto-refreshes the tracker page every 60 seconds
+ * Tweller Flow v2 — Client Tracker
+ * Auto-refreshes every 60 seconds
  */
 (function() {
     'use strict';
@@ -9,52 +9,35 @@
     if (!tracker) return;
 
     var code = tracker.getAttribute('data-code');
-    if (!code) return;
+    if (!code || typeof twellerFlowTracker === 'undefined') return;
 
     // Auto-refresh every 60 seconds
     setInterval(function() {
-        var apiUrl = (typeof twellerFlowTracker !== 'undefined' && twellerFlowTracker.apiUrl)
-            ? twellerFlowTracker.apiUrl
-            : '/wp-json/tweller-flow/v1/track/';
-
-        fetch(apiUrl + code)
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data && data.current_stage_index !== undefined) {
-                    updateStages(data);
-                }
-            })
-            .catch(function() {
-                // Silent fail on refresh
-            });
+        fetch(twellerFlowTracker.apiUrl + code, {
+            headers: { 'X-WP-Nonce': twellerFlowTracker.nonce }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data && data.stages) {
+                updateStages(data);
+            }
+        })
+        .catch(function() {
+            // Silently fail on network errors
+        });
     }, 60000);
 
     function updateStages(data) {
         var stages = tracker.querySelectorAll('.tf-tracker__stage');
-        stages.forEach(function(stage, index) {
-            stage.className = 'tf-tracker__stage';
-            if (index < data.current_stage_index) {
-                stage.classList.add('tf-tracker__stage--completed');
-            } else if (index === data.current_stage_index) {
-                stage.classList.add('tf-tracker__stage--current');
+        stages.forEach(function(el, idx) {
+            el.className = 'tf-tracker__stage';
+            if (idx < data.current_stage_index) {
+                el.classList.add('tf-tracker__stage--completed');
+            } else if (idx === data.current_stage_index) {
+                el.classList.add('tf-tracker__stage--current');
             } else {
-                stage.classList.add('tf-tracker__stage--upcoming');
+                el.classList.add('tf-tracker__stage--upcoming');
             }
         });
-
-        // Show gallery link if delivered
-        if (data.gallery_url && data.current_stage === 'Delivered') {
-            var gallerySection = tracker.querySelector('.tf-tracker__gallery');
-            if (!gallerySection) {
-                var div = document.createElement('div');
-                div.className = 'tf-tracker__gallery';
-                div.innerHTML = '<h3>Your Gallery is Ready!</h3>' +
-                    '<a href="' + data.gallery_url + '" class="tf-tracker__gallery-btn" target="_blank">View & Download Photos</a>';
-                var stagesSection = tracker.querySelector('.tf-tracker__stages');
-                if (stagesSection) {
-                    stagesSection.after(div);
-                }
-            }
-        }
     }
 })();

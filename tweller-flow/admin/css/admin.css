@@ -33,16 +33,22 @@
 
 .tf-wrap a { color: #3B82F6; text-decoration: none; }
 .tf-wrap a:hover { color: #2563EB; }
+
+/* Override WP admin link styles on buttons */
 .tf-wrap a.tf-btn--primary,
-.tf-wrap a.tf-btn--primary:hover { color: #FFFFFF; }
+.tf-wrap a.tf-btn--primary:hover,
+.tf-wrap a.tf-btn--primary:focus,
+.tf-wrap a.tf-btn--primary:active { color: #FFFFFF !important; background: #3B82F6 !important; }
 .tf-wrap a.tf-btn--success,
-.tf-wrap a.tf-btn--success:hover { color: #FFFFFF; }
+.tf-wrap a.tf-btn--success:hover { color: #FFFFFF !important; }
 .tf-wrap a.tf-btn--whatsapp,
-.tf-wrap a.tf-btn--whatsapp:hover { color: #FFFFFF; }
+.tf-wrap a.tf-btn--whatsapp:hover { color: #FFFFFF !important; }
 .tf-wrap a.tf-btn--danger,
-.tf-wrap a.tf-btn--danger:hover { color: #EF4444; }
+.tf-wrap a.tf-btn--danger:hover { color: #EF4444 !important; }
 .tf-wrap a.tf-btn--ghost,
-.tf-wrap a.tf-btn--ghost:hover { color: #6B7280; }
+.tf-wrap a.tf-btn--ghost:hover { color: #6B7280 !important; }
+.tf-wrap a.tf-btn--secondary,
+.tf-wrap a.tf-btn--secondary:hover { color: #374151 !important; }
 
 /* ── Layout ─────────────────────────────────────────── */
 

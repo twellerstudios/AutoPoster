@@ -82,6 +82,7 @@
                 ?>
                     <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-session&action=advance&session_id=' . $session->id ), 'tweller_flow_advance_' . $session->id ); ?>"
                        class="tf-btn tf-btn--primary"
+                       style="background:#3B82F6; color:#FFFFFF; border-color:#3B82F6;"
                        onclick="return confirm('Advance to <?php echo esc_attr( $next_stage ); ?>?');">
                         Advance to <?php echo esc_html( $next_stage ); ?> &rarr;
                     </a>

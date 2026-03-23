@@ -37,6 +37,7 @@ const POLL_INTERVAL = (config.pollIntervalSeconds || 30) * 1000;
 
 // Track known folders and their state
 const folderState = new Map(); // folderName -> { photoCount, lastNotified, stage }
+const createdSessions = new Set(); // tracking codes we already created folders for
 
 // ── WordPress API ──────────────────────────────────────
 
@@ -138,48 +139,89 @@ function matchFolderToSession(folderName, sessions) {
     return null;
 }
 
+// ── Auto-Create Folders ───────────────────────────────
+
+function createSessionFolder(session) {
+    const safeName = session.client_name.replace(/[<>:"\/\\|?*]/g, '_').trim();
+    const folderName = `${session.tracking_code} - ${safeName}`;
+    const folderPath = path.join(WATCH_DIR, folderName);
+
+    if (fs.existsSync(folderPath)) {
+        createdSessions.add(session.tracking_code);
+        return;
+    }
+
+    // Create folder with raw subfolder for importing
+    const rawPath = path.join(folderPath, 'raw');
+    fs.mkdirSync(rawPath, { recursive: true });
+
+    createdSessions.add(session.tracking_code);
+    log(`Created folder: ${folderName}/raw/ — ready for import`);
+}
+
 // ── Main Loop ──────────────────────────────────────────
 
 async function scan() {
     const sessions = await wpGetSessions();
     if (sessions.length === 0) return;
 
+    // Auto-create folders for new sessions
+    for (const session of sessions) {
+        if (!createdSessions.has(session.tracking_code)) {
+            createSessionFolder(session);
+        }
+    }
+
     const folders = getTopLevelFolders();
 
     for (const folder of folders) {
         const folderPath = path.join(WATCH_DIR, folder);
-        const photoCount = countPhotosInFolder(folderPath);
+        const rawPath = path.join(folderPath, 'raw');
+        const rawCount = fs.existsSync(rawPath) ? countPhotosInFolder(rawPath) : 0;
+        const totalCount = countPhotosInFolder(folderPath);
 
-        if (photoCount === 0) continue;
+        if (totalCount === 0) continue;
 
         const session = matchFolderToSession(folder, sessions);
         if (!session) {
             // Only log unmatched once
             if (!folderState.has(folder)) {
-                log(`Unmatched folder: "${folder}" (${photoCount} photos) — no session found`);
-                folderState.set(folder, { photoCount, stage: 'unmatched' });
+                log(`Unmatched folder: "${folder}" (${totalCount} photos) — no session found`);
+                folderState.set(folder, { photoCount: totalCount, stage: 'unmatched' });
             }
             continue;
         }
 
         const prev = folderState.get(folder);
+        const exportCount = totalCount - rawCount;
 
         // New folder detected or photo count changed
-        if (!prev || prev.photoCount !== photoCount) {
-            log(`Folder "${folder}" → ${session.client_name} [${session.tracking_code}]: ${photoCount} photos`);
+        if (!prev || prev.photoCount !== totalCount || prev.exportCount !== exportCount) {
+            log(`Folder "${folder}" → ${session.client_name} [${session.tracking_code}]: ${rawCount} raws, ${exportCount} exports`);
 
-            // Auto-advance to "imported" if session is at "booked"
-            if (session.current_stage === 'booked') {
+            // Auto-advance to "imported" when raws appear
+            if (session.current_stage === 'booked' && rawCount > 0) {
                 await wpAdvanceStage(
                     session.tracking_code,
                     'imported',
-                    `${photoCount} photos detected in ${folder}`,
-                    { photo_count: photoCount }
+                    `${rawCount} RAW files imported to ${folder}/raw/`,
+                    { photo_count: rawCount }
+                );
+            }
+
+            // Auto-advance to "edited" when exports appear outside raw/
+            if (session.current_stage === 'imported' && exportCount > 0) {
+                await wpAdvanceStage(
+                    session.tracking_code,
+                    'edited',
+                    `${exportCount} edited photos exported`,
+                    { photo_count: exportCount }
                 );
             }
 
             folderState.set(folder, {
-                photoCount,
+                photoCount: totalCount,
+                exportCount,
                 stage: session.current_stage,
                 lastNotified: Date.now(),
             });

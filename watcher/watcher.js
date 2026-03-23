@@ -151,12 +151,10 @@ function createSessionFolder(session) {
         return;
     }
 
-    // Create folder with raw subfolder for importing
-    const rawPath = path.join(folderPath, 'raw');
-    fs.mkdirSync(rawPath, { recursive: true });
+    fs.mkdirSync(folderPath, { recursive: true });
 
     createdSessions.add(session.tracking_code);
-    log(`Created folder: ${folderName}/raw/ — ready for import`);
+    log(`Created folder: ${folderName}/ — set as Lightroom import destination`);
 }
 
 // ── Main Loop ──────────────────────────────────────────
@@ -176,52 +174,38 @@ async function scan() {
 
     for (const folder of folders) {
         const folderPath = path.join(WATCH_DIR, folder);
-        const rawPath = path.join(folderPath, 'raw');
-        const rawCount = fs.existsSync(rawPath) ? countPhotosInFolder(rawPath) : 0;
-        const totalCount = countPhotosInFolder(folderPath);
+        const photoCount = countPhotosInFolder(folderPath);
 
-        if (totalCount === 0) continue;
+        if (photoCount === 0) continue;
 
         const session = matchFolderToSession(folder, sessions);
         if (!session) {
             // Only log unmatched once
             if (!folderState.has(folder)) {
-                log(`Unmatched folder: "${folder}" (${totalCount} photos) — no session found`);
-                folderState.set(folder, { photoCount: totalCount, stage: 'unmatched' });
+                log(`Unmatched folder: "${folder}" (${photoCount} photos) — no session found`);
+                folderState.set(folder, { photoCount, stage: 'unmatched' });
             }
             continue;
         }
 
         const prev = folderState.get(folder);
-        const exportCount = totalCount - rawCount;
 
         // New folder detected or photo count changed
-        if (!prev || prev.photoCount !== totalCount || prev.exportCount !== exportCount) {
-            log(`Folder "${folder}" → ${session.client_name} [${session.tracking_code}]: ${rawCount} raws, ${exportCount} exports`);
+        if (!prev || prev.photoCount !== photoCount) {
+            log(`Folder "${folder}" → ${session.client_name} [${session.tracking_code}]: ${photoCount} photos`);
 
-            // Auto-advance to "imported" when raws appear
-            if (session.current_stage === 'booked' && rawCount > 0) {
+            // Auto-advance to "imported" when photos appear
+            if (session.current_stage === 'booked') {
                 await wpAdvanceStage(
                     session.tracking_code,
                     'imported',
-                    `${rawCount} RAW files imported to ${folder}/raw/`,
-                    { photo_count: rawCount }
-                );
-            }
-
-            // Auto-advance to "edited" when exports appear outside raw/
-            if (session.current_stage === 'imported' && exportCount > 0) {
-                await wpAdvanceStage(
-                    session.tracking_code,
-                    'edited',
-                    `${exportCount} edited photos exported`,
-                    { photo_count: exportCount }
+                    `${photoCount} photos detected in ${folder}`,
+                    { photo_count: photoCount }
                 );
             }
 
             folderState.set(folder, {
-                photoCount: totalCount,
-                exportCount,
+                photoCount,
                 stage: session.current_stage,
                 lastNotified: Date.now(),
             });

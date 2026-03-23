@@ -30,17 +30,63 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
+// ── Photo Automation Pipeline ─────────────────────────────────────────────────
+
+const { AutomationPipeline } = require('./services/automationPipeline');
+const pipeline = new AutomationPipeline();
+app.locals.pipeline = pipeline;
+
+// Start the folder watcher (non-blocking)
+pipeline.start().catch(err => {
+  console.warn('[Automation] Pipeline start warning:', err.message);
+});
+
+// ── Auto-Import (SD card / dump folder → session matching) ───────────────────
+
+const { AutoImporter } = require('./services/autoImportService');
+const importer = new AutoImporter();
+app.locals.importer = importer;
+
+// Wire import completion to pipeline: when photos are sorted, trigger culling
+importer.on('import-complete', (result) => {
+  for (const group of result.groups) {
+    if (group.matched && group.sessionCode) {
+      console.log(`[Import→Pipeline] Auto-triggering pipeline for ${group.sessionCode}`);
+      pipeline.runFullPipeline(group.sessionCode).catch(err => {
+        console.error(`[Import→Pipeline] Error for ${group.sessionCode}:`, err.message);
+      });
+    }
+  }
+});
+
+// Start the import watcher (non-blocking)
+importer.start().catch(err => {
+  console.warn('[Import] Auto-import start warning:', err.message);
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 app.use('/api/businesses', require('./routes/businesses'));
 app.use('/api/posts', require('./routes/posts'));
+app.use('/api/automation', require('./routes/automation'));
+app.use('/api/import', require('./routes/import'));
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    version: '1.0.0',
+    version: '1.2.0',
     businesses: Object.keys(config.businesses),
+    automation: {
+      watching: pipeline.watcher.isWatching,
+      watchDir: pipeline.watchDir || null,
+      imagenEnabled: !!(process.env.IMAGEN_AI_API_KEY && process.env.IMAGEN_AI_PROFILE_ID),
+    },
+    import: {
+      enabled: importer.enabled,
+      watching: importer.isWatching,
+      importDir: importer.importDir || null,
+    },
     timestamp: new Date().toISOString(),
   });
 });

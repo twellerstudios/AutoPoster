@@ -169,6 +169,20 @@ class TwellerFlow_Admin {
             exit;
         }
 
+        // Gallery password
+        if ( isset( $_POST['tweller_flow_gallery_password'] ) ) {
+            check_admin_referer( 'tweller_flow_gallery_password' );
+            $id = intval( $_POST['session_id'] );
+            $pw = sanitize_text_field( $_POST['gallery_pw'] ?? '' );
+            if ( ! empty( $pw ) ) {
+                TwellerFlow_Gallery::set_password( $id, $pw );
+            } else {
+                delete_option( 'tweller_gallery_pw_' . $id );
+            }
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&updated=1' ) );
+            exit;
+        }
+
         // Delete session
         if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['session_id'] ) ) {
             check_admin_referer( 'tweller_flow_delete_' . $_GET['session_id'] );

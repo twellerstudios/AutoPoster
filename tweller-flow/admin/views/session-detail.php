@@ -344,6 +344,48 @@
                 <?php endif; ?>
             </div>
 
+            <!-- Gallery Management -->
+            <?php
+            $gallery_info = TwellerFlow_Gallery::get_gallery_info( $session->id, $session->tracking_code );
+            ?>
+            <div class="tf-card tf-mb-6">
+                <h2>Gallery (<?php echo $gallery_info['photo_count']; ?> photos<?php echo $gallery_info['total_size_mb'] ? ' / ' . $gallery_info['total_size_mb'] . ' MB' : ''; ?>)</h2>
+
+                <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:6px; margin-bottom:16px;">
+                        <?php
+                        $gallery_url = TwellerFlow_Gallery::get_gallery_url( $session->tracking_code );
+                        foreach ( $gallery_info['photos'] as $photo ) : ?>
+                            <div style="position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6;">
+                                <img src="<?php echo esc_url( $gallery_url . '/thumbs/' . $photo->filename ); ?>" alt="" style="width:100%; height:100%; object-fit:cover;">
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else : ?>
+                    <p class="tf-muted" style="font-size:13px; margin-bottom:12px;">No photos uploaded yet. Use the Lightroom plugin to export and upload photos.</p>
+                <?php endif; ?>
+
+                <!-- Gallery Password -->
+                <div style="display:flex; gap:8px; align-items:center; padding-top:12px; border-top:1px solid #F3F4F6;">
+                    <span style="font-size:13px; color:#6B7280; white-space:nowrap;">
+                        <?php echo $gallery_info['has_password'] ? '&#128274; Password protected' : '&#128275; No password'; ?>
+                    </span>
+                    <form method="post" style="display:inline-flex; gap:6px; align-items:center; margin-left:auto;">
+                        <?php wp_nonce_field( 'tweller_flow_gallery_password' ); ?>
+                        <input type="hidden" name="tweller_flow_gallery_password" value="1">
+                        <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
+                        <input type="text" name="gallery_pw" placeholder="Set or change password" style="padding:6px 10px; font-size:12px; border:1px solid #D1D5DB; border-radius:6px; width:140px; font-family:inherit;">
+                        <button type="submit" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">Set</button>
+                    </form>
+                </div>
+
+                <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
+                    <div style="margin-top:12px; padding-top:12px; border-top:1px solid #F3F4F6;">
+                        <a href="<?php echo esc_url( $tracker_url . '#gallery' ); ?>" target="_blank" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">View Client Gallery</a>
+                    </div>
+                <?php endif; ?>
+            </div>
+
             <!-- Danger Zone -->
             <div class="tf-card tf-card--danger">
                 <h2>Danger Zone</h2>

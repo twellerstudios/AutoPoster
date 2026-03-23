@@ -1,0 +1,35 @@
+Tweller Flow — Lightroom Classic Export Plugin
+================================================
+
+INSTALL:
+1. Copy the "TwellerFlow.lrplugin" folder to your Lightroom plugins folder:
+   - Windows: C:\Users\{YourName}\AppData\Roaming\Adobe\Lightroom\Modules\
+   - Or any folder you choose
+
+2. In Lightroom Classic:
+   - Go to File > Plug-in Manager
+   - Click "Add" and navigate to the TwellerFlow.lrplugin folder
+   - Click "Done"
+
+3. To export photos:
+   - Select the photos you want to deliver
+   - File > Export (or Ctrl+Shift+E)
+   - Choose "Tweller Flow Gallery" from the export dropdown (top-left)
+   - Enter your website URL and API key
+   - Enter the session tracking code (e.g., A1B2C3)
+   - Choose a local export folder (optional)
+   - Set a gallery password (optional)
+   - Click "Export"
+
+The plugin will:
+- Export photos as JPEG to your local folder
+- Upload each photo to your WordPress gallery
+- Auto-advance the session to "delivered" (optional)
+- The client will see the gallery on their tracking page
+
+SETTINGS:
+- Website URL: Your WordPress site (e.g., https://twellerstudios.com)
+- API Key: From WordPress > Tweller Flow > Settings > Automation API Key
+- Session Code: The 6-character tracking code for this session
+- Local Folder: Where to save copies on your PC
+- Gallery Password: Optional password clients need to enter to view photos

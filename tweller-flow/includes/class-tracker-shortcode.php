@@ -12,8 +12,9 @@ class TwellerFlow_Tracker_Shortcode {
         wp_enqueue_script( 'tweller-flow-tracker' );
 
         wp_localize_script( 'tweller-flow-tracker', 'twellerFlowTracker', array(
-            'apiUrl' => rest_url( 'tweller-flow/v1/track/' ),
-            'nonce'  => wp_create_nonce( 'wp_rest' ),
+            'apiUrl'    => rest_url( 'tweller-flow/v1/track/' ),
+            'galleryUrl'=> rest_url( 'tweller-flow/v1/gallery/' ),
+            'nonce'     => wp_create_nonce( 'wp_rest' ),
         ));
 
         $code = isset( $_GET['code'] ) ? sanitize_text_field( $_GET['code'] ) : '';
@@ -142,12 +143,57 @@ class TwellerFlow_Tracker_Shortcode {
                 <?php endforeach; ?>
             </div>
 
-            <?php if ( $session->current_stage === 'delivered' && $session->gallery_url ) : ?>
-                <div class="tf-tracker__gallery">
-                    <h3>Your Gallery is Ready!</h3>
-                    <a href="<?php echo esc_url( $session->gallery_url ); ?>" class="tf-tracker__gallery-btn" target="_blank" rel="noopener">
-                        View & Download Photos
-                    </a>
+            <?php if ( $session->current_stage === 'delivered' ) : ?>
+                <div id="gallery" class="tf-gallery" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
+                    <div class="tf-gallery__header">
+                        <h3>Your Photos Are Ready!</h3>
+                        <p class="tf-gallery__subtitle">Click any photo to view full size. Download individually or all at once.</p>
+                    </div>
+
+                    <!-- Password gate (shown/hidden by JS) -->
+                    <div class="tf-gallery__password" id="tf-gallery-password" style="display:none;">
+                        <div class="tf-gallery__lock-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>
+                        </div>
+                        <p>This gallery is password-protected.</p>
+                        <form class="tf-gallery__password-form" id="tf-gallery-pw-form">
+                            <input type="password" id="tf-gallery-pw-input" placeholder="Enter password" class="tf-gallery__pw-input" required>
+                            <button type="submit" class="tf-gallery__pw-btn">Unlock</button>
+                        </form>
+                        <p class="tf-gallery__pw-error" id="tf-gallery-pw-error" style="display:none;">Incorrect password. Please try again.</p>
+                    </div>
+
+                    <!-- Photo grid (populated by JS) -->
+                    <div class="tf-gallery__grid" id="tf-gallery-grid" style="display:none;"></div>
+
+                    <!-- Download all button -->
+                    <div class="tf-gallery__actions" id="tf-gallery-actions" style="display:none;">
+                        <a id="tf-gallery-download-all" class="tf-gallery__download-all" href="#">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Download All Photos
+                        </a>
+                    </div>
+
+                    <!-- Lightbox overlay -->
+                    <div class="tf-lightbox" id="tf-lightbox" style="display:none;">
+                        <button class="tf-lightbox__close" id="tf-lightbox-close">&times;</button>
+                        <button class="tf-lightbox__nav tf-lightbox__prev" id="tf-lightbox-prev">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <div class="tf-lightbox__content">
+                            <img class="tf-lightbox__img" id="tf-lightbox-img" src="" alt="">
+                        </div>
+                        <button class="tf-lightbox__nav tf-lightbox__next" id="tf-lightbox-next">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <div class="tf-lightbox__bar">
+                            <span class="tf-lightbox__counter" id="tf-lightbox-counter"></span>
+                            <a class="tf-lightbox__download" id="tf-lightbox-download" href="#" download>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download
+                            </a>
+                        </div>
+                    </div>
                 </div>
             <?php endif; ?>
 

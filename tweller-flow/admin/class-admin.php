@@ -61,6 +61,15 @@ class TwellerFlow_Admin {
 
         add_submenu_page(
             'tweller-flow',
+            'Galleries',
+            'Galleries',
+            'manage_options',
+            'tweller-flow-galleries',
+            array( $this, 'page_galleries' )
+        );
+
+        add_submenu_page(
+            'tweller-flow',
             'Settings',
             'Settings',
             'manage_options',
@@ -179,7 +188,32 @@ class TwellerFlow_Admin {
             } else {
                 delete_option( 'tweller_gallery_pw_' . $id );
             }
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&updated=1' ) );
+            $redirect = sanitize_text_field( $_POST['redirect_to'] ?? '' );
+            if ( $redirect === 'galleries' ) {
+                wp_redirect( admin_url( 'admin.php?page=tweller-flow-galleries&saved=1' ) );
+            } else {
+                wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&updated=1' ) );
+            }
+            exit;
+        }
+
+        // Gallery: delete all photos for a session
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete_gallery' && isset( $_GET['session_id'] ) ) {
+            check_admin_referer( 'tweller_flow_delete_gallery_' . $_GET['session_id'] );
+            $session_id = intval( $_GET['session_id'] );
+            $session = TwellerFlow_Session::get( $session_id );
+            if ( $session ) {
+                $photos = TwellerFlow_Gallery::get_photos( $session_id );
+                $gallery_dir = TwellerFlow_Gallery::get_gallery_dir( $session->tracking_code );
+                foreach ( $photos as $photo ) {
+                    @unlink( $gallery_dir . '/' . $photo->filename );
+                    @unlink( $gallery_dir . '/thumbs/' . $photo->filename );
+                }
+                global $wpdb;
+                $wpdb->delete( $wpdb->prefix . 'tweller_gallery_photos', array( 'session_id' => $session_id ) );
+                delete_option( 'tweller_gallery_pw_' . $session_id );
+            }
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-galleries&deleted=1' ) );
             exit;
         }
 
@@ -343,6 +377,28 @@ class TwellerFlow_Admin {
         $automation = TwellerFlow_Photo_Automation::get_settings();
 
         include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/settings.php';
+    }
+
+    public function page_galleries() {
+        // Get all sessions that have gallery photos or are in delivered stage
+        global $wpdb;
+        $sessions_table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $gallery_table  = $wpdb->prefix . 'tweller_gallery_photos';
+
+        // Get sessions with galleries (have photos uploaded)
+        $sessions_with_galleries = $wpdb->get_results(
+            "SELECT s.*, COUNT(g.id) as gallery_count
+             FROM $sessions_table s
+             LEFT JOIN $gallery_table g ON g.session_id = s.id
+             GROUP BY s.id
+             HAVING gallery_count > 0 OR s.current_stage IN ('edited', 'delivering', 'delivered')
+             ORDER BY s.updated_at DESC
+             LIMIT 50"
+        );
+
+        $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
+
+        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/galleries.php';
     }
 }
 

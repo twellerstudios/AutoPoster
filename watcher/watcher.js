@@ -35,10 +35,11 @@ const WP_URL = config.wordpressUrl.replace(/\/$/, '');
 const API_KEY = config.apiKey;
 const PHOTO_EXT = new Set(config.photoExtensions.map(e => e.toLowerCase()));
 const POLL_INTERVAL = (config.pollIntervalSeconds || 30) * 1000;
+const AUTO_UPLOAD = config.autoUploadToGallery !== false; // default: true
 
 // Track known folders and their state
 const folderState = new Map(); // folderName -> { photoCount, lastNotified, stage }
-const exportState = new Map(); // folderName -> { exportCount, lastNotified }
+const exportState = new Map(); // folderName -> { exportCount, lastNotified, uploaded, uploadedFiles }
 const cullState = new Map();   // folderName -> { greenCount, totalPhotos, lastNotified }
 const editState = new Map();   // folderName -> { editedCount, greenCount, lastChanged, completed }
 const createdSessions = new Set(); // tracking codes we already created folders for
@@ -351,6 +352,96 @@ function createSessionFolder(session) {
     log(`Created folder: ${folderName}/ — set as Lightroom import destination`);
 }
 
+// ── Gallery Upload ─────────────────────────────────────
+
+const JPEG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff']);
+
+/**
+ * Get list of exportable photo files in a folder.
+ */
+function getExportPhotos(folderPath) {
+    try {
+        const files = fs.readdirSync(folderPath, { recursive: true });
+        return files.filter(f => {
+            const fullPath = path.join(folderPath, f);
+            if (!fs.statSync(fullPath).isFile()) return false;
+            const ext = path.extname(f).toLowerCase();
+            return JPEG_EXT.has(ext);
+        }).map(f => ({
+            name: path.basename(f),
+            path: path.join(folderPath, f),
+        }));
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Upload a single photo to the WordPress gallery API.
+ * Uses multipart/form-data via raw HTTP.
+ */
+async function wpUploadPhoto(sessionCode, filePath, fileName, galleryPassword) {
+    const FormData = (await import('form-data')).default;
+    const form = new FormData();
+    form.append('session_code', sessionCode);
+    form.append('photo', fs.createReadStream(filePath), fileName);
+    if (galleryPassword) {
+        form.append('gallery_password', galleryPassword);
+    }
+
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/gallery/upload`;
+
+    try {
+        const res = await axios.post(url, form, {
+            headers: {
+                ...form.getHeaders(),
+                'Authorization': API_KEY ? `Bearer ${API_KEY}` : '',
+            },
+            timeout: 60000, // 60s per photo (large files)
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+        return res.data;
+    } catch (err) {
+        const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
+        log(`Upload failed for ${fileName}: ${detail}`, 'error');
+        return null;
+    }
+}
+
+/**
+ * Upload all new photos from an export folder to the WordPress gallery.
+ * Tracks which files have already been uploaded to avoid duplicates.
+ * Returns { uploaded, failed, total }
+ */
+async function uploadExportFolder(sessionCode, folderPath, galleryPassword) {
+    const photos = getExportPhotos(folderPath);
+    if (photos.length === 0) return { uploaded: 0, failed: 0, total: 0 };
+
+    const prev = exportState.get(path.basename(folderPath));
+    const alreadyUploaded = prev?.uploadedFiles || new Set();
+
+    let uploaded = 0;
+    let failed = 0;
+
+    for (const photo of photos) {
+        if (alreadyUploaded.has(photo.name)) continue;
+
+        log(`Uploading ${photo.name} for ${sessionCode}...`);
+        const result = await wpUploadPhoto(sessionCode, photo.path, photo.name, galleryPassword);
+        if (result && result.ok) {
+            uploaded++;
+            alreadyUploaded.add(photo.name);
+            // Only send password on first upload
+            galleryPassword = null;
+        } else {
+            failed++;
+        }
+    }
+
+    return { uploaded, failed, total: photos.length, uploadedFiles: alreadyUploaded };
+}
+
 // ── Main Loop ──────────────────────────────────────────
 
 async function scan() {
@@ -572,7 +663,7 @@ async function scan() {
         }
     }
 
-    // Scan exports directory
+    // Scan exports directory — detect new exports + auto-upload to gallery
     if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) {
         const exportFolders = getTopLevelFolders(EXPORTS_DIR);
 
@@ -590,7 +681,8 @@ async function scan() {
             if (!prev || prev.exportCount !== exportCount) {
                 log(`Exports "${folder}" → ${session.client_name} [${session.tracking_code}]: ${exportCount} exports`);
 
-                if (session.current_stage === 'imported') {
+                // Advance to 'edited' if still in early stages
+                if (['imported', 'culling', 'culled', 'editing'].includes(session.current_stage)) {
                     await wpAdvanceStage(
                         session.tracking_code,
                         'edited',
@@ -599,10 +691,73 @@ async function scan() {
                     );
                 }
 
-                exportState.set(folder, {
-                    exportCount,
-                    lastNotified: Date.now(),
-                });
+                // Auto-upload to WordPress gallery
+                if (AUTO_UPLOAD && (!prev || !prev.uploaded)) {
+                    log(`Auto-uploading ${exportCount} photos to gallery for ${session.client_name}...`);
+
+                    const galleryPassword = config.defaultGalleryPassword || '';
+                    const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
+
+                    if (result.uploaded > 0) {
+                        log(`Gallery upload complete: ${result.uploaded}/${result.total} uploaded for ${session.client_name}`);
+
+                        // Advance to delivered
+                        await wpAdvanceStage(
+                            session.tracking_code,
+                            'delivered',
+                            `${result.uploaded} photos uploaded to gallery`,
+                            { photo_count: result.uploaded }
+                        );
+
+                        exportState.set(folder, {
+                            exportCount,
+                            lastNotified: Date.now(),
+                            uploaded: true,
+                            uploadedFiles: result.uploadedFiles,
+                        });
+                    } else {
+                        log(`Gallery upload: no new photos to upload for ${session.client_name}`);
+                        exportState.set(folder, {
+                            exportCount,
+                            lastNotified: Date.now(),
+                        });
+                    }
+                } else if (!AUTO_UPLOAD) {
+                    // Just track the export, don't upload
+                    exportState.set(folder, {
+                        exportCount,
+                        lastNotified: Date.now(),
+                    });
+                }
+            } else if (prev && !prev.uploaded && AUTO_UPLOAD && prev.exportCount === exportCount) {
+                // Export count stable and not yet uploaded — check for new files to upload
+                const elapsed = Date.now() - prev.lastNotified;
+                const EXPORT_STABLE_MS = (config.exportStableSeconds || 60) * 1000;
+
+                if (elapsed >= EXPORT_STABLE_MS) {
+                    log(`Export stable for ${session.client_name}, uploading to gallery...`);
+
+                    const galleryPassword = config.defaultGalleryPassword || '';
+                    const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
+
+                    if (result.uploaded > 0) {
+                        log(`Gallery upload complete: ${result.uploaded}/${result.total} for ${session.client_name}`);
+
+                        await wpAdvanceStage(
+                            session.tracking_code,
+                            'delivered',
+                            `${result.uploaded} photos uploaded to gallery`,
+                            { photo_count: result.uploaded }
+                        );
+                    }
+
+                    exportState.set(folder, {
+                        exportCount,
+                        lastNotified: Date.now(),
+                        uploaded: true,
+                        uploadedFiles: result.uploadedFiles,
+                    });
+                }
             }
         }
     }
@@ -620,6 +775,7 @@ function startWatcher() {
     log(`Watching RAWs:   ${WATCH_DIR}`);
     log(`Watching Exports: ${EXPORTS_DIR || '(not set)'}`);
     log(`WordPress: ${WP_URL}`);
+    log(`Auto-upload to gallery: ${AUTO_UPLOAD ? 'ON' : 'OFF'}`);
     log(`Poll interval: ${POLL_INTERVAL / 1000}s`);
     log('─'.repeat(50));
 

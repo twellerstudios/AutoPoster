@@ -39,6 +39,7 @@ const POLL_INTERVAL = (config.pollIntervalSeconds || 30) * 1000;
 // Track known folders and their state
 const folderState = new Map(); // folderName -> { photoCount, lastNotified, stage }
 const exportState = new Map(); // folderName -> { exportCount, lastNotified }
+const cullState = new Map();   // folderName -> { greenCount, totalPhotos, lastNotified }
 const createdSessions = new Set(); // tracking codes we already created folders for
 
 // ── WordPress API ──────────────────────────────────────
@@ -100,6 +101,70 @@ function countPhotosInFolder(folderPath) {
     } catch {
         return 0;
     }
+}
+
+/**
+ * Read an XMP sidecar file and check if it has a green color label.
+ * Lightroom Classic writes xmp:Label="Green" in sidecar .xmp files.
+ */
+function hasGreenLabel(xmpPath) {
+    try {
+        const content = fs.readFileSync(xmpPath, 'utf-8');
+        // Match both attribute form and element form
+        return /xmp:Label\s*=\s*"Green"/i.test(content) ||
+               /<xmp:Label>\s*Green\s*<\/xmp:Label>/i.test(content);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Find XMP sidecar for a given photo file.
+ * Lightroom writes sidecars as: photo.cr3 -> photo.cr3.xmp or photo.xmp
+ */
+function findXmpSidecar(photoPath) {
+    // Try photo.cr3.xmp first (Lightroom default for RAW files)
+    const xmpWithExt = photoPath + '.xmp';
+    if (fs.existsSync(xmpWithExt)) return xmpWithExt;
+
+    // Try photo.xmp (alternative naming)
+    const parsed = path.parse(photoPath);
+    const xmpAlt = path.join(parsed.dir, parsed.name + '.xmp');
+    if (fs.existsSync(xmpAlt)) return xmpAlt;
+
+    return null;
+}
+
+/**
+ * Scan a folder for RAW photos that have green labels in their XMP sidecars.
+ * Returns { greenCount, totalRawCount }
+ */
+function countGreenLabeled(folderPath) {
+    const RAW_EXT = new Set(['.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf']);
+    let greenCount = 0;
+    let totalRawCount = 0;
+
+    try {
+        const files = fs.readdirSync(folderPath, { recursive: true });
+        for (const f of files) {
+            const fullPath = path.join(folderPath, f);
+            if (!fs.statSync(fullPath).isFile()) continue;
+
+            const ext = path.extname(f).toLowerCase();
+            if (!RAW_EXT.has(ext)) continue;
+
+            totalRawCount++;
+
+            const xmpPath = findXmpSidecar(fullPath);
+            if (xmpPath && hasGreenLabel(xmpPath)) {
+                greenCount++;
+            }
+        }
+    } catch {
+        // folder may not exist yet
+    }
+
+    return { greenCount, totalRawCount };
 }
 
 function getTopLevelFolders(dir) {
@@ -221,6 +286,42 @@ async function scan() {
         }
     }
 
+    // Scan for culling (green labels in XMP sidecars)
+    for (const folder of folders) {
+        const folderPath = path.join(WATCH_DIR, folder);
+        const session = matchFolderToSession(folder, sessions);
+        if (!session) continue;
+
+        // Only check culling for sessions in 'imported' or 'culling' stage
+        if (session.current_stage !== 'imported' && session.current_stage !== 'culling') continue;
+
+        const { greenCount, totalRawCount } = countGreenLabeled(folderPath);
+
+        if (greenCount === 0) continue;
+
+        const prev = cullState.get(folder);
+
+        if (!prev || prev.greenCount !== greenCount) {
+            log(`Culling "${folder}" → ${session.client_name}: ${greenCount}/${totalRawCount} photos green-labeled`);
+
+            // First green label detected → advance to 'culling'
+            if (session.current_stage === 'imported') {
+                await wpAdvanceStage(
+                    session.tracking_code,
+                    'culling',
+                    `Culling started: ${greenCount}/${totalRawCount} green-labeled`,
+                    { photo_count: greenCount }
+                );
+            }
+
+            cullState.set(folder, {
+                greenCount,
+                totalRawCount,
+                lastNotified: Date.now(),
+            });
+        }
+    }
+
     // Scan exports directory
     if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) {
         const exportFolders = getTopLevelFolders(EXPORTS_DIR);
@@ -292,8 +393,12 @@ function startWatcher() {
 
     let debounceTimer = null;
 
+    function isXmpFile(filePath) {
+        return path.extname(filePath).toLowerCase() === '.xmp';
+    }
+
     watcher.on('add', (filePath) => {
-        if (!isPhotoFile(filePath)) return;
+        if (!isPhotoFile(filePath) && !isXmpFile(filePath)) return;
 
         // Debounce: wait 10s after last file add before scanning
         clearTimeout(debounceTimer);
@@ -301,6 +406,17 @@ function startWatcher() {
             log('New files detected, scanning...');
             scan();
         }, 10000);
+    });
+
+    // Also trigger on XMP changes (Lightroom writes labels to existing sidecars)
+    watcher.on('change', (filePath) => {
+        if (!isXmpFile(filePath)) return;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            log('XMP sidecar updated, scanning for label changes...');
+            scan();
+        }, 5000);
     });
 
     // Also poll periodically

@@ -50,15 +50,54 @@ async function wpAdvanceStage(sessionCode, targetStage, notes = '', extras = {})
             session_code: sessionCode,
             target_stage: targetStage,
             notes: notes,
+            api_key: API_KEY || '',
             ...extras,
         }, {
-            headers: API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {},
+            headers: {
+                'Content-Type': 'application/json',
+                ...(API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {}),
+            },
             timeout: 10000,
+            maxRedirects: 5,
         });
         log(`Stage updated: ${sessionCode} → ${targetStage}`);
         return res.data;
     } catch (err) {
-        log(`Failed to update stage: ${err.message}`, 'error');
+        const status = err.response ? err.response.status : 'network';
+        const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
+        log(`Failed to update stage (${status}): ${detail}`, 'error');
+        // If 404, try alternate endpoint (admin REST route)
+        if (err.response && err.response.status === 404) {
+            return await wpAdvanceStageFallback(sessionCode, targetStage, notes, extras);
+        }
+        return null;
+    }
+}
+
+async function wpAdvanceStageFallback(sessionCode, targetStage, notes = '', extras = {}) {
+    // Try using query-parameter auth and URL-encoded form data as fallback
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/automation/advance`;
+    try {
+        const params = new URLSearchParams();
+        params.append('session_code', sessionCode);
+        params.append('target_stage', targetStage);
+        params.append('notes', notes);
+        params.append('api_key', API_KEY || '');
+        if (extras.photo_count) params.append('photo_count', extras.photo_count);
+
+        const res = await axios.post(url, params.toString(), {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                ...(API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {}),
+            },
+            timeout: 10000,
+        });
+        log(`Stage updated (fallback): ${sessionCode} → ${targetStage}`);
+        return res.data;
+    } catch (err) {
+        const status = err.response ? err.response.status : 'network';
+        log(`Fallback also failed (${status}): ${err.message}`, 'error');
+        log('Hint: Check WordPress Settings → Permalinks (re-save), and ensure REST API is accessible.', 'error');
         return null;
     }
 }

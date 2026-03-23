@@ -45,10 +45,23 @@
                 $dot_class = $is_completed ? 'completed' : ( $is_current ? 'current' : 'upcoming' );
                 $line_class = $idx < $current_idx ? 'completed' : 'upcoming';
             ?>
+                <?php
+                    // Map stage icon names to Unicode symbols
+                    $icon_map = array(
+                        'calendar'     => '&#128197;',
+                        'download'     => '&#11015;',
+                        'filter'       => '&#9881;',
+                        'check-square' => '&#9745;',
+                        'edit-2'       => '&#9998;',
+                        'check-circle' => '&#10004;',
+                        'send'         => '&#10148;',
+                    );
+                    $icon_char = $icon_map[ $stage_info['icon'] ?? '' ] ?? '';
+                ?>
                 <div class="tf-pipeline__step">
                     <div class="tf-pipeline__node">
                         <div class="tf-pipeline__dot tf-pipeline__dot--<?php echo $dot_class; ?>">
-                            <?php if ( $is_completed ) : ?>&#10003;<?php elseif ( $is_current ) : ?>&#9679;<?php endif; ?>
+                            <?php if ( $is_completed ) : ?>&#10003;<?php elseif ( $icon_char ) : echo $icon_char; endif; ?>
                         </div>
                         <div class="tf-pipeline__name"><?php echo esc_html( $stage_info['label'] ); ?></div>
                     </div>

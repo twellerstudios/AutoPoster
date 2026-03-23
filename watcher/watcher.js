@@ -295,11 +295,12 @@ async function scan() {
         // Only check culling for sessions in 'imported' or 'culling' stage
         if (session.current_stage !== 'imported' && session.current_stage !== 'culling') continue;
 
+        const prev = cullState.get(folder);
+        if (prev && prev.completed) continue;
+
         const { greenCount, totalRawCount } = countGreenLabeled(folderPath);
 
         if (greenCount === 0) continue;
-
-        const prev = cullState.get(folder);
 
         if (!prev || prev.greenCount !== greenCount) {
             log(`Culling "${folder}" → ${session.client_name}: ${greenCount}/${totalRawCount} photos green-labeled`);
@@ -317,8 +318,29 @@ async function scan() {
             cullState.set(folder, {
                 greenCount,
                 totalRawCount,
-                lastNotified: Date.now(),
+                lastChanged: Date.now(),
             });
+        } else if (prev && prev.greenCount === greenCount && session.current_stage === 'culling') {
+            // Green count hasn't changed — check if stable long enough to mark culled
+            const elapsed = Date.now() - prev.lastChanged;
+            const CULL_STABLE_MS = (config.cullStableSeconds || 120) * 1000; // default 2 minutes
+
+            if (elapsed >= CULL_STABLE_MS) {
+                log(`Culling complete "${folder}" → ${session.client_name}: ${greenCount} keepers out of ${totalRawCount} (stable for ${Math.round(elapsed / 1000)}s)`);
+                await wpAdvanceStage(
+                    session.tracking_code,
+                    'culled',
+                    `Culling complete: ${greenCount}/${totalRawCount} keepers selected`,
+                    { photo_count: greenCount }
+                );
+                // Mark as done so we don't re-trigger
+                cullState.set(folder, {
+                    greenCount,
+                    totalRawCount,
+                    lastChanged: Date.now(),
+                    completed: true,
+                });
+            }
         }
     }
 

@@ -621,6 +621,14 @@ async function scan() {
                 { photo_count: photoCount }
             );
             editState.set(folder, { editedCount: photoCount, greenCount: photoCount, lastChanged: Date.now(), completed: true });
+            // Create exports folder so Lightroom has an export destination
+            if (EXPORTS_DIR) {
+                const exportFolder = path.join(EXPORTS_DIR, `${session.tracking_code} - ${session.client_name.replace(/[<>:"\/\\|?*]/g, '_').trim()}`);
+                if (!fs.existsSync(exportFolder)) {
+                    fs.mkdirSync(exportFolder, { recursive: true });
+                    log(`Created exports folder: ${path.basename(exportFolder)}/`);
+                }
+            }
             // Remove trigger file so it doesn't re-fire
             try { fs.unlinkSync(manualTrigger); } catch { /* ignore */ }
             continue;
@@ -659,6 +667,14 @@ async function scan() {
                     lastChanged: Date.now(),
                     completed: true,
                 });
+                // Create exports folder so Lightroom has an export destination
+                if (EXPORTS_DIR) {
+                    const exportFolder = path.join(EXPORTS_DIR, `${session.tracking_code} - ${session.client_name.replace(/[<>:"\/\\|?*]/g, '_').trim()}`);
+                    if (!fs.existsSync(exportFolder)) {
+                        fs.mkdirSync(exportFolder, { recursive: true });
+                        log(`Created exports folder: ${path.basename(exportFolder)}/`);
+                    }
+                }
             }
         }
     }

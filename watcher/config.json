@@ -1,5 +1,6 @@
 {
   "watchDir": "T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\RAWS-FOR AUTOMATION",
+  "exportsDir": "T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\EXPORTS-FOR AUTOMATION",
   "wordpressUrl": "https://twellerstudios.com",
   "apiKey": "tweller2024",
   "pollIntervalSeconds": 30,

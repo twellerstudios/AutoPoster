@@ -30,6 +30,7 @@ function loadConfig() {
 const config = loadConfig();
 
 const WATCH_DIR = config.watchDir;
+const EXPORTS_DIR = config.exportsDir;
 const WP_URL = config.wordpressUrl.replace(/\/$/, '');
 const API_KEY = config.apiKey;
 const PHOTO_EXT = new Set(config.photoExtensions.map(e => e.toLowerCase()));
@@ -37,6 +38,7 @@ const POLL_INTERVAL = (config.pollIntervalSeconds || 30) * 1000;
 
 // Track known folders and their state
 const folderState = new Map(); // folderName -> { photoCount, lastNotified, stage }
+const exportState = new Map(); // folderName -> { exportCount, lastNotified }
 const createdSessions = new Set(); // tracking codes we already created folders for
 
 // ── WordPress API ──────────────────────────────────────
@@ -94,11 +96,12 @@ function countPhotosInFolder(folderPath) {
     }
 }
 
-function getTopLevelFolders() {
+function getTopLevelFolders(dir) {
+    dir = dir || WATCH_DIR;
     try {
-        return fs.readdirSync(WATCH_DIR)
+        return fs.readdirSync(dir)
             .filter(f => {
-                const fullPath = path.join(WATCH_DIR, f);
+                const fullPath = path.join(dir, f);
                 return fs.statSync(fullPath).isDirectory() && !f.startsWith('.');
             });
     } catch {
@@ -211,6 +214,41 @@ async function scan() {
             });
         }
     }
+
+    // Scan exports directory
+    if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) {
+        const exportFolders = getTopLevelFolders(EXPORTS_DIR);
+
+        for (const folder of exportFolders) {
+            const folderPath = path.join(EXPORTS_DIR, folder);
+            const exportCount = countPhotosInFolder(folderPath);
+
+            if (exportCount === 0) continue;
+
+            const session = matchFolderToSession(folder, sessions);
+            if (!session) continue;
+
+            const prev = exportState.get(folder);
+
+            if (!prev || prev.exportCount !== exportCount) {
+                log(`Exports "${folder}" → ${session.client_name} [${session.tracking_code}]: ${exportCount} exports`);
+
+                if (session.current_stage === 'imported') {
+                    await wpAdvanceStage(
+                        session.tracking_code,
+                        'edited',
+                        `${exportCount} edited photos exported`,
+                        { photo_count: exportCount }
+                    );
+                }
+
+                exportState.set(folder, {
+                    exportCount,
+                    lastNotified: Date.now(),
+                });
+            }
+        }
+    }
 }
 
 // ── File Watcher (real-time) ───────────────────────────
@@ -222,7 +260,8 @@ function startWatcher() {
         process.exit(1);
     }
 
-    log(`Watching: ${WATCH_DIR}`);
+    log(`Watching RAWs:   ${WATCH_DIR}`);
+    log(`Watching Exports: ${EXPORTS_DIR || '(not set)'}`);
     log(`WordPress: ${WP_URL}`);
     log(`Poll interval: ${POLL_INTERVAL / 1000}s`);
     log('─'.repeat(50));
@@ -231,7 +270,10 @@ function startWatcher() {
     scan();
 
     // Watch for new files (debounced via polling)
-    const watcher = chokidar.watch(WATCH_DIR, {
+    const watchPaths = [WATCH_DIR];
+    if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) watchPaths.push(EXPORTS_DIR);
+
+    const watcher = chokidar.watch(watchPaths, {
         depth: 3,
         ignoreInitial: true,
         ignored: /(^|[\/\\])\../, // ignore dotfiles

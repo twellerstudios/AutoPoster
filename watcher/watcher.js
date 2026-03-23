@@ -44,38 +44,7 @@ const createdSessions = new Set(); // tracking codes we already created folders 
 // ── WordPress API ──────────────────────────────────────
 
 async function wpAdvanceStage(sessionCode, targetStage, notes = '', extras = {}) {
-    const url = `${WP_URL}/wp-json/tweller-flow/v1/automation/advance`;
-    try {
-        const res = await axios.post(url, {
-            session_code: sessionCode,
-            target_stage: targetStage,
-            notes: notes,
-            api_key: API_KEY || '',
-            ...extras,
-        }, {
-            headers: {
-                'Content-Type': 'application/json',
-                ...(API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {}),
-            },
-            timeout: 10000,
-            maxRedirects: 5,
-        });
-        log(`Stage updated: ${sessionCode} → ${targetStage}`);
-        return res.data;
-    } catch (err) {
-        const status = err.response ? err.response.status : 'network';
-        const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
-        log(`Failed to update stage (${status}): ${detail}`, 'error');
-        // If 404, try alternate endpoint (admin REST route)
-        if (err.response && err.response.status === 404) {
-            return await wpAdvanceStageFallback(sessionCode, targetStage, notes, extras);
-        }
-        return null;
-    }
-}
-
-async function wpAdvanceStageFallback(sessionCode, targetStage, notes = '', extras = {}) {
-    // Fallback: use GET with query params (some hosts block POST to REST API)
+    // Use GET with query params — host redirects POST→GET and strips the body
     const params = new URLSearchParams({
         session_code: sessionCode,
         target_stage: targetStage,
@@ -90,11 +59,12 @@ async function wpAdvanceStageFallback(sessionCode, targetStage, notes = '', extr
             headers: API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {},
             timeout: 10000,
         });
-        log(`Stage updated (GET fallback): ${sessionCode} → ${targetStage}`);
+        log(`Stage updated: ${sessionCode} → ${targetStage}`);
         return res.data;
     } catch (err) {
         const status = err.response ? err.response.status : 'network';
-        log(`GET fallback also failed (${status}): ${err.message}`, 'error');
+        const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
+        log(`Failed to update stage (${status}): ${detail}`, 'error');
         return null;
     }
 }

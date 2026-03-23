@@ -75,29 +75,26 @@ async function wpAdvanceStage(sessionCode, targetStage, notes = '', extras = {})
 }
 
 async function wpAdvanceStageFallback(sessionCode, targetStage, notes = '', extras = {}) {
-    // Try using query-parameter auth and URL-encoded form data as fallback
-    const url = `${WP_URL}/wp-json/tweller-flow/v1/automation/advance`;
-    try {
-        const params = new URLSearchParams();
-        params.append('session_code', sessionCode);
-        params.append('target_stage', targetStage);
-        params.append('notes', notes);
-        params.append('api_key', API_KEY || '');
-        if (extras.photo_count) params.append('photo_count', extras.photo_count);
+    // Fallback: use GET with query params (some hosts block POST to REST API)
+    const params = new URLSearchParams({
+        session_code: sessionCode,
+        target_stage: targetStage,
+        notes: notes,
+        api_key: API_KEY || '',
+    });
+    if (extras.photo_count) params.append('photo_count', extras.photo_count);
 
-        const res = await axios.post(url, params.toString(), {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                ...(API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {}),
-            },
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/automation/advance?${params.toString()}`;
+    try {
+        const res = await axios.get(url, {
+            headers: API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {},
             timeout: 10000,
         });
-        log(`Stage updated (fallback): ${sessionCode} → ${targetStage}`);
+        log(`Stage updated (GET fallback): ${sessionCode} → ${targetStage}`);
         return res.data;
     } catch (err) {
         const status = err.response ? err.response.status : 'network';
-        log(`Fallback also failed (${status}): ${err.message}`, 'error');
-        log('Hint: Check WordPress Settings → Permalinks (re-save), and ensure REST API is accessible.', 'error');
+        log(`GET fallback also failed (${status}): ${err.message}`, 'error');
         return null;
     }
 }

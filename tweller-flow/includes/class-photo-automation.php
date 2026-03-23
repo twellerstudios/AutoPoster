@@ -12,9 +12,9 @@ class TwellerFlow_Photo_Automation {
     }
 
     public static function register_rest_routes() {
-        // Local agent advances a session's stage
+        // Local agent advances a session's stage (allow GET+POST — some hosts block POST to REST API)
         register_rest_route( 'tweller-flow/v1', '/automation/advance', array(
-            'methods'  => 'POST',
+            'methods'  => array( 'GET', 'POST' ),
             'callback' => array( __CLASS__, 'rest_advance_stage' ),
             'permission_callback' => array( __CLASS__, 'verify_api_key' ),
         ));

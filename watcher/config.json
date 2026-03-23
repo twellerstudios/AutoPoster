@@ -1,7 +1,7 @@
 {
   "watchDir": "T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\RAWS-FOR AUTOMATION",
   "wordpressUrl": "https://twellerstudios.com",
-  "apiKey": "",
+  "apiKey": "tweller2024",
   "pollIntervalSeconds": 30,
   "photoExtensions": [".jpg", ".jpeg", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".raf", ".tif", ".tiff", ".png"]
 }

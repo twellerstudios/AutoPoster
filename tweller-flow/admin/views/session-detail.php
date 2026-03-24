@@ -54,6 +54,7 @@
                         'check-square' => '&#9745;',
                         'edit-2'       => '&#9998;',
                         'check-circle' => '&#10004;',
+                        'package'      => '&#128230;',
                         'upload'       => '&#11014;',
                         'send'         => '&#10148;',
                     );
@@ -86,6 +87,15 @@
                        style="background:#3B82F6; color:#FFFFFF; border-color:#3B82F6;"
                        onclick="return confirm('Advance to <?php echo esc_attr( $next_stage ); ?>?');">
                         Advance to <?php echo esc_html( $next_stage ); ?> &rarr;
+                    </a>
+                <?php endif; ?>
+
+                <?php if ( $session->current_stage === 'deliver' ) : ?>
+                    <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-session&action=send_delivery&session_id=' . $session->id ), 'tweller_flow_deliver_' . $session->id ); ?>"
+                       class="tf-btn tf-btn--primary"
+                       style="background:#10B981; color:#FFFFFF; border-color:#10B981;"
+                       onclick="return confirm('Send gallery delivery email to <?php echo esc_attr( $session->client_name ); ?> (<?php echo esc_attr( $session->client_email ); ?>)?');">
+                        &#9993; Send Delivery Email
                     </a>
                 <?php endif; ?>
 
@@ -348,17 +358,39 @@
             <!-- Gallery Management -->
             <?php
             $gallery_info = TwellerFlow_Gallery::get_gallery_info( $session->id, $session->tracking_code );
+            $gallery_url  = TwellerFlow_Gallery::get_gallery_url( $session->tracking_code );
             ?>
-            <div class="tf-card tf-mb-6">
-                <h2>Gallery (<?php echo $gallery_info['photo_count']; ?> photos<?php echo $gallery_info['total_size_mb'] ? ' / ' . $gallery_info['total_size_mb'] . ' MB' : ''; ?>)</h2>
+            <div class="tf-card tf-mb-6" id="tf-gallery-manager">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <h2 style="margin:0;">Gallery (<span id="gm-count"><?php echo $gallery_info['photo_count']; ?></span> photos<?php echo $gallery_info['total_size_mb'] ? ' / ' . $gallery_info['total_size_mb'] . ' MB' : ''; ?>)</h2>
+                    <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
+                        <button id="gm-edit-btn" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;" title="Edit gallery">&#9998; Edit</button>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Edit mode toolbar (hidden by default) -->
+                <div id="gm-toolbar" style="display:none; padding:10px 14px; background:#FEF3C7; border:1px solid #FCD34D; border-radius:8px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <span id="gm-selected-count" style="font-size:12px; color:#92400E; font-weight:600;">0 selected</span>
+                            <button id="gm-select-all" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:11px;">Select All</button>
+                            <button id="gm-delete-selected" class="tf-btn tf-btn--sm" style="font-size:11px; background:#DC2626; color:#fff; border-color:#DC2626;" disabled>Delete Selected</button>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button id="gm-save-order" class="tf-btn tf-btn--sm" style="font-size:11px; background:#6366F1; color:#fff; border-color:#6366F1; display:none;">Save Order</button>
+                            <button id="gm-done-btn" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:11px;">Done</button>
+                        </div>
+                    </div>
+                    <p style="margin:6px 0 0; font-size:11px; color:#92400E;">Click photos to select. Drag to reorder.</p>
+                </div>
 
                 <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:6px; margin-bottom:16px;">
-                        <?php
-                        $gallery_url = TwellerFlow_Gallery::get_gallery_url( $session->tracking_code );
-                        foreach ( $gallery_info['photos'] as $photo ) : ?>
-                            <div style="position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6;">
-                                <img src="<?php echo esc_url( $gallery_url . '/thumbs/' . $photo->filename ); ?>" alt="" style="width:100%; height:100%; object-fit:cover;">
+                    <div id="gm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:6px; margin-bottom:16px;">
+                        <?php foreach ( $gallery_info['photos'] as $photo ) : ?>
+                            <div class="gm-photo" data-id="<?php echo $photo->id; ?>" style="position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6; cursor:default; border:2px solid transparent; transition:border-color .15s;">
+                                <img src="<?php echo esc_url( $gallery_url . '/thumbs/' . $photo->filename ); ?>" alt="<?php echo esc_attr( $photo->filename ); ?>" style="width:100%; height:100%; object-fit:cover; pointer-events:none;">
+                                <div class="gm-check" style="display:none; position:absolute; top:4px; left:4px; width:20px; height:20px; background:#3B82F6; border-radius:50%; color:#fff; font-size:12px; line-height:20px; text-align:center;">&#10003;</div>
+                                <div class="gm-order-badge" style="display:none; position:absolute; bottom:4px; right:4px; min-width:20px; height:20px; background:rgba(0,0,0,0.6); border-radius:10px; color:#fff; font-size:10px; line-height:20px; text-align:center; padding:0 5px;"></div>
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -382,8 +414,11 @@
                 <script>
                 (function($){
                     var SESSION_CODE = '<?php echo esc_js( $session->tracking_code ); ?>';
-                    var files = [];
+                    var restBase = '<?php echo esc_js( rest_url( 'tweller-flow/v1/gallery/' . $session->tracking_code ) ); ?>';
+                    var restNonce = '<?php echo esc_js( wp_create_nonce( 'wp_rest' ) ); ?>';
 
+                    // ── Upload ─────────────────────────────
+                    var files = [];
                     var dz = document.getElementById('sd-drop-zone');
                     var fi = document.getElementById('sd-file-input');
 
@@ -396,7 +431,7 @@
                     function startUpload(fileList) {
                         files = Array.from(fileList);
                         if (!files.length) return;
-                        var total = files.length, done = 0, saved = [], errors = [];
+                        var total = files.length, saved = [], errors = [];
                         $('#sd-progress').show();
                         $('#sd-result').hide().empty();
 
@@ -433,6 +468,195 @@
                         }
                         next(0);
                     }
+
+                    // ── Gallery Edit Mode ──────────────────
+                    var editMode = false;
+                    var selected = new Set();
+                    var orderChanged = false;
+                    var dragItem = null;
+                    var dragOverItem = null;
+
+                    var editBtn = document.getElementById('gm-edit-btn');
+                    var toolbar = document.getElementById('gm-toolbar');
+                    var grid    = document.getElementById('gm-grid');
+
+                    if (editBtn) {
+                        editBtn.addEventListener('click', function() {
+                            editMode = !editMode;
+                            toolbar.style.display = editMode ? '' : 'none';
+                            editBtn.innerHTML = editMode ? '&#10005; Cancel' : '&#9998; Edit';
+                            selected.clear();
+                            orderChanged = false;
+                            updateEditUI();
+                        });
+                    }
+
+                    $('#gm-done-btn').on('click', function() {
+                        editMode = false;
+                        toolbar.style.display = 'none';
+                        if (editBtn) editBtn.innerHTML = '&#9998; Edit';
+                        selected.clear();
+                        orderChanged = false;
+                        updateEditUI();
+                    });
+
+                    function updateEditUI() {
+                        var photos = grid ? grid.querySelectorAll('.gm-photo') : [];
+                        photos.forEach(function(el, idx) {
+                            var check = el.querySelector('.gm-check');
+                            var badge = el.querySelector('.gm-order-badge');
+                            var isSelected = selected.has(el.dataset.id);
+
+                            if (editMode) {
+                                el.style.cursor = 'pointer';
+                                el.setAttribute('draggable', 'true');
+                                check.style.display = isSelected ? '' : 'none';
+                                el.style.borderColor = isSelected ? '#3B82F6' : 'transparent';
+                                badge.style.display = '';
+                                badge.textContent = idx + 1;
+                            } else {
+                                el.style.cursor = 'default';
+                                el.removeAttribute('draggable');
+                                check.style.display = 'none';
+                                el.style.borderColor = 'transparent';
+                                badge.style.display = 'none';
+                            }
+                        });
+
+                        $('#gm-selected-count').text(selected.size + ' selected');
+                        $('#gm-delete-selected').prop('disabled', selected.size === 0);
+                        $('#gm-save-order').toggle(orderChanged);
+                    }
+
+                    // Click to select
+                    if (grid) {
+                        grid.addEventListener('click', function(e) {
+                            if (!editMode) return;
+                            var photo = e.target.closest('.gm-photo');
+                            if (!photo) return;
+                            var id = photo.dataset.id;
+                            if (selected.has(id)) {
+                                selected.delete(id);
+                            } else {
+                                selected.add(id);
+                            }
+                            updateEditUI();
+                        });
+
+                        // Drag and drop reorder
+                        grid.addEventListener('dragstart', function(e) {
+                            if (!editMode) return;
+                            dragItem = e.target.closest('.gm-photo');
+                            if (dragItem) {
+                                dragItem.style.opacity = '0.4';
+                                e.dataTransfer.effectAllowed = 'move';
+                            }
+                        });
+
+                        grid.addEventListener('dragover', function(e) {
+                            if (!editMode || !dragItem) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            var target = e.target.closest('.gm-photo');
+                            if (target && target !== dragItem) {
+                                if (dragOverItem) dragOverItem.style.borderColor = selected.has(dragOverItem.dataset.id) ? '#3B82F6' : 'transparent';
+                                dragOverItem = target;
+                                dragOverItem.style.borderColor = '#FCD34D';
+                            }
+                        });
+
+                        grid.addEventListener('drop', function(e) {
+                            if (!editMode || !dragItem) return;
+                            e.preventDefault();
+                            var target = e.target.closest('.gm-photo');
+                            if (target && target !== dragItem) {
+                                // Reorder DOM
+                                var allPhotos = Array.from(grid.querySelectorAll('.gm-photo'));
+                                var fromIdx = allPhotos.indexOf(dragItem);
+                                var toIdx = allPhotos.indexOf(target);
+                                if (fromIdx < toIdx) {
+                                    target.parentNode.insertBefore(dragItem, target.nextSibling);
+                                } else {
+                                    target.parentNode.insertBefore(dragItem, target);
+                                }
+                                orderChanged = true;
+                            }
+                        });
+
+                        grid.addEventListener('dragend', function() {
+                            if (dragItem) dragItem.style.opacity = '';
+                            if (dragOverItem) dragOverItem.style.borderColor = selected.has(dragOverItem.dataset.id) ? '#3B82F6' : 'transparent';
+                            dragItem = null;
+                            dragOverItem = null;
+                            updateEditUI();
+                        });
+                    }
+
+                    // Select All
+                    $('#gm-select-all').on('click', function() {
+                        var photos = grid ? grid.querySelectorAll('.gm-photo') : [];
+                        if (selected.size === photos.length) {
+                            selected.clear();
+                        } else {
+                            photos.forEach(function(el) { selected.add(el.dataset.id); });
+                        }
+                        updateEditUI();
+                    });
+
+                    // Delete selected
+                    $('#gm-delete-selected').on('click', function() {
+                        if (selected.size === 0) return;
+                        if (!confirm('Delete ' + selected.size + ' photo(s)? This cannot be undone.')) return;
+
+                        var ids = Array.from(selected).map(Number);
+                        $(this).prop('disabled', true).text('Deleting...');
+
+                        $.ajax({
+                            url: restBase + '/batch-delete',
+                            method: 'POST',
+                            headers: { 'X-WP-Nonce': restNonce },
+                            contentType: 'application/json',
+                            data: JSON.stringify({ photo_ids: ids }),
+                            success: function(r) {
+                                if (r.ok) {
+                                    // Remove deleted photos from DOM
+                                    ids.forEach(function(id) {
+                                        var el = grid.querySelector('[data-id="' + id + '"]');
+                                        if (el) el.remove();
+                                    });
+                                    selected.clear();
+                                    var remaining = grid.querySelectorAll('.gm-photo').length;
+                                    $('#gm-count').text(remaining);
+                                    updateEditUI();
+                                }
+                            },
+                            error: function() { alert('Failed to delete photos.'); },
+                            complete: function() { $('#gm-delete-selected').prop('disabled', false).text('Delete Selected'); }
+                        });
+                    });
+
+                    // Save order
+                    $('#gm-save-order').on('click', function() {
+                        var photos = grid.querySelectorAll('.gm-photo');
+                        var order = Array.from(photos).map(function(el) { return Number(el.dataset.id); });
+                        $(this).prop('disabled', true).text('Saving...');
+
+                        $.ajax({
+                            url: restBase + '/reorder',
+                            method: 'POST',
+                            headers: { 'X-WP-Nonce': restNonce },
+                            contentType: 'application/json',
+                            data: JSON.stringify({ order: order }),
+                            success: function(r) {
+                                if (r.ok) {
+                                    orderChanged = false;
+                                    updateEditUI();
+                                }
+                            },
+                            error: function() { alert('Failed to save order.'); },
+                            complete: function() { $('#gm-save-order').prop('disabled', false).text('Save Order'); }
+                        });
+                    });
                 })(jQuery);
                 </script>
 

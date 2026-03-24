@@ -104,6 +104,42 @@ class TwellerFlow_Notifications {
                 ",
             ),
 
+            'deliver' => array(
+                'subject' => "Your Gallery is Ready — {$pkg_name} with Tweller Studios",
+                'body'    => "
+                    <h2>Your photos have been delivered!</h2>
+                    <p>Hi {$session->client_name},</p>
+                    <p>Great news! Your <strong>{$pkg_name}</strong> photos are ready for viewing and download.</p>
+
+                    <div style='text-align:center; margin:30px 0;'>
+                        <a href='{$tracker_url}' style='display:inline-block; background:#10B981; color:#fff; padding:16px 36px; border-radius:10px; text-decoration:none; font-size:18px; font-weight:600;'>View Your Album</a>
+                    </div>
+
+                    <p style='text-align:center; color:#6B7280; font-size:14px;'>Click the button above to open your client portal and browse your gallery.</p>
+
+                    <div style='background:#f0fdf4; padding:20px; border-radius:8px; margin:20px 0; border:1px solid #bbf7d0;'>
+                        <h3 style='margin-top:0; color:#166534;'>Gallery Tips</h3>
+                        <ul style='color:#374151;'>
+                            <li>Browse your album with our full-screen slideshow</li>
+                            <li>Download individual photos or the entire gallery</li>
+                            <li>All images are high resolution and print-ready</li>
+                        </ul>
+                    </div>
+
+                    <p>We hope you love your photos!</p>
+
+                    <div style='background:#f8f9fa; padding:20px; border-radius:8px; margin:20px 0;'>
+                        <h3 style='margin-top:0;'>Share the Love</h3>
+                        <p>Enjoyed your experience? We'd appreciate a review!</p>
+                        <p><a href='https://g.page/r/twellerstudios/review' style='display:inline-block; background:#4285f4; color:#fff; padding:10px 20px; border-radius:6px; text-decoration:none;'>Leave a Google Review</a></p>
+                    </div>
+
+                    <div style='text-align:center; margin-top:20px;'>
+                        <p style='font-size:12px; color:#9CA3AF;'>Tracking code: <strong>{$session->tracking_code}</strong></p>
+                    </div>
+                ",
+            ),
+
             'delivered' => array(
                 'subject' => "Your Gallery is Ready — {$pkg_name} with Tweller Studios",
                 'body'    => "

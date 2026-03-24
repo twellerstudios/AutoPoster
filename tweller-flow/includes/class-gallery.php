@@ -67,6 +67,20 @@ class TwellerFlow_Gallery {
             'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
         ));
 
+        // Admin: batch delete photos
+        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/batch-delete', array(
+            'methods'             => 'POST',
+            'callback'            => array( __CLASS__, 'rest_batch_delete' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+
+        // Admin: reorder photos
+        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/reorder', array(
+            'methods'             => 'POST',
+            'callback'            => array( __CLASS__, 'rest_reorder' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+
         // Admin: set gallery password
         register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/password', array(
             'methods'             => 'POST',
@@ -202,8 +216,8 @@ class TwellerFlow_Gallery {
             $is_unlocked = true;
         }
 
-        // Show gallery once images are uploaded (delivering) or delivered
-        if ( ! in_array( $session->current_stage, array( 'delivering', 'delivered' ), true ) ) {
+        // Show gallery once images are uploaded or delivered
+        if ( ! in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ) {
             return rest_ensure_response( array(
                 'ok'            => true,
                 'ready'         => false,
@@ -285,7 +299,7 @@ class TwellerFlow_Gallery {
         $filename = sanitize_file_name( $request->get_param( 'file' ) );
 
         $session = TwellerFlow_Session::get_by_code( $code );
-        if ( ! $session || $session->current_stage !== 'delivered' ) {
+        if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ) {
             return new WP_Error( 'not_found', 'Not found', array( 'status' => 404 ) );
         }
 
@@ -305,7 +319,7 @@ class TwellerFlow_Gallery {
         $code = sanitize_text_field( $request['code'] );
 
         $session = TwellerFlow_Session::get_by_code( $code );
-        if ( ! $session || $session->current_stage !== 'delivered' ) {
+        if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ) {
             return new WP_Error( 'not_found', 'Not found', array( 'status' => 404 ) );
         }
 
@@ -362,6 +376,59 @@ class TwellerFlow_Gallery {
 
         // Delete DB record
         $wpdb->delete( $table, array( 'id' => $photo_id ) );
+
+        return rest_ensure_response( array( 'ok' => true ) );
+    }
+
+    // ── Admin: Batch Delete Photos ─────────────────────
+
+    public static function rest_batch_delete( $request ) {
+        $code      = sanitize_text_field( $request['code'] );
+        $photo_ids = $request->get_param( 'photo_ids' );
+
+        if ( ! is_array( $photo_ids ) || empty( $photo_ids ) ) {
+            return new WP_Error( 'no_ids', 'No photo IDs provided', array( 'status' => 400 ) );
+        }
+
+        global $wpdb;
+        $table       = $wpdb->prefix . 'tweller_gallery_photos';
+        $gallery_dir = self::get_gallery_dir( $code );
+        $deleted     = 0;
+
+        foreach ( $photo_ids as $photo_id ) {
+            $photo_id = intval( $photo_id );
+            $photo = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d AND session_code = %s", $photo_id, $code ) );
+            if ( ! $photo ) continue;
+
+            @unlink( $gallery_dir . '/' . $photo->filename );
+            @unlink( $gallery_dir . '/thumbs/' . $photo->filename );
+            $wpdb->delete( $table, array( 'id' => $photo_id ) );
+            $deleted++;
+        }
+
+        return rest_ensure_response( array( 'ok' => true, 'deleted' => $deleted ) );
+    }
+
+    // ── Admin: Reorder Photos ────────────────────────────
+
+    public static function rest_reorder( $request ) {
+        $code  = sanitize_text_field( $request['code'] );
+        $order = $request->get_param( 'order' );
+
+        if ( ! is_array( $order ) || empty( $order ) ) {
+            return new WP_Error( 'no_order', 'No order provided', array( 'status' => 400 ) );
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'tweller_gallery_photos';
+
+        foreach ( $order as $idx => $photo_id ) {
+            $wpdb->update(
+                $table,
+                array( 'sort_order' => intval( $idx ) ),
+                array( 'id' => intval( $photo_id ), 'session_code' => $code )
+            );
+        }
 
         return rest_ensure_response( array( 'ok' => true ) );
     }

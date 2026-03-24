@@ -194,6 +194,7 @@
                         <?php if ( $client_link && $gallery_info['photo_count'] > 0 ) : ?>
                             <a href="<?php echo esc_url( $client_link ); ?>" target="_blank" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">Client View</a>
                         <?php endif; ?>
+                        <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-session&id=' . $session->id . '#tf-gallery-manager' ); ?>" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">&#9998; Edit Gallery</a>
                         <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-session&id=' . $session->id ); ?>" class="tf-btn tf-btn--ghost tf-btn--sm" style="font-size:12px;">Session Details</a>
                     </div>
                 </div>

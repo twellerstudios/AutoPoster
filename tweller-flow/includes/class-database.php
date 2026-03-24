@@ -76,18 +76,21 @@ class TwellerFlow_Database {
     public static function seed_defaults() {
         $defaults = array(
             'tweller_flow_stages' => array(
-                'booked'     => array( 'label' => 'Booked',     'client_label' => 'Booked',       'icon' => 'calendar',     'notify' => true ),
-                'imported'   => array( 'label' => 'Imported',   'client_label' => 'Editing',      'icon' => 'download',     'notify' => false ),
-                'culling'    => array( 'label' => 'Culling',    'client_label' => 'Editing',      'icon' => 'filter',       'notify' => false ),
-                'culled'     => array( 'label' => 'Culled',     'client_label' => 'Editing',      'icon' => 'check-square', 'notify' => false ),
-                'editing'    => array( 'label' => 'Editing',    'client_label' => 'Editing',      'icon' => 'edit-2',       'notify' => false ),
-                'edited'     => array( 'label' => 'Edited',     'client_label' => 'Done Editing', 'icon' => 'check-circle', 'notify' => true ),
-                'exporting'  => array( 'label' => 'Exporting',  'client_label' => 'Done Editing', 'icon' => 'upload',       'notify' => false ),
-                'delivering' => array( 'label' => 'Delivering', 'client_label' => 'Images Uploaded', 'icon' => 'send',         'notify' => true ),
-                'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',    'icon' => 'check-circle', 'notify' => true ),
+                'booked'     => array( 'label' => 'Booked',     'client_label' => 'Booked',        'icon' => 'calendar',     'notify' => true ),
+                'imported'   => array( 'label' => 'Imported',   'client_label' => 'Editing',       'icon' => 'download',     'notify' => false ),
+                'culling'    => array( 'label' => 'Culling',    'client_label' => 'Editing',       'icon' => 'filter',       'notify' => false ),
+                'culled'     => array( 'label' => 'Culled',     'client_label' => 'Editing',       'icon' => 'check-square', 'notify' => false ),
+                'editing'    => array( 'label' => 'Editing',    'client_label' => 'Editing',       'icon' => 'edit-2',       'notify' => false ),
+                'edited'     => array( 'label' => 'Edited',     'client_label' => 'Done Editing',  'icon' => 'check-circle', 'notify' => true ),
+                'exporting'  => array( 'label' => 'Exporting',  'client_label' => 'Exporting',     'icon' => 'package',      'notify' => false ),
+                'exported'   => array( 'label' => 'Exported',   'client_label' => 'Exporting',     'icon' => 'package',      'notify' => false ),
+                'uploading'  => array( 'label' => 'Uploading',  'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
+                'uploaded'   => array( 'label' => 'Uploaded',   'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
+                'deliver'    => array( 'label' => 'Deliver',    'client_label' => 'Gallery Ready', 'icon' => 'send',         'notify' => true ),
+                'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',     'icon' => 'check-circle', 'notify' => true ),
             ),
             'tweller_flow_client_stages' => array(
-                'Booked', 'Editing', 'Done Editing', 'Images Uploaded', 'Delivered'
+                'Booked', 'Editing', 'Done Editing', 'Exporting', 'Gallery Ready', 'Delivered'
             ),
             'tweller_flow_packages' => array(
                 'mini' => array(

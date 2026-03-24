@@ -39,7 +39,7 @@ const AUTO_UPLOAD = config.autoUploadToGallery !== false; // default: true
 
 // Track known folders and their state
 const folderState = new Map(); // folderName -> { photoCount, lastNotified, stage }
-const exportState = new Map(); // folderName -> { exportCount, lastNotified, uploaded, uploadedFiles }
+const exportState = new Map(); // folderName -> { exportCount, lastChanged, exported, uploaded, uploadedFiles }
 const cullState = new Map();   // folderName -> { greenCount, totalPhotos, lastNotified }
 const editState = new Map();   // folderName -> { editedCount, greenCount, lastChanged, completed }
 const createdSessions = new Set(); // tracking codes we already created folders for
@@ -818,6 +818,7 @@ async function scan() {
     }
 
     // Scan exports directory — detect new exports + auto-upload to gallery
+    // Stage flow: exporting → exported → uploading → uploaded → deliver (manual)
     if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) {
         const exportFolders = getTopLevelFolders(EXPORTS_DIR);
 
@@ -833,109 +834,174 @@ async function scan() {
             const prev = exportState.get(folder);
 
             if (!prev || prev.exportCount !== exportCount) {
+                // New exports detected or count changed — still exporting
                 log(`Exports "${folder}" → ${session.client_name} [${session.tracking_code}]: ${exportCount} exports`);
 
-                // Advance to 'edited' if still in early stages
-                if (['imported', 'culling', 'culled', 'editing'].includes(session.current_stage)) {
+                // Advance to 'exporting' if in early stages
+                if (['imported', 'culling', 'culled', 'editing', 'edited'].includes(session.current_stage)) {
                     await wpAdvanceStage(
                         session.tracking_code,
-                        'edited',
-                        `${exportCount} edited photos exported`,
+                        'exporting',
+                        `Exporting photos (${exportCount} so far)`,
                         { photo_count: exportCount }
                     );
                 }
 
-                // Auto-upload to WordPress gallery
-                if (AUTO_UPLOAD) {
-                    // Check server first — photos may already be uploaded (e.g. stage went back)
-                    const serverFiles = await wpGetExistingPhotos(session.tracking_code);
-                    if (serverFiles.size >= exportCount) {
-                        log(`All ${serverFiles.size} photos already on server for ${session.client_name} — skipping upload`);
-                        exportState.set(folder, {
-                            exportCount,
-                            lastNotified: Date.now(),
-                            uploaded: true,
-                            uploadedFiles: serverFiles,
-                        });
-                        savePersistedState();
-                    } else {
-                        const alreadyCount = Math.max(serverFiles.size, prev?.uploadedFiles?.size || 0);
-                        log(`Auto-uploading photos to gallery for ${session.client_name} (${alreadyCount} already uploaded)...`);
+                exportState.set(folder, {
+                    exportCount,
+                    lastChanged: Date.now(),
+                    exported: false,
+                    uploaded: false,
+                    uploadedFiles: prev?.uploadedFiles || new Set(),
+                });
+                savePersistedState();
 
-                        const galleryPassword = config.defaultGalleryPassword || '';
-                        const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
-
-                        if (result.skipped) {
-                            // Upload lock prevented concurrent upload — don't update state, retry next scan
-                        } else if (result.uploaded > 0) {
-                            log(`Gallery upload complete: ${result.uploaded} new + ${alreadyCount} existing for ${session.client_name}`);
-
-                            // Only advance to delivering if not already there or beyond
-                            if (!['delivering', 'delivered'].includes(session.current_stage)) {
-                                await wpAdvanceStage(
-                                    session.tracking_code,
-                                    'delivering',
-                                    `${result.uploaded} photos uploaded to gallery`,
-                                    { photo_count: result.total }
-                                );
-                            }
-
-                            exportState.set(folder, {
-                                exportCount,
-                                lastNotified: Date.now(),
-                                uploaded: true,
-                                uploadedFiles: result.uploadedFiles,
-                            });
-                            savePersistedState();
-                        } else {
-                            log(`Gallery upload: no new photos to upload for ${session.client_name}`);
-                            exportState.set(folder, {
-                                exportCount,
-                                lastNotified: Date.now(),
-                                uploaded: true,
-                                uploadedFiles: result.uploadedFiles,
-                            });
-                            savePersistedState();
-                        }
-                    }
-                } else {
-                    // Just track the export, don't upload
-                    exportState.set(folder, {
-                        exportCount,
-                        lastNotified: Date.now(),
-                    });
-                }
-            } else if (prev && !prev.uploaded && AUTO_UPLOAD && prev.exportCount === exportCount) {
-                // Export count stable and not yet uploaded — check for new files to upload
-                const elapsed = Date.now() - prev.lastNotified;
+            } else if (prev && !prev.exported && prev.exportCount === exportCount) {
+                // Export count stable — check if exports are done
+                const elapsed = Date.now() - prev.lastChanged;
                 const EXPORT_STABLE_MS = (config.exportStableSeconds || 60) * 1000;
 
                 if (elapsed >= EXPORT_STABLE_MS) {
-                    log(`Export stable for ${session.client_name}, uploading to gallery...`);
+                    log(`Export complete for ${session.client_name}: ${exportCount} photos (stable for ${Math.round(elapsed / 1000)}s)`);
 
+                    // Advance to 'exported'
+                    if (['exporting'].includes(session.current_stage)) {
+                        await wpAdvanceStage(
+                            session.tracking_code,
+                            'exported',
+                            `${exportCount} photos exported`,
+                            { photo_count: exportCount }
+                        );
+                    }
+
+                    exportState.set(folder, {
+                        ...prev,
+                        exported: true,
+                    });
+                    savePersistedState();
+
+                    // Start auto-upload immediately if enabled
+                    if (AUTO_UPLOAD) {
+                        const serverFiles = await wpGetExistingPhotos(session.tracking_code);
+                        if (serverFiles.size >= exportCount) {
+                            log(`All ${serverFiles.size} photos already on server for ${session.client_name} — skipping upload`);
+                            exportState.set(folder, {
+                                ...prev,
+                                exported: true,
+                                uploaded: true,
+                                uploadedFiles: serverFiles,
+                            });
+                            savePersistedState();
+
+                            // Advance to 'uploaded' if not already past it
+                            if (['exported', 'uploading'].includes(session.current_stage)) {
+                                await wpAdvanceStage(
+                                    session.tracking_code,
+                                    'uploaded',
+                                    `All ${serverFiles.size} photos already uploaded`,
+                                    { photo_count: serverFiles.size }
+                                );
+                            }
+                        } else {
+                            // Advance to 'uploading' before starting
+                            if (['exported'].includes(session.current_stage)) {
+                                await wpAdvanceStage(
+                                    session.tracking_code,
+                                    'uploading',
+                                    `Uploading ${exportCount} photos to gallery`,
+                                    { photo_count: exportCount }
+                                );
+                            }
+
+                            const alreadyCount = Math.max(serverFiles.size, prev?.uploadedFiles?.size || 0);
+                            log(`Auto-uploading photos to gallery for ${session.client_name} (${alreadyCount} already uploaded)...`);
+
+                            const galleryPassword = config.defaultGalleryPassword || '';
+                            const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
+
+                            if (result.skipped) {
+                                // Upload lock prevented concurrent upload — retry next scan
+                            } else if (result.uploaded > 0 || result.failed === 0) {
+                                log(`Gallery upload complete: ${result.uploaded} new + ${alreadyCount} existing for ${session.client_name}`);
+
+                                // Advance to 'uploaded'
+                                if (['uploading'].includes(session.current_stage)) {
+                                    await wpAdvanceStage(
+                                        session.tracking_code,
+                                        'uploaded',
+                                        `${result.uploaded} photos uploaded to gallery`,
+                                        { photo_count: result.total }
+                                    );
+                                }
+
+                                exportState.set(folder, {
+                                    ...prev,
+                                    exported: true,
+                                    uploaded: true,
+                                    uploadedFiles: result.uploadedFiles,
+                                });
+                                savePersistedState();
+                            } else {
+                                log(`Gallery upload had failures for ${session.client_name} — will retry next scan`);
+                            }
+                        }
+                    }
+                }
+
+            } else if (prev && prev.exported && !prev.uploaded && AUTO_UPLOAD) {
+                // Exported but not yet uploaded — retry upload
+                const serverFiles = await wpGetExistingPhotos(session.tracking_code);
+                if (serverFiles.size >= exportCount) {
+                    log(`All ${serverFiles.size} photos now on server for ${session.client_name}`);
+                    exportState.set(folder, {
+                        ...prev,
+                        uploaded: true,
+                        uploadedFiles: serverFiles,
+                    });
+                    savePersistedState();
+
+                    if (['exported', 'uploading'].includes(session.current_stage)) {
+                        await wpAdvanceStage(
+                            session.tracking_code,
+                            'uploaded',
+                            `All ${serverFiles.size} photos uploaded`,
+                            { photo_count: serverFiles.size }
+                        );
+                    }
+                } else {
+                    // Advance to 'uploading' if not already there
+                    if (['exported'].includes(session.current_stage)) {
+                        await wpAdvanceStage(
+                            session.tracking_code,
+                            'uploading',
+                            `Uploading photos to gallery`,
+                            { photo_count: exportCount }
+                        );
+                    }
+
+                    log(`Retrying upload for ${session.client_name}...`);
                     const galleryPassword = config.defaultGalleryPassword || '';
                     const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
 
                     if (result.skipped) {
-                        // Upload lock prevented concurrent upload — retry next scan
+                        // retry next scan
                     } else {
-                        if (result.uploaded > 0) {
+                        if (result.uploaded > 0 || result.failed === 0) {
                             log(`Gallery upload complete: ${result.uploaded}/${result.total} for ${session.client_name}`);
 
-                            if (!['delivering', 'delivered'].includes(session.current_stage)) {
+                            if (['uploading'].includes(session.current_stage)) {
                                 await wpAdvanceStage(
                                     session.tracking_code,
-                                    'delivering',
+                                    'uploaded',
                                     `${result.uploaded} photos uploaded to gallery`,
-                                    { photo_count: result.uploaded }
+                                    { photo_count: result.total }
                                 );
                             }
                         }
 
                         exportState.set(folder, {
-                            exportCount,
-                            lastNotified: Date.now(),
-                            uploaded: true,
+                            ...prev,
+                            uploaded: (result.failed === 0),
                             uploadedFiles: result.uploadedFiles,
                         });
                         savePersistedState();

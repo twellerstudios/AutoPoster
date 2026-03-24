@@ -198,6 +198,30 @@ class TwellerFlow_Admin {
             exit;
         }
 
+        // Send delivery email and advance to delivered
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'send_delivery' && isset( $_GET['session_id'] ) ) {
+            check_admin_referer( 'tweller_flow_deliver_' . $_GET['session_id'] );
+            $id = intval( $_GET['session_id'] );
+            $session = TwellerFlow_Session::get( $id );
+            if ( $session && $session->current_stage === 'deliver' ) {
+                // Send the delivery email
+                $template = TwellerFlow_Notifications::get_email_template( 'deliver', $session );
+                if ( $template && ! empty( $session->client_email ) ) {
+                    $sent = TwellerFlow_Notifications::send_email( $session, $template['subject'], $template['body'] );
+                    if ( $sent ) {
+                        // Advance to delivered
+                        TwellerFlow_Session::set_stage( $id, 'delivered', 'Gallery delivery email sent to ' . $session->client_email );
+                        wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&delivered=1' ) );
+                    } else {
+                        wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&email_failed=1' ) );
+                    }
+                } else {
+                    wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&no_email=1' ) );
+                }
+                exit;
+            }
+        }
+
         // Gallery: delete all photos for a session
         if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete_gallery' && isset( $_GET['session_id'] ) ) {
             check_admin_referer( 'tweller_flow_delete_gallery_' . $_GET['session_id'] );

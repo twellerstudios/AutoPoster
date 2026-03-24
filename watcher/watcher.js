@@ -44,6 +44,48 @@ const cullState = new Map();   // folderName -> { greenCount, totalPhotos, lastN
 const editState = new Map();   // folderName -> { editedCount, greenCount, lastChanged, completed }
 const createdSessions = new Set(); // tracking codes we already created folders for
 
+// ── Persistent state file ────────────────────────────
+const STATE_FILE = path.join(__dirname, '.watcher-state.json');
+
+function loadPersistedState() {
+    try {
+        if (!fs.existsSync(STATE_FILE)) return;
+        const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+        if (data.exportState) {
+            for (const [k, v] of Object.entries(data.exportState)) {
+                // Restore uploadedFiles as a Set
+                if (v.uploadedFiles && Array.isArray(v.uploadedFiles)) {
+                    v.uploadedFiles = new Set(v.uploadedFiles);
+                } else {
+                    v.uploadedFiles = new Set();
+                }
+                exportState.set(k, v);
+            }
+        }
+        log(`Restored state: ${exportState.size} export folder(s) tracked`);
+    } catch (err) {
+        log(`Could not load state file: ${err.message}`, 'error');
+    }
+}
+
+function savePersistedState() {
+    try {
+        const data = { exportState: {} };
+        for (const [k, v] of exportState.entries()) {
+            data.exportState[k] = {
+                ...v,
+                uploadedFiles: v.uploadedFiles ? Array.from(v.uploadedFiles) : [],
+            };
+        }
+        fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+        log(`Could not save state file: ${err.message}`, 'error');
+    }
+}
+
+// Load persisted state on startup
+loadPersistedState();
+
 // ── WordPress API ──────────────────────────────────────
 
 async function wpAdvanceStage(sessionCode, targetStage, notes = '', extras = {}) {
@@ -83,6 +125,28 @@ async function wpGetSessions() {
     } catch (err) {
         log(`Failed to fetch sessions: ${err.message}`, 'error');
         return [];
+    }
+}
+
+/**
+ * Check which photos already exist on the server for a session.
+ * Returns a Set of filenames.
+ */
+async function wpGetExistingPhotos(sessionCode) {
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/gallery/${sessionCode}/filenames`;
+    try {
+        const res = await axios.get(url, {
+            headers: API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {},
+            params: API_KEY ? { api_key: API_KEY } : {},
+            timeout: 10000,
+        });
+        if (res.data && res.data.ok && Array.isArray(res.data.filenames)) {
+            return new Set(res.data.filenames);
+        }
+        return new Set();
+    } catch (err) {
+        log(`Could not check existing photos for ${sessionCode}: ${err.message}`, 'error');
+        return new Set();
     }
 }
 
@@ -416,7 +480,7 @@ async function wpUploadPhoto(sessionCode, filePath, fileName, galleryPassword) {
 
 /**
  * Upload all new photos from an export folder to the WordPress gallery.
- * Tracks which files have already been uploaded to avoid duplicates.
+ * Checks both local state AND server-side to avoid duplicates.
  * Returns { uploaded, failed, total }
  */
 async function uploadExportFolder(sessionCode, folderPath, galleryPassword) {
@@ -424,13 +488,25 @@ async function uploadExportFolder(sessionCode, folderPath, galleryPassword) {
     if (photos.length === 0) return { uploaded: 0, failed: 0, total: 0 };
 
     const prev = exportState.get(path.basename(folderPath));
-    const alreadyUploaded = prev?.uploadedFiles || new Set();
+    const localUploaded = prev?.uploadedFiles || new Set();
+
+    // Also check server for already-uploaded photos (handles restart / stage-back scenarios)
+    const serverFiles = await wpGetExistingPhotos(sessionCode);
+    const alreadyUploaded = new Set([...localUploaded, ...serverFiles]);
+
+    if (serverFiles.size > 0 && localUploaded.size === 0) {
+        log(`Server already has ${serverFiles.size} photos for ${sessionCode} — syncing local state`);
+    }
 
     let uploaded = 0;
     let failed = 0;
 
     const toUpload = photos.filter(p => !alreadyUploaded.has(p.name));
-    if (toUpload.length === 0) return { uploaded: 0, failed: 0, total: photos.length, uploadedFiles: alreadyUploaded };
+    if (toUpload.length === 0) {
+        log(`All ${photos.length} photos already uploaded for ${sessionCode} — skipping`);
+        return { uploaded: 0, failed: 0, total: photos.length, uploadedFiles: alreadyUploaded };
+    }
+
     const totalNew = toUpload.length;
     let current = 0;
 
@@ -718,21 +794,38 @@ async function scan() {
 
                 // Auto-upload to WordPress gallery
                 if (AUTO_UPLOAD && (!prev || !prev.uploaded)) {
-                    log(`Auto-uploading ${exportCount} photos to gallery for ${session.client_name}...`);
+                    // Check server first — photos may already be uploaded (e.g. stage went back)
+                    const serverFiles = await wpGetExistingPhotos(session.tracking_code);
+                    if (serverFiles.size >= exportCount) {
+                        log(`All ${serverFiles.size} photos already on server for ${session.client_name} — skipping upload`);
+                        exportState.set(folder, {
+                            exportCount,
+                            lastNotified: Date.now(),
+                            uploaded: true,
+                            uploadedFiles: serverFiles,
+                        });
+                        savePersistedState();
+                    } else {
+                        log(`Auto-uploading photos to gallery for ${session.client_name} (${serverFiles.size} already on server)...`);
 
-                    const galleryPassword = config.defaultGalleryPassword || '';
-                    const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
+                        const galleryPassword = config.defaultGalleryPassword || '';
+                        const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
 
-                    if (result.uploaded > 0) {
-                        log(`Gallery upload complete: ${result.uploaded}/${result.total} uploaded for ${session.client_name}`);
+                        if (result.uploaded > 0) {
+                            log(`Gallery upload complete: ${result.uploaded} new + ${serverFiles.size} existing for ${session.client_name}`);
 
-                        // Advance to delivering (images uploaded, not yet delivered)
-                        await wpAdvanceStage(
-                            session.tracking_code,
-                            'delivering',
-                            `${result.uploaded} photos uploaded to gallery`,
-                            { photo_count: result.uploaded }
-                        );
+                            // Only advance to delivering if not already there or beyond
+                            if (!['delivering', 'delivered'].includes(session.current_stage)) {
+                                await wpAdvanceStage(
+                                    session.tracking_code,
+                                    'delivering',
+                                    `${result.uploaded} photos uploaded to gallery`,
+                                    { photo_count: result.total }
+                                );
+                            }
+                        } else {
+                            log(`Gallery upload: no new photos to upload for ${session.client_name}`);
+                        }
 
                         exportState.set(folder, {
                             exportCount,
@@ -740,12 +833,7 @@ async function scan() {
                             uploaded: true,
                             uploadedFiles: result.uploadedFiles,
                         });
-                    } else {
-                        log(`Gallery upload: no new photos to upload for ${session.client_name}`);
-                        exportState.set(folder, {
-                            exportCount,
-                            lastNotified: Date.now(),
-                        });
+                        savePersistedState();
                     }
                 } else if (!AUTO_UPLOAD) {
                     // Just track the export, don't upload
@@ -768,12 +856,14 @@ async function scan() {
                     if (result.uploaded > 0) {
                         log(`Gallery upload complete: ${result.uploaded}/${result.total} for ${session.client_name}`);
 
-                        await wpAdvanceStage(
-                            session.tracking_code,
-                            'delivering',
-                            `${result.uploaded} photos uploaded to gallery`,
-                            { photo_count: result.uploaded }
-                        );
+                        if (!['delivering', 'delivered'].includes(session.current_stage)) {
+                            await wpAdvanceStage(
+                                session.tracking_code,
+                                'delivering',
+                                `${result.uploaded} photos uploaded to gallery`,
+                                { photo_count: result.uploaded }
+                            );
+                        }
                     }
 
                     exportState.set(folder, {
@@ -782,6 +872,7 @@ async function scan() {
                         uploaded: true,
                         uploadedFiles: result.uploadedFiles,
                     });
+                    savePersistedState();
                 }
             }
         }

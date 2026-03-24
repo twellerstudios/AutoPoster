@@ -60,6 +60,13 @@ class TwellerFlow_Gallery {
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
+        // Check existing photo filenames (used by watcher to avoid re-uploads)
+        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/filenames', array(
+            'methods'             => 'GET',
+            'callback'            => array( __CLASS__, 'rest_get_filenames' ),
+            'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
+        ));
+
         // Admin: set gallery password
         register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/password', array(
             'methods'             => 'POST',
@@ -203,6 +210,7 @@ class TwellerFlow_Gallery {
                 'has_password'  => $has_password,
                 'photos'        => array(),
                 'client_name'   => $session->client_name,
+                'session_date'  => $session->session_date,
             ));
         }
 
@@ -214,6 +222,7 @@ class TwellerFlow_Gallery {
                 'unlocked'     => false,
                 'photo_count'  => self::count_photos( $session->id ),
                 'client_name'  => $session->client_name,
+                'session_date' => $session->session_date,
             ));
         }
 
@@ -236,6 +245,7 @@ class TwellerFlow_Gallery {
             'has_password' => $has_password,
             'unlocked'     => true,
             'client_name'  => $session->client_name,
+            'session_date' => $session->session_date,
             'photos'       => $photo_list,
             'photo_count'  => count( $photo_list ),
         ));
@@ -374,6 +384,28 @@ class TwellerFlow_Gallery {
         }
 
         return rest_ensure_response( array( 'ok' => true ) );
+    }
+
+    // ── Get Filenames (for watcher dedup) ───────────────
+
+    public static function rest_get_filenames( $request ) {
+        $code = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $photos = self::get_photos( $session->id );
+        $filenames = array();
+        foreach ( $photos as $photo ) {
+            $filenames[] = $photo->filename;
+        }
+
+        return rest_ensure_response( array(
+            'ok'        => true,
+            'filenames' => $filenames,
+            'count'     => count( $filenames ),
+        ));
     }
 
     // ── Database ───────────────────────────────────────

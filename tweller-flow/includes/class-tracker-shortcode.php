@@ -145,40 +145,19 @@ class TwellerFlow_Tracker_Shortcode {
             </div>
 
             <?php if ( in_array( $session->current_stage, array( 'delivering', 'delivered' ), true ) ) : ?>
-                <!-- Full-width Ken Burns album slider (hidden until "View Album" clicked) -->
-                <div class="tf-album" id="tf-album" style="display:none;">
-                    <div class="tf-album__slide tf-album__slide--active" id="tf-album-slide-a">
-                        <img class="tf-album__img" id="tf-album-img-a" src="" alt="">
-                    </div>
-                    <div class="tf-album__slide" id="tf-album-slide-b">
-                        <img class="tf-album__img" id="tf-album-img-b" src="" alt="">
-                    </div>
-                    <div class="tf-album__overlay"></div>
-                    <div class="tf-album__counter" id="tf-album-counter"></div>
-                    <button class="tf-album__nav tf-album__prev" id="tf-album-prev">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-                    </button>
-                    <button class="tf-album__nav tf-album__next" id="tf-album-next">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-                    </button>
-                    <button class="tf-album__close" id="tf-album-close">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        Back to Gallery
-                    </button>
-                </div>
-
                 <div id="gallery" class="tf-gallery" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
-                    <!-- "View Album" CTA (shown first for delivered) -->
-                    <div class="tf-gallery__cta" id="tf-gallery-cta">
-                        <div class="tf-gallery__cta-icon">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+
+                    <!-- Hero Cover (full-width, first photo as background with Ken Burns) -->
+                    <div class="tf-hero-cover" id="tf-hero-cover" style="display:none;">
+                        <div class="tf-hero-cover__bg" id="tf-hero-cover-bg"></div>
+                        <div class="tf-hero-cover__overlay"></div>
+                        <div class="tf-hero-cover__content">
+                            <h1 class="tf-hero-cover__name" id="tf-hero-cover-name"><?php echo esc_html( strtoupper( $session->client_name ) ); ?></h1>
+                            <?php if ( $session->session_date ) : ?>
+                                <p class="tf-hero-cover__date" id="tf-hero-cover-date"><?php echo esc_html( strtoupper( date( 'F jS, Y', strtotime( $session->session_date ) ) ) ); ?></p>
+                            <?php endif; ?>
+                            <button class="tf-hero-cover__btn" id="tf-gallery-view-btn">VIEW GALLERY</button>
                         </div>
-                        <h3>Your Photos Have Been Delivered</h3>
-                        <p class="tf-gallery__cta-subtitle">Your gallery is ready to view.</p>
-                        <button class="tf-gallery__cta-btn" id="tf-gallery-view-btn">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                            View Album
-                        </button>
                     </div>
 
                     <!-- Password gate (shown/hidden by JS) -->
@@ -194,31 +173,20 @@ class TwellerFlow_Tracker_Shortcode {
                         <p class="tf-gallery__pw-error" id="tf-gallery-pw-error" style="display:none;">Incorrect password. Please try again.</p>
                     </div>
 
-                    <!-- Hero Slider (kept for grid view) -->
-                    <div class="tf-hero" id="tf-hero" style="display:none;">
-                        <div class="tf-hero__viewport">
-                            <img class="tf-hero__img" id="tf-hero-img" src="" alt="">
+                    <!-- Gallery toolbar (client name + download) -->
+                    <div class="tf-gallery__toolbar" id="tf-gallery-toolbar" style="display:none;">
+                        <div class="tf-gallery__toolbar-left">
+                            <span class="tf-gallery__toolbar-name" id="tf-gallery-toolbar-name"><?php echo esc_html( strtoupper( $session->client_name ) ); ?></span>
                         </div>
-                        <button class="tf-hero__nav tf-hero__prev" id="tf-hero-prev">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-                        </button>
-                        <button class="tf-hero__nav tf-hero__next" id="tf-hero-next">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-                        </button>
-                        <div class="tf-hero__dots" id="tf-hero-dots"></div>
-                        <div class="tf-hero__counter" id="tf-hero-counter"></div>
+                        <div class="tf-gallery__toolbar-right">
+                            <a id="tf-gallery-download-all" class="tf-gallery__toolbar-action" href="#" title="Download All">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </a>
+                        </div>
                     </div>
 
-                    <!-- Photo grid (populated by JS) -->
+                    <!-- Masonry photo grid (populated by JS) -->
                     <div class="tf-gallery__grid" id="tf-gallery-grid" style="display:none;"></div>
-
-                    <!-- Download all button -->
-                    <div class="tf-gallery__actions" id="tf-gallery-actions" style="display:none;">
-                        <a id="tf-gallery-download-all" class="tf-gallery__download-all" href="#">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            Download All Photos
-                        </a>
-                    </div>
 
                     <!-- Lightbox overlay -->
                     <div class="tf-lightbox" id="tf-lightbox" style="display:none;">

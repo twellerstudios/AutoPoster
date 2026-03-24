@@ -203,7 +203,8 @@ class AutomationPipeline {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   /**
-   * Create the export folder for a session (mirrors the import folder name).
+   * Create the export folder for a session.
+   * Named: {CODE} - {Client Name} - EXPORTS
    */
   async _createExportFolder(sessionCode) {
     if (!this.exportDir) {
@@ -211,7 +212,27 @@ class AutomationPipeline {
       return null;
     }
 
-    const exportSessionDir = path.join(this.exportDir, sessionCode);
+    // Fetch client name from WordPress
+    let clientName = '';
+    try {
+      const res = await axios.get(`${this.wpUrl}/wp-json/tweller-flow/v1/automation/sessions`, {
+        params: { api_key: this.wpApiKey },
+        timeout: 10000,
+      });
+      const session = (res.data || []).find(s => s.tracking_code === sessionCode);
+      if (session) {
+        clientName = session.client_name || '';
+      }
+    } catch (err) {
+      console.warn(`[Pipeline] Could not fetch client name for ${sessionCode}:`, err.message);
+    }
+
+    // Build folder name: "444D84 - Victoria & Jean Marc - EXPORTS"
+    const folderName = clientName
+      ? `${sessionCode} - ${clientName} - EXPORTS`
+      : `${sessionCode} - EXPORTS`;
+
+    const exportSessionDir = path.join(this.exportDir, folderName);
     await fs.mkdir(exportSessionDir, { recursive: true });
     console.log(`[Pipeline] ${sessionCode}: Created export folder: ${exportSessionDir}`);
     return exportSessionDir;
@@ -344,18 +365,32 @@ class AutomationPipeline {
   async getFolderStatus(sessionCode) {
     const status = await this.watcher.getSessionFolderStatus(sessionCode);
     if (status && this.exportDir) {
-      const exportSessionDir = path.join(this.exportDir, sessionCode);
-      try {
-        await fs.access(exportSessionDir);
-        const entries = await fs.readdir(exportSessionDir, { withFileTypes: true });
-        status.exportDir = exportSessionDir;
+      const exportFolder = await this._findExportFolder(sessionCode);
+      if (exportFolder) {
+        const entries = await fs.readdir(exportFolder, { withFileTypes: true });
+        status.exportDir = exportFolder;
         status.exportFiles = entries.filter(e => e.isFile()).length;
-      } catch {
+      } else {
         status.exportDir = null;
         status.exportFiles = 0;
       }
     }
     return status;
+  }
+
+  /**
+   * Find the export folder for a session by matching the code prefix.
+   * Folders are named: "{CODE} - {Client Name} - EXPORTS"
+   */
+  async _findExportFolder(sessionCode) {
+    if (!this.exportDir) return null;
+    try {
+      const entries = await fs.readdir(this.exportDir, { withFileTypes: true });
+      const match = entries.find(e => e.isDirectory() && e.name.startsWith(sessionCode));
+      return match ? path.join(this.exportDir, match.name) : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

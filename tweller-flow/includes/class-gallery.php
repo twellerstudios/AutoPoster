@@ -68,31 +68,14 @@ class TwellerFlow_Gallery {
 
     // ── Upload ─────────────────────────────────────────
 
-    public static function rest_upload_photo( $request ) {
-        $session_code = sanitize_text_field( $request->get_param( 'session_code' ) );
-        $password     = sanitize_text_field( $request->get_param( 'gallery_password' ) );
+    /**
+     * Save a single uploaded photo file to a session gallery.
+     * $file is a standard $_FILES entry (or REST file params entry).
+     * Returns array( 'ok', 'photo_id', 'filename' ) or WP_Error.
+     */
+    public static function save_photo_file( $session, $file ) {
+        $session_code = $session->tracking_code;
 
-        if ( empty( $session_code ) ) {
-            return new WP_Error( 'missing_code', 'session_code is required', array( 'status' => 400 ) );
-        }
-
-        $session = TwellerFlow_Session::get_by_code( $session_code );
-        if ( ! $session ) {
-            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
-        }
-
-        // Set gallery password if provided
-        if ( ! empty( $password ) ) {
-            self::set_password( $session->id, $password );
-        }
-
-        // Handle file upload
-        $files = $request->get_file_params();
-        if ( empty( $files['photo'] ) ) {
-            return new WP_Error( 'no_file', 'No photo file provided', array( 'status' => 400 ) );
-        }
-
-        $file = $files['photo'];
         if ( $file['error'] !== UPLOAD_ERR_OK ) {
             return new WP_Error( 'upload_error', 'Upload failed with error code ' . $file['error'], array( 'status' => 400 ) );
         }
@@ -144,11 +127,43 @@ class TwellerFlow_Gallery {
             TwellerFlow_Session::update( $session->id, array( 'gallery_url' => $gallery_url ) );
         }
 
-        return rest_ensure_response( array(
+        return array(
             'ok'       => true,
             'photo_id' => $photo_id,
             'filename' => $filename,
-        ));
+        );
+    }
+
+    public static function rest_upload_photo( $request ) {
+        $session_code = sanitize_text_field( $request->get_param( 'session_code' ) );
+        $password     = sanitize_text_field( $request->get_param( 'gallery_password' ) );
+
+        if ( empty( $session_code ) ) {
+            return new WP_Error( 'missing_code', 'session_code is required', array( 'status' => 400 ) );
+        }
+
+        $session = TwellerFlow_Session::get_by_code( $session_code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        // Set gallery password if provided
+        if ( ! empty( $password ) ) {
+            self::set_password( $session->id, $password );
+        }
+
+        // Handle file upload
+        $files = $request->get_file_params();
+        if ( empty( $files['photo'] ) ) {
+            return new WP_Error( 'no_file', 'No photo file provided', array( 'status' => 400 ) );
+        }
+
+        $result = self::save_photo_file( $session, $files['photo'] );
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        return rest_ensure_response( $result );
     }
 
     // ── Get Gallery ────────────────────────────────────

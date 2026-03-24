@@ -8,6 +8,159 @@
         <div class="tf-alert tf-alert--success">Gallery deleted.</div>
     <?php endif; ?>
 
+    <!-- Manual Upload Panel -->
+    <div class="tf-card tf-mb-6" id="tf-manual-upload-panel">
+        <h2 style="margin:0 0 16px 0; font-size:16px;">Manual Upload</h2>
+        <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+            <div>
+                <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:4px;">Session</label>
+                <select id="tf-upload-session" style="padding:7px 10px; border:1px solid #D1D5DB; border-radius:6px; font-size:13px; min-width:260px; font-family:inherit;">
+                    <option value="">— select a session —</option>
+                    <?php foreach ( $all_sessions as $s ) : ?>
+                        <option value="<?php echo esc_attr( $s->tracking_code ); ?>">
+                            <?php echo esc_html( $s->tracking_code . ' — ' . $s->client_name ); ?>
+                            <?php echo $s->session_date ? ' (' . date( 'M j Y', strtotime( $s->session_date ) ) . ')' : ''; ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
+        <!-- Drop zone -->
+        <div id="tf-drop-zone" style="border:2px dashed #D1D5DB; border-radius:10px; padding:40px 20px; text-align:center; cursor:pointer; transition:border-color .2s, background .2s; background:#FAFAFA;">
+            <div style="font-size:32px; margin-bottom:8px;">&#128444;</div>
+            <p style="margin:0 0 8px; font-size:14px; color:#374151; font-weight:600;">Drag &amp; drop photos here</p>
+            <p style="margin:0 0 12px; font-size:12px; color:#9CA3AF;">JPEG, PNG, or WebP — multiple files supported</p>
+            <input type="file" id="tf-file-input" accept="image/jpeg,image/png,image/webp" multiple style="display:none;">
+            <button type="button" id="tf-browse-btn" class="tf-btn tf-btn--secondary tf-btn--sm">Browse files</button>
+        </div>
+
+        <!-- File list -->
+        <div id="tf-file-list" style="margin-top:12px; display:none;">
+            <div style="font-size:12px; color:#6B7280; margin-bottom:8px;"><span id="tf-file-count">0</span> file(s) selected</div>
+            <div id="tf-file-names" style="max-height:120px; overflow-y:auto; font-size:12px; color:#374151; background:#F9FAFB; border:1px solid #E5E7EB; border-radius:6px; padding:8px 12px;"></div>
+        </div>
+
+        <!-- Progress -->
+        <div id="tf-upload-progress" style="display:none; margin-top:12px;">
+            <div style="height:6px; background:#E5E7EB; border-radius:3px; overflow:hidden;">
+                <div id="tf-progress-bar" style="height:100%; background:#6366F1; width:0%; transition:width .3s;"></div>
+            </div>
+            <p id="tf-progress-text" style="font-size:12px; color:#6B7280; margin:6px 0 0;"></p>
+        </div>
+
+        <!-- Result -->
+        <div id="tf-upload-result" style="display:none; margin-top:12px;"></div>
+
+        <div style="margin-top:16px; display:flex; gap:8px;">
+            <button type="button" id="tf-upload-btn" class="tf-btn tf-btn--primary" disabled>Upload Photos</button>
+            <button type="button" id="tf-clear-btn" class="tf-btn tf-btn--ghost" style="display:none;">Clear</button>
+        </div>
+    </div>
+
+    <script>
+    (function($){
+        var files = [];
+
+        function resetUI() {
+            files = [];
+            $('#tf-file-input').val('');
+            $('#tf-file-list').hide();
+            $('#tf-file-names').empty();
+            $('#tf-file-count').text('0');
+            $('#tf-upload-btn').prop('disabled', true);
+            $('#tf-clear-btn').hide();
+            $('#tf-upload-result').hide().empty();
+            $('#tf-upload-progress').hide();
+            $('#tf-progress-bar').css('width','0%');
+            $('#tf-drop-zone').css({borderColor:'#D1D5DB', background:'#FAFAFA'});
+        }
+
+        function showFiles(newFiles) {
+            files = Array.from(newFiles);
+            if (!files.length) return;
+            $('#tf-file-count').text(files.length);
+            $('#tf-file-names').html(files.map(function(f){ return '<div>'+$('<span>').text(f.name).html()+'</div>'; }).join(''));
+            $('#tf-file-list').show();
+            $('#tf-upload-btn').prop('disabled', !$('#tf-upload-session').val());
+            $('#tf-clear-btn').show();
+        }
+
+        $('#tf-browse-btn').on('click', function(){ $('#tf-file-input').trigger('click'); });
+        $('#tf-file-input').on('change', function(){ showFiles(this.files); });
+        $('#tf-clear-btn').on('click', resetUI);
+        $('#tf-upload-session').on('change', function(){
+            $('#tf-upload-btn').prop('disabled', !$(this).val() || !files.length);
+        });
+
+        var dz = document.getElementById('tf-drop-zone');
+        dz.addEventListener('dragover', function(e){ e.preventDefault(); $(dz).css({borderColor:'#6366F1', background:'#EEF2FF'}); });
+        dz.addEventListener('dragleave', function(){ $(dz).css({borderColor:'#D1D5DB', background:'#FAFAFA'}); });
+        dz.addEventListener('drop', function(e){
+            e.preventDefault();
+            $(dz).css({borderColor:'#D1D5DB', background:'#FAFAFA'});
+            showFiles(e.dataTransfer.files);
+        });
+
+        $('#tf-upload-btn').on('click', function(){
+            var sessionCode = $('#tf-upload-session').val();
+            if (!sessionCode || !files.length) return;
+
+            var total = files.length, done = 0, savedNames = [], errorMsgs = [];
+            $('#tf-upload-progress').show();
+            $('#tf-upload-result').hide().empty();
+            $('#tf-upload-btn').prop('disabled', true);
+
+            function uploadNext(idx) {
+                if (idx >= total) {
+                    // All done
+                    $('#tf-progress-bar').css('width','100%');
+                    var html = '';
+                    if (savedNames.length) {
+                        html += '<div class="tf-alert tf-alert--success">Uploaded ' + savedNames.length + ' photo(s) successfully.</div>';
+                    }
+                    if (errorMsgs.length) {
+                        html += '<div class="tf-alert tf-alert--error" style="margin-top:8px;">' + errorMsgs.join('<br>') + '</div>';
+                    }
+                    $('#tf-upload-result').html(html).show();
+                    setTimeout(function(){ location.reload(); }, 1500);
+                    return;
+                }
+
+                var pct = Math.round((idx / total) * 100);
+                $('#tf-progress-bar').css('width', pct + '%');
+                $('#tf-progress-text').text('Uploading ' + (idx+1) + ' of ' + total + ': ' + files[idx].name);
+
+                var fd = new FormData();
+                fd.append('action', 'tweller_flow_admin_upload');
+                fd.append('nonce', twellerFlow.nonce);
+                fd.append('session_code', sessionCode);
+                fd.append('photos[]', files[idx]);
+
+                $.ajax({
+                    url: twellerFlow.ajaxUrl,
+                    method: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    success: function(res){
+                        if (res.success) {
+                            savedNames = savedNames.concat(res.data.saved || []);
+                            errorMsgs  = errorMsgs.concat(res.data.errors || []);
+                        } else {
+                            errorMsgs.push(files[idx].name + ': ' + (res.data || 'Unknown error'));
+                        }
+                        uploadNext(idx + 1);
+                    },
+                    error: function(){ errorMsgs.push(files[idx].name + ': network error'); uploadNext(idx + 1); }
+                });
+            }
+
+            uploadNext(0);
+        });
+    })(jQuery);
+    </script>
+
     <?php if ( empty( $sessions_with_galleries ) ) : ?>
         <div class="tf-card">
             <p style="text-align:center; color:#6B7280; padding:40px 0;">

@@ -7,6 +7,7 @@ class TwellerFlow_Admin {
         add_action( 'admin_menu', array( $this, 'add_menus' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_init', array( $this, 'handle_actions' ) );
+        add_action( 'wp_ajax_tweller_flow_admin_upload', array( $this, 'ajax_admin_upload' ) );
     }
 
     /**
@@ -380,12 +381,11 @@ class TwellerFlow_Admin {
     }
 
     public function page_galleries() {
-        // Get all sessions that have gallery photos or are in delivered stage
         global $wpdb;
         $sessions_table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
         $gallery_table  = $wpdb->prefix . 'tweller_gallery_photos';
 
-        // Get sessions with galleries (have photos uploaded)
+        // Sessions that already have gallery photos or are in a late stage
         $sessions_with_galleries = $wpdb->get_results(
             "SELECT s.*, COUNT(g.id) as gallery_count
              FROM $sessions_table s
@@ -396,9 +396,70 @@ class TwellerFlow_Admin {
              LIMIT 50"
         );
 
+        // All sessions for the manual upload dropdown
+        $all_sessions = $wpdb->get_results(
+            "SELECT id, tracking_code, client_name, session_date, current_stage
+             FROM $sessions_table
+             ORDER BY session_date DESC, created_at DESC
+             LIMIT 200"
+        );
+
         $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
 
         include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/galleries.php';
+    }
+
+    /**
+     * AJAX: upload one or more photos to a gallery from the admin backend.
+     */
+    public function ajax_admin_upload() {
+        check_ajax_referer( 'tweller_flow_nonce', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized' );
+        }
+
+        $session_code = sanitize_text_field( $_POST['session_code'] ?? '' );
+        if ( empty( $session_code ) ) {
+            wp_send_json_error( 'session_code is required' );
+        }
+
+        $session = TwellerFlow_Session::get_by_code( $session_code );
+        if ( ! $session ) {
+            wp_send_json_error( 'Session not found: ' . $session_code );
+        }
+
+        if ( empty( $_FILES['photos'] ) ) {
+            wp_send_json_error( 'No files received' );
+        }
+
+        // $_FILES['photos'] may contain multiple files (HTML multiple attribute)
+        $files  = $_FILES['photos'];
+        $count  = is_array( $files['name'] ) ? count( $files['name'] ) : 1;
+        $saved  = array();
+        $errors = array();
+
+        for ( $i = 0; $i < $count; $i++ ) {
+            $file = is_array( $files['name'] ) ? array(
+                'name'     => $files['name'][ $i ],
+                'type'     => $files['type'][ $i ],
+                'tmp_name' => $files['tmp_name'][ $i ],
+                'error'    => $files['error'][ $i ],
+                'size'     => $files['size'][ $i ],
+            ) : $files;
+
+            $result = TwellerFlow_Gallery::save_photo_file( $session, $file );
+            if ( is_wp_error( $result ) ) {
+                $errors[] = $file['name'] . ': ' . $result->get_error_message();
+            } else {
+                $saved[] = $result['filename'];
+            }
+        }
+
+        wp_send_json_success( array(
+            'saved'  => $saved,
+            'errors' => $errors,
+            'count'  => count( $saved ),
+        ) );
     }
 }
 

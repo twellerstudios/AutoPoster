@@ -803,7 +803,7 @@ async function scan() {
                 }
 
                 // Auto-upload to WordPress gallery
-                if (AUTO_UPLOAD && (!prev || !prev.uploaded)) {
+                if (AUTO_UPLOAD) {
                     // Check server first — photos may already be uploaded (e.g. stage went back)
                     const serverFiles = await wpGetExistingPhotos(session.tracking_code);
                     if (serverFiles.size >= exportCount) {
@@ -816,13 +816,14 @@ async function scan() {
                         });
                         savePersistedState();
                     } else {
-                        log(`Auto-uploading photos to gallery for ${session.client_name} (${serverFiles.size} already on server)...`);
+                        const alreadyCount = Math.max(serverFiles.size, prev?.uploadedFiles?.size || 0);
+                        log(`Auto-uploading photos to gallery for ${session.client_name} (${alreadyCount} already uploaded)...`);
 
                         const galleryPassword = config.defaultGalleryPassword || '';
                         const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
 
                         if (result.uploaded > 0) {
-                            log(`Gallery upload complete: ${result.uploaded} new + ${serverFiles.size} existing for ${session.client_name}`);
+                            log(`Gallery upload complete: ${result.uploaded} new + ${alreadyCount} existing for ${session.client_name}`);
 
                             // Only advance to delivering if not already there or beyond
                             if (!['delivering', 'delivered'].includes(session.current_stage)) {
@@ -845,7 +846,7 @@ async function scan() {
                         });
                         savePersistedState();
                     }
-                } else if (!AUTO_UPLOAD) {
+                } else {
                     // Just track the export, don't upload
                     exportState.set(folder, {
                         exportCount,

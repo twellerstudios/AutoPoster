@@ -454,38 +454,52 @@ function getExportPhotos(folderPath) {
  * Upload a single photo to the WordPress gallery API.
  * Uses multipart/form-data via raw HTTP.
  */
+const UPLOAD_DELAY_MS = 2000;   // 2s pause between uploads to avoid overwhelming the server
+const MAX_RETRIES = 3;          // retry failed uploads up to 3 times
+const MAX_CONSECUTIVE_FAILS = 5; // abort batch after 5 consecutive failures
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 async function wpUploadPhoto(sessionCode, filePath, fileName, galleryPassword) {
     const FormData = (await import('form-data')).default;
-    const form = new FormData();
-    form.append('session_code', sessionCode);
-    form.append('photo', fs.createReadStream(filePath), fileName);
-    if (galleryPassword) {
-        form.append('gallery_password', galleryPassword);
-    }
-
-    // Include api_key in both the form body and the Authorization header.
-    // Apache/Nginx often strips the Authorization header before PHP sees it,
-    // so sending it in the body as well ensures auth always works.
-    if (API_KEY) form.append('api_key', API_KEY);
-
     const url = `${WP_URL}/wp-json/tweller-flow/v1/photo-upload`;
 
-    try {
-        const res = await axios.post(url, form, {
-            headers: {
-                ...form.getHeaders(),
-                'Authorization': API_KEY ? `Bearer ${API_KEY}` : '',
-            },
-            timeout: 60000, // 60s per photo (large files)
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-        });
-        return res.data;
-    } catch (err) {
-        const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
-        log(`Upload failed for ${fileName}: ${detail}`, 'error');
-        return null;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        const form = new FormData();
+        form.append('session_code', sessionCode);
+        form.append('photo', fs.createReadStream(filePath), fileName);
+        if (galleryPassword) {
+            form.append('gallery_password', galleryPassword);
+        }
+        if (API_KEY) form.append('api_key', API_KEY);
+
+        try {
+            const res = await axios.post(url, form, {
+                headers: {
+                    ...form.getHeaders(),
+                    'Authorization': API_KEY ? `Bearer ${API_KEY}` : '',
+                },
+                timeout: 60000,
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity,
+            });
+            return res.data;
+        } catch (err) {
+            const status = err.response?.status;
+            const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
+
+            if (attempt < MAX_RETRIES && (status === 503 || status === 429 || status === 502)) {
+                const backoff = attempt * 5000; // 5s, 10s, 15s
+                log(`Upload ${fileName} got ${status}, retrying in ${backoff / 1000}s (attempt ${attempt}/${MAX_RETRIES})...`, 'warn');
+                await sleep(backoff);
+                continue;
+            }
+
+            log(`Upload failed for ${fileName}: ${detail}`, 'error');
+            return null;
+        }
     }
+    return null;
 }
 
 /**
@@ -493,7 +507,24 @@ async function wpUploadPhoto(sessionCode, filePath, fileName, galleryPassword) {
  * Checks both local state AND server-side to avoid duplicates.
  * Returns { uploaded, failed, total }
  */
+const activeUploads = new Set(); // prevent concurrent uploads for the same session
+
 async function uploadExportFolder(sessionCode, folderPath, galleryPassword) {
+    // Prevent concurrent uploads for the same session
+    if (activeUploads.has(sessionCode)) {
+        log(`Upload already in progress for ${sessionCode} — skipping`);
+        return { uploaded: 0, failed: 0, total: 0, skipped: true };
+    }
+
+    activeUploads.add(sessionCode);
+    try {
+        return await _doUpload(sessionCode, folderPath, galleryPassword);
+    } finally {
+        activeUploads.delete(sessionCode);
+    }
+}
+
+async function _doUpload(sessionCode, folderPath, galleryPassword) {
     const photos = getExportPhotos(folderPath);
     if (photos.length === 0) return { uploaded: 0, failed: 0, total: 0 };
 
@@ -510,6 +541,7 @@ async function uploadExportFolder(sessionCode, folderPath, galleryPassword) {
 
     let uploaded = 0;
     let failed = 0;
+    let consecutiveFails = 0;
 
     const toUpload = photos.filter(p => !alreadyUploaded.has(p.name));
     if (toUpload.length === 0) {
@@ -526,11 +558,22 @@ async function uploadExportFolder(sessionCode, folderPath, galleryPassword) {
         const result = await wpUploadPhoto(sessionCode, photo.path, photo.name, galleryPassword);
         if (result && result.ok) {
             uploaded++;
+            consecutiveFails = 0;
             alreadyUploaded.add(photo.name);
             // Only send password on first upload
             galleryPassword = null;
         } else {
             failed++;
+            consecutiveFails++;
+            if (consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+                log(`Aborting upload for ${sessionCode}: ${MAX_CONSECUTIVE_FAILS} consecutive failures — server may be overloaded`, 'error');
+                break;
+            }
+        }
+
+        // Throttle: pause between uploads to avoid overwhelming the server
+        if (current < totalNew) {
+            await sleep(UPLOAD_DELAY_MS);
         }
     }
 
@@ -822,7 +865,9 @@ async function scan() {
                         const galleryPassword = config.defaultGalleryPassword || '';
                         const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
 
-                        if (result.uploaded > 0) {
+                        if (result.skipped) {
+                            // Upload lock prevented concurrent upload — don't update state, retry next scan
+                        } else if (result.uploaded > 0) {
                             log(`Gallery upload complete: ${result.uploaded} new + ${alreadyCount} existing for ${session.client_name}`);
 
                             // Only advance to delivering if not already there or beyond
@@ -834,17 +879,24 @@ async function scan() {
                                     { photo_count: result.total }
                                 );
                             }
+
+                            exportState.set(folder, {
+                                exportCount,
+                                lastNotified: Date.now(),
+                                uploaded: true,
+                                uploadedFiles: result.uploadedFiles,
+                            });
+                            savePersistedState();
                         } else {
                             log(`Gallery upload: no new photos to upload for ${session.client_name}`);
+                            exportState.set(folder, {
+                                exportCount,
+                                lastNotified: Date.now(),
+                                uploaded: true,
+                                uploadedFiles: result.uploadedFiles,
+                            });
+                            savePersistedState();
                         }
-
-                        exportState.set(folder, {
-                            exportCount,
-                            lastNotified: Date.now(),
-                            uploaded: true,
-                            uploadedFiles: result.uploadedFiles,
-                        });
-                        savePersistedState();
                     }
                 } else {
                     // Just track the export, don't upload
@@ -864,26 +916,30 @@ async function scan() {
                     const galleryPassword = config.defaultGalleryPassword || '';
                     const result = await uploadExportFolder(session.tracking_code, folderPath, galleryPassword);
 
-                    if (result.uploaded > 0) {
-                        log(`Gallery upload complete: ${result.uploaded}/${result.total} for ${session.client_name}`);
+                    if (result.skipped) {
+                        // Upload lock prevented concurrent upload — retry next scan
+                    } else {
+                        if (result.uploaded > 0) {
+                            log(`Gallery upload complete: ${result.uploaded}/${result.total} for ${session.client_name}`);
 
-                        if (!['delivering', 'delivered'].includes(session.current_stage)) {
-                            await wpAdvanceStage(
-                                session.tracking_code,
-                                'delivering',
-                                `${result.uploaded} photos uploaded to gallery`,
-                                { photo_count: result.uploaded }
-                            );
+                            if (!['delivering', 'delivered'].includes(session.current_stage)) {
+                                await wpAdvanceStage(
+                                    session.tracking_code,
+                                    'delivering',
+                                    `${result.uploaded} photos uploaded to gallery`,
+                                    { photo_count: result.uploaded }
+                                );
+                            }
                         }
-                    }
 
-                    exportState.set(folder, {
-                        exportCount,
-                        lastNotified: Date.now(),
-                        uploaded: true,
-                        uploadedFiles: result.uploadedFiles,
-                    });
-                    savePersistedState();
+                        exportState.set(folder, {
+                            exportCount,
+                            lastNotified: Date.now(),
+                            uploaded: true,
+                            uploadedFiles: result.uploadedFiles,
+                        });
+                        savePersistedState();
+                    }
                 }
             }
         }

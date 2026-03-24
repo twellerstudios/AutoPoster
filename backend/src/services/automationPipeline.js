@@ -22,6 +22,7 @@ class AutomationPipeline {
     this.wpUrl = config.wpUrl || process.env.WP_AUTOMATION_URL || '';
     this.wpApiKey = config.wpApiKey || process.env.WP_AUTOMATION_API_KEY || '';
     this.watchDir = config.watchDir || process.env.PHOTO_WATCH_DIR || '';
+    this.exportDir = config.exportDir || process.env.PHOTO_EXPORT_DIR || '';
     this.galleryBaseUrl = config.galleryBaseUrl || process.env.GALLERY_BASE_URL || '';
 
     // Culling settings
@@ -116,6 +117,9 @@ class AutomationPipeline {
       console.log(`[Pipeline] ${sessionCode}: Found ${rawFiles.length} photos in raw/`);
 
       // ── Step 2: Auto-cull ──
+      // Create the export folder when culling starts
+      await this._createExportFolder(sessionCode);
+
       await this._advanceWpStage(sessionCode, 'culling', `Culling ${rawFiles.length} photos`);
       this._updatePipelineState(sessionCode, 'culling', `Analyzing ${rawFiles.length} photos`);
 
@@ -198,6 +202,21 @@ class AutomationPipeline {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
+  /**
+   * Create the export folder for a session (mirrors the import folder name).
+   */
+  async _createExportFolder(sessionCode) {
+    if (!this.exportDir) {
+      console.log(`[Pipeline] PHOTO_EXPORT_DIR not set — skipping export folder creation`);
+      return null;
+    }
+
+    const exportSessionDir = path.join(this.exportDir, sessionCode);
+    await fs.mkdir(exportSessionDir, { recursive: true });
+    console.log(`[Pipeline] ${sessionCode}: Created export folder: ${exportSessionDir}`);
+    return exportSessionDir;
+  }
+
   async _prepareAndNotify(sessionCode, sessionDir, galleryDir) {
     const galleryFiles = await this._listImageFiles(galleryDir);
 
@@ -206,11 +225,11 @@ class AutomationPipeline {
       ? `${this.galleryBaseUrl}/${sessionCode}`
       : '';
 
-    // Advance to gallery_created
-    await this._advanceWpStage(sessionCode, 'gallery_created', `Gallery ready: ${galleryFiles.length} photos`, galleryUrl);
+    // Advance to exporting (photos ready for Lightroom export)
+    await this._advanceWpStage(sessionCode, 'exporting', `${galleryFiles.length} photos ready for export`, galleryUrl);
 
-    // Auto-advance to client_notified (notification email is triggered by WP)
-    await this._advanceWpStage(sessionCode, 'client_notified', 'Client notification sent');
+    // Advance to delivering (gallery uploaded)
+    await this._advanceWpStage(sessionCode, 'delivering', 'Gallery uploaded — notifying client');
 
     // Mark as delivered
     await this._advanceWpStage(sessionCode, 'delivered', 'Session delivered automatically');
@@ -320,17 +339,32 @@ class AutomationPipeline {
   }
 
   /**
-   * Get folder status for a session.
+   * Get folder status for a session (including export folder).
    */
   async getFolderStatus(sessionCode) {
-    return this.watcher.getSessionFolderStatus(sessionCode);
+    const status = await this.watcher.getSessionFolderStatus(sessionCode);
+    if (status && this.exportDir) {
+      const exportSessionDir = path.join(this.exportDir, sessionCode);
+      try {
+        await fs.access(exportSessionDir);
+        const entries = await fs.readdir(exportSessionDir, { withFileTypes: true });
+        status.exportDir = exportSessionDir;
+        status.exportFiles = entries.filter(e => e.isFile()).length;
+      } catch {
+        status.exportDir = null;
+        status.exportFiles = 0;
+      }
+    }
+    return status;
   }
 
   /**
-   * Create session folders.
+   * Create session folders (import + export).
    */
   async createSessionFolders(sessionCode) {
-    return this.watcher.createSessionFolders(sessionCode);
+    const sessionDir = await this.watcher.createSessionFolders(sessionCode);
+    await this._createExportFolder(sessionCode);
+    return sessionDir;
   }
 }
 

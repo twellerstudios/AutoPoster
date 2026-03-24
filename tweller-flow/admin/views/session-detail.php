@@ -54,6 +54,7 @@
                         'check-square' => '&#9745;',
                         'edit-2'       => '&#9998;',
                         'check-circle' => '&#10004;',
+                        'upload'       => '&#11014;',
                         'send'         => '&#10148;',
                     );
                     $icon_char = $icon_map[ $stage_info['icon'] ?? '' ] ?? '';

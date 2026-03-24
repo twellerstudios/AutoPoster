@@ -34,12 +34,18 @@ class TwellerFlow_Webhook_Handler {
             }
         }
 
+        // Log the raw webhook payload for debugging
+        error_log( '[TwellerFlow Webhook] Received payload: ' . wp_json_encode( $body ) );
+
         // Extract order data from SureCart webhook payload
         $event_type = $body['type'] ?? '';
 
+        error_log( '[TwellerFlow Webhook] Event type: ' . $event_type );
+
         $handled_events = array( 'checkout.completed', 'order.created', 'order.paid', 'purchase.created', 'purchase.invoked' );
         if ( ! in_array( $event_type, $handled_events, true ) ) {
-            return rest_ensure_response( array( 'status' => 'ignored', 'reason' => 'Event type not handled' ) );
+            error_log( '[TwellerFlow Webhook] Event type NOT handled: ' . $event_type );
+            return rest_ensure_response( array( 'status' => 'ignored', 'reason' => 'Event type not handled', 'received_type' => $event_type ) );
         }
 
         $order = $body['data'] ?? array();
@@ -73,6 +79,8 @@ class TwellerFlow_Webhook_Handler {
             'surecart_order_id' => sanitize_text_field( $order['id'] ?? '' ),
             'notes'             => 'Auto-created from SureCart order',
         ));
+
+        error_log( '[TwellerFlow Webhook] Session create result: ' . var_export( $session_id, true ) );
 
         if ( $session_id ) {
             $session = TwellerFlow_Session::get( $session_id );

@@ -361,9 +361,79 @@
                             </div>
                         <?php endforeach; ?>
                     </div>
-                <?php else : ?>
-                    <p class="tf-muted" style="font-size:13px; margin-bottom:12px;">No photos uploaded yet. Use the Lightroom plugin to export and upload photos.</p>
                 <?php endif; ?>
+
+                <!-- Drop zone upload -->
+                <div id="sd-drop-zone" style="border:2px dashed #D1D5DB; border-radius:8px; padding:24px 16px; text-align:center; cursor:pointer; background:#FAFAFA; margin-bottom:12px; transition:border-color .2s,background .2s;">
+                    <div style="font-size:24px; margin-bottom:6px;">&#128444;</div>
+                    <p style="margin:0 0 6px; font-size:13px; color:#374151; font-weight:600;">Drop photos here or <span style="color:#6366F1; text-decoration:underline;">browse</span></p>
+                    <p style="margin:0; font-size:11px; color:#9CA3AF;">JPEG, PNG or WebP — multiple files supported</p>
+                    <input type="file" id="sd-file-input" accept="image/jpeg,image/png,image/webp" multiple style="display:none;">
+                </div>
+                <div id="sd-progress" style="display:none; margin-bottom:10px;">
+                    <div style="height:5px; background:#E5E7EB; border-radius:3px; overflow:hidden;">
+                        <div id="sd-bar" style="height:100%; background:#6366F1; width:0%; transition:width .3s;"></div>
+                    </div>
+                    <p id="sd-progress-text" style="font-size:11px; color:#6B7280; margin:4px 0 0;"></p>
+                </div>
+                <div id="sd-result" style="display:none; font-size:12px; margin-bottom:10px;"></div>
+
+                <script>
+                (function($){
+                    var SESSION_CODE = '<?php echo esc_js( $session->tracking_code ); ?>';
+                    var files = [];
+
+                    var dz = document.getElementById('sd-drop-zone');
+                    var fi = document.getElementById('sd-file-input');
+
+                    dz.addEventListener('click', function(){ fi.click(); });
+                    fi.addEventListener('change', function(){ startUpload(this.files); });
+                    dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.style.borderColor='#6366F1'; dz.style.background='#EEF2FF'; });
+                    dz.addEventListener('dragleave', function(){ dz.style.borderColor='#D1D5DB'; dz.style.background='#FAFAFA'; });
+                    dz.addEventListener('drop', function(e){ e.preventDefault(); dz.style.borderColor='#D1D5DB'; dz.style.background='#FAFAFA'; startUpload(e.dataTransfer.files); });
+
+                    function startUpload(fileList) {
+                        files = Array.from(fileList);
+                        if (!files.length) return;
+                        var total = files.length, done = 0, saved = [], errors = [];
+                        $('#sd-progress').show();
+                        $('#sd-result').hide().empty();
+
+                        function next(i) {
+                            if (i >= total) {
+                                $('#sd-bar').css('width','100%');
+                                var html = '';
+                                if (saved.length) html += '<span style="color:#16a34a;">&#10003; ' + saved.length + ' photo(s) uploaded.</span> ';
+                                if (errors.length) html += '<span style="color:#dc2626;">&#10007; ' + errors.join(', ') + '</span>';
+                                $('#sd-result').html(html).show();
+                                setTimeout(function(){ location.reload(); }, 1200);
+                                return;
+                            }
+                            var pct = Math.round((i / total) * 100);
+                            $('#sd-bar').css('width', pct + '%');
+                            $('#sd-progress-text').text('Uploading ' + (i+1) + ' of ' + total + ': ' + files[i].name);
+
+                            var fd = new FormData();
+                            fd.append('action', 'tweller_flow_admin_upload');
+                            fd.append('nonce', twellerFlow.nonce);
+                            fd.append('session_code', SESSION_CODE);
+                            fd.append('photos[]', files[i]);
+
+                            $.ajax({
+                                url: twellerFlow.ajaxUrl, method: 'POST',
+                                data: fd, processData: false, contentType: false,
+                                success: function(r){
+                                    if (r.success) { saved = saved.concat(r.data.saved||[]); errors = errors.concat(r.data.errors||[]); }
+                                    else { errors.push(files[i].name + ': ' + (r.data||'error')); }
+                                    next(i+1);
+                                },
+                                error: function(){ errors.push(files[i].name + ': network error'); next(i+1); }
+                            });
+                        }
+                        next(0);
+                    }
+                })(jQuery);
+                </script>
 
                 <!-- Gallery Password -->
                 <div style="display:flex; gap:8px; align-items:center; padding-top:12px; border-top:1px solid #F3F4F6;">

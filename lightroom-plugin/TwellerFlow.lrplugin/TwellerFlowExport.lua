@@ -293,7 +293,7 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
             if uploadToSite and siteUrl ~= "" then
                 progressScope:setCaption( "Uploading " .. fileName .. " (" .. photoIndex .. "/" .. nPhotos .. ")" )
 
-                local uploadUrl = siteUrl .. "/wp-json/tweller-flow/v1/gallery/upload"
+                local uploadUrl = siteUrl .. "/wp-json/tweller-flow/v1/photo-upload"
 
                 local mimeType = "image/jpeg"
                 local fileContents = nil
@@ -312,6 +312,13 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
                     body = body .. "--" .. boundary .. "\r\n"
                     body = body .. 'Content-Disposition: form-data; name="session_code"\r\n\r\n'
                     body = body .. sessionCode .. "\r\n"
+
+                    -- API key in body (header may be stripped by Apache/Nginx)
+                    if apiKey ~= "" then
+                        body = body .. "--" .. boundary .. "\r\n"
+                        body = body .. 'Content-Disposition: form-data; name="api_key"\r\n\r\n'
+                        body = body .. apiKey .. "\r\n"
+                    end
 
                     -- Password field (only on first photo)
                     if photoIndex == 1 and galleryPassword ~= "" then

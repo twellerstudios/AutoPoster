@@ -389,7 +389,12 @@ async function wpUploadPhoto(sessionCode, filePath, fileName, galleryPassword) {
         form.append('gallery_password', galleryPassword);
     }
 
-    const url = `${WP_URL}/wp-json/tweller-flow/v1/gallery/upload`;
+    // Include api_key in both the form body and the Authorization header.
+    // Apache/Nginx often strips the Authorization header before PHP sees it,
+    // so sending it in the body as well ensures auth always works.
+    if (API_KEY) form.append('api_key', API_KEY);
+
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/photo-upload`;
 
     try {
         const res = await axios.post(url, form, {

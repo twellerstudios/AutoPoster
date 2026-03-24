@@ -16,8 +16,10 @@ class TwellerFlow_Gallery {
     // ── REST Routes ─────────────────────────────────────
 
     public static function register_rest_routes() {
-        // Upload photo (from LR plugin or manual)
-        register_rest_route( 'tweller-flow/v1', '/gallery/upload', array(
+        // Upload photo (from watcher / LR plugin / admin drag-drop)
+        // Route is /photo-upload (not under /gallery/) to avoid conflicting
+        // with the /gallery/{code} regex route when auth fails.
+        register_rest_route( 'tweller-flow/v1', '/photo-upload', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_upload_photo' ),
             'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),

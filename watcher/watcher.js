@@ -429,10 +429,14 @@ async function uploadExportFolder(sessionCode, folderPath, galleryPassword) {
     let uploaded = 0;
     let failed = 0;
 
-    for (const photo of photos) {
-        if (alreadyUploaded.has(photo.name)) continue;
+    const toUpload = photos.filter(p => !alreadyUploaded.has(p.name));
+    if (toUpload.length === 0) return { uploaded: 0, failed: 0, total: photos.length, uploadedFiles: alreadyUploaded };
+    const totalNew = toUpload.length;
+    let current = 0;
 
-        log(`Uploading ${photo.name} for ${sessionCode}...`);
+    for (const photo of toUpload) {
+        current++;
+        log(`Uploading ${photo.name} (${current}/${totalNew}) for ${sessionCode}...`);
         const result = await wpUploadPhoto(sessionCode, photo.path, photo.name, galleryPassword);
         if (result && result.ok) {
             uploaded++;
@@ -722,10 +726,10 @@ async function scan() {
                     if (result.uploaded > 0) {
                         log(`Gallery upload complete: ${result.uploaded}/${result.total} uploaded for ${session.client_name}`);
 
-                        // Advance to delivered
+                        // Advance to delivering (images uploaded, not yet delivered)
                         await wpAdvanceStage(
                             session.tracking_code,
-                            'delivered',
+                            'delivering',
                             `${result.uploaded} photos uploaded to gallery`,
                             { photo_count: result.uploaded }
                         );
@@ -766,7 +770,7 @@ async function scan() {
 
                         await wpAdvanceStage(
                             session.tracking_code,
-                            'delivered',
+                            'delivering',
                             `${result.uploaded} photos uploaded to gallery`,
                             { photo_count: result.uploaded }
                         );

@@ -82,11 +82,11 @@ class TwellerFlow_Database {
                 'culled'     => array( 'label' => 'Culled',     'client_label' => 'Editing',      'icon' => 'check-square', 'notify' => false ),
                 'editing'    => array( 'label' => 'Editing',    'client_label' => 'Editing',      'icon' => 'edit-2',       'notify' => false ),
                 'edited'     => array( 'label' => 'Edited',     'client_label' => 'Done Editing', 'icon' => 'check-circle', 'notify' => true ),
-                'delivering' => array( 'label' => 'Delivering', 'client_label' => 'Done Editing', 'icon' => 'send',         'notify' => false ),
+                'delivering' => array( 'label' => 'Delivering', 'client_label' => 'Images Uploaded', 'icon' => 'send',         'notify' => true ),
                 'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',    'icon' => 'check-circle', 'notify' => true ),
             ),
             'tweller_flow_client_stages' => array(
-                'Booked', 'Editing', 'Done Editing', 'Delivered'
+                'Booked', 'Editing', 'Done Editing', 'Images Uploaded', 'Delivered'
             ),
             'tweller_flow_packages' => array(
                 'mini' => array(

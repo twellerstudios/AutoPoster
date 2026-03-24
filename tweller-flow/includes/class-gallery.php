@@ -195,8 +195,8 @@ class TwellerFlow_Gallery {
             $is_unlocked = true;
         }
 
-        // Only show in delivered stage
-        if ( $session->current_stage !== 'delivered' ) {
+        // Show gallery once images are uploaded (delivering) or delivered
+        if ( ! in_array( $session->current_stage, array( 'delivering', 'delivered' ), true ) ) {
             return rest_ensure_response( array(
                 'ok'            => true,
                 'ready'         => false,

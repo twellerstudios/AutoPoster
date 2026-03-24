@@ -91,6 +91,7 @@ class TwellerFlow_Tracker_Shortcode {
             'Booked'       => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
             'Editing'      => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
             'Done Editing' => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+            'Images Uploaded' => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
             'Delivered'    => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
         );
         ?>
@@ -143,7 +144,7 @@ class TwellerFlow_Tracker_Shortcode {
                 <?php endforeach; ?>
             </div>
 
-            <?php if ( $session->current_stage === 'delivered' ) : ?>
+            <?php if ( in_array( $session->current_stage, array( 'delivering', 'delivered' ), true ) ) : ?>
                 <div id="gallery" class="tf-gallery" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
                     <div class="tf-gallery__header">
                         <h3>Your Photos Are Ready!</h3>
@@ -161,6 +162,21 @@ class TwellerFlow_Tracker_Shortcode {
                             <button type="submit" class="tf-gallery__pw-btn">Unlock</button>
                         </form>
                         <p class="tf-gallery__pw-error" id="tf-gallery-pw-error" style="display:none;">Incorrect password. Please try again.</p>
+                    </div>
+
+                    <!-- Hero Slider -->
+                    <div class="tf-hero" id="tf-hero" style="display:none;">
+                        <div class="tf-hero__viewport">
+                            <img class="tf-hero__img" id="tf-hero-img" src="" alt="">
+                        </div>
+                        <button class="tf-hero__nav tf-hero__prev" id="tf-hero-prev">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <button class="tf-hero__nav tf-hero__next" id="tf-hero-next">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <div class="tf-hero__dots" id="tf-hero-dots"></div>
+                        <div class="tf-hero__counter" id="tf-hero-counter"></div>
                     </div>
 
                     <!-- Photo grid (populated by JS) -->

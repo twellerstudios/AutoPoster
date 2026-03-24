@@ -306,9 +306,10 @@
 
 .tf-gallery {
     margin-top: 40px;
-    max-width: 900px;
+    max-width: 1200px;
     margin-left: auto;
     margin-right: auto;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .tf-gallery__header {
@@ -395,37 +396,174 @@
     margin-top: 12px;
 }
 
-/* ── Photo Grid (Masonry) ──────────────────────────── */
+/* ── Hero Slider ───────────────────────────────────── */
+
+.tf-hero {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    max-height: 70vh;
+    background: #0a0a0a;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 32px;
+}
+
+.tf-hero__viewport {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tf-hero__img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: opacity 0.5s ease;
+    user-select: none;
+}
+
+.tf-hero__img--fading {
+    opacity: 0;
+}
+
+.tf-hero__nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.25s, background 0.2s;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+}
+
+.tf-hero:hover .tf-hero__nav { opacity: 1; }
+
+.tf-hero__nav:hover {
+    background: rgba(255,255,255,0.3);
+}
+
+.tf-hero__prev { left: 12px; }
+.tf-hero__next { right: 12px; }
+
+.tf-hero__dots {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 5;
+}
+
+.tf-hero__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.35);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.tf-hero__dot--active {
+    background: #fff;
+    transform: scale(1.25);
+}
+
+.tf-hero__counter {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: rgba(0,0,0,0.45);
+    color: rgba(255,255,255,0.8);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 100px;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+}
+
+/* Mobile hero */
+@media (max-width: 640px) {
+    .tf-hero {
+        aspect-ratio: 4 / 3;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .tf-hero__nav {
+        width: 36px;
+        height: 36px;
+        opacity: 0.7;
+    }
+    .tf-hero__prev { left: 8px; }
+    .tf-hero__next { right: 8px; }
+}
+
+/* ── Photo Grid (CSS Grid — stable, no shifting) ──── */
 
 .tf-gallery__grid {
-    columns: 3;
-    column-gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+@media (max-width: 900px) {
+    .tf-gallery__grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 640px) {
-    .tf-gallery__grid { columns: 2; }
+    .tf-gallery__grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
 }
 
 .tf-gallery__item {
-    break-inside: avoid;
-    margin-bottom: 10px;
-    border-radius: 8px;
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 6px;
     overflow: hidden;
     cursor: pointer;
-    position: relative;
     background: #F3F4F6;
-    transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.tf-gallery__item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+.tf-gallery__item::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0);
+    transition: background 0.2s;
+}
+
+.tf-gallery__item:hover::after {
+    background: rgba(0,0,0,0.08);
 }
 
 .tf-gallery__item img {
     width: 100%;
+    height: 100%;
+    object-fit: cover;
     display: block;
-    transition: opacity 0.3s;
+    transition: opacity 0.4s, transform 0.3s;
+}
+
+.tf-gallery__item:hover img {
+    transform: scale(1.03);
 }
 
 .tf-gallery__item img.loading {
@@ -464,16 +602,16 @@
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: rgba(0, 0, 0, 0.92);
+    background: rgba(0, 0, 0, 0.95);
     display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(8px);
 }
 
 .tf-lightbox__content {
-    max-width: 90vw;
-    max-height: 85vh;
+    max-width: 92vw;
+    max-height: 88vh;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -481,10 +619,9 @@
 
 .tf-lightbox__img {
     max-width: 100%;
-    max-height: 85vh;
+    max-height: 88vh;
     object-fit: contain;
     border-radius: 4px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     user-select: none;
 }
 

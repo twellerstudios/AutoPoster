@@ -48,22 +48,30 @@
     var galleryToken = sessionStorage.getItem('tf_gallery_token_' + code) || '';
     var photos = [];
     var currentIdx = 0;
+    var heroIdx = 0;
+    var heroTimer = null;
 
     // Elements
-    var pwSection  = document.getElementById('tf-gallery-password');
-    var pwForm     = document.getElementById('tf-gallery-pw-form');
-    var pwInput    = document.getElementById('tf-gallery-pw-input');
-    var pwError    = document.getElementById('tf-gallery-pw-error');
-    var grid       = document.getElementById('tf-gallery-grid');
-    var actions    = document.getElementById('tf-gallery-actions');
+    var pwSection   = document.getElementById('tf-gallery-password');
+    var pwForm      = document.getElementById('tf-gallery-pw-form');
+    var pwInput     = document.getElementById('tf-gallery-pw-input');
+    var pwError     = document.getElementById('tf-gallery-pw-error');
+    var hero        = document.getElementById('tf-hero');
+    var heroImg     = document.getElementById('tf-hero-img');
+    var heroPrev    = document.getElementById('tf-hero-prev');
+    var heroNext    = document.getElementById('tf-hero-next');
+    var heroDots    = document.getElementById('tf-hero-dots');
+    var heroCounter = document.getElementById('tf-hero-counter');
+    var grid        = document.getElementById('tf-gallery-grid');
+    var actions     = document.getElementById('tf-gallery-actions');
     var downloadAll = document.getElementById('tf-gallery-download-all');
-    var lightbox   = document.getElementById('tf-lightbox');
-    var lbImg      = document.getElementById('tf-lightbox-img');
-    var lbClose    = document.getElementById('tf-lightbox-close');
-    var lbPrev     = document.getElementById('tf-lightbox-prev');
-    var lbNext     = document.getElementById('tf-lightbox-next');
-    var lbCounter  = document.getElementById('tf-lightbox-counter');
-    var lbDownload = document.getElementById('tf-lightbox-download');
+    var lightbox    = document.getElementById('tf-lightbox');
+    var lbImg       = document.getElementById('tf-lightbox-img');
+    var lbClose     = document.getElementById('tf-lightbox-close');
+    var lbPrev      = document.getElementById('tf-lightbox-prev');
+    var lbNext      = document.getElementById('tf-lightbox-next');
+    var lbCounter   = document.getElementById('tf-lightbox-counter');
+    var lbDownload  = document.getElementById('tf-lightbox-download');
 
     loadGallery();
 
@@ -127,6 +135,16 @@
         photos = photoList;
         if (!photos.length) return;
 
+        // ── Hero Slider ──
+        if (hero) {
+            hero.style.display = '';
+            heroIdx = 0;
+            renderHero();
+            buildHeroDots();
+            startHeroTimer();
+        }
+
+        // ── Photo Grid ──
         grid.innerHTML = '';
         grid.style.display = '';
 
@@ -151,6 +169,93 @@
         actions.style.display = '';
         downloadAll.href = galleryUrl + code + '/download-all'
             + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
+    }
+
+    // ── Hero Slider ───────────────────────────────────
+    function renderHero() {
+        if (!photos.length) return;
+        var photo = photos[heroIdx];
+        heroImg.classList.add('tf-hero__img--fading');
+        setTimeout(function() {
+            heroImg.src = photo.url;
+            heroImg.alt = photo.filename;
+            heroImg.onload = function() {
+                heroImg.classList.remove('tf-hero__img--fading');
+            };
+            // fallback in case cached
+            if (heroImg.complete) heroImg.classList.remove('tf-hero__img--fading');
+        }, 300);
+        heroCounter.textContent = (heroIdx + 1) + ' / ' + photos.length;
+        updateHeroDots();
+    }
+
+    function buildHeroDots() {
+        if (!heroDots) return;
+        heroDots.innerHTML = '';
+        // Only show dots for <= 20 photos
+        if (photos.length > 20) { heroDots.style.display = 'none'; return; }
+        heroDots.style.display = '';
+        photos.forEach(function(_, i) {
+            var dot = document.createElement('button');
+            dot.className = 'tf-hero__dot';
+            dot.setAttribute('aria-label', 'Photo ' + (i + 1));
+            dot.addEventListener('click', function() {
+                heroIdx = i;
+                renderHero();
+                resetHeroTimer();
+            });
+            heroDots.appendChild(dot);
+        });
+        updateHeroDots();
+    }
+
+    function updateHeroDots() {
+        if (!heroDots) return;
+        var dots = heroDots.querySelectorAll('.tf-hero__dot');
+        dots.forEach(function(d, i) {
+            d.classList.toggle('tf-hero__dot--active', i === heroIdx);
+        });
+    }
+
+    function heroGo(dir) {
+        heroIdx = (heroIdx + dir + photos.length) % photos.length;
+        renderHero();
+        resetHeroTimer();
+    }
+
+    function startHeroTimer() {
+        heroTimer = setInterval(function() {
+            heroIdx = (heroIdx + 1) % photos.length;
+            renderHero();
+        }, 5000);
+    }
+
+    function resetHeroTimer() {
+        clearInterval(heroTimer);
+        startHeroTimer();
+    }
+
+    if (heroPrev) heroPrev.addEventListener('click', function() { heroGo(-1); });
+    if (heroNext) heroNext.addEventListener('click', function() { heroGo(1); });
+
+    // Hero click opens lightbox at that photo
+    if (heroImg) {
+        heroImg.addEventListener('click', function() { openLightbox(heroIdx); });
+        heroImg.style.cursor = 'pointer';
+    }
+
+    // Hero touch swipe
+    var heroTouchX = 0;
+    if (hero) {
+        hero.addEventListener('touchstart', function(e) {
+            heroTouchX = e.changedTouches[0].screenX;
+        }, { passive: true });
+        hero.addEventListener('touchend', function(e) {
+            var dx = e.changedTouches[0].screenX - heroTouchX;
+            if (Math.abs(dx) > 50) {
+                heroGo(dx > 0 ? -1 : 1);
+            }
+        }, { passive: true });
     }
 
     // ── Lightbox ───────────────────────────────────────

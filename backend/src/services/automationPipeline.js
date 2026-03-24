@@ -22,7 +22,11 @@ class AutomationPipeline {
     this.wpUrl = config.wpUrl || process.env.WP_AUTOMATION_URL || '';
     this.wpApiKey = config.wpApiKey || process.env.WP_AUTOMATION_API_KEY || '';
     this.watchDir = config.watchDir || process.env.PHOTO_WATCH_DIR || '';
+    // Export dir: explicit config, env var, or sibling of watch dir
     this.exportDir = config.exportDir || process.env.PHOTO_EXPORT_DIR || '';
+    if (!this.exportDir && this.watchDir) {
+      this.exportDir = path.join(path.dirname(this.watchDir), 'EXPORTS-FOR AUTOMATION');
+    }
     this.galleryBaseUrl = config.galleryBaseUrl || process.env.GALLERY_BASE_URL || '';
 
     // Culling settings

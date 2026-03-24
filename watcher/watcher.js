@@ -623,7 +623,7 @@ async function scan() {
             editState.set(folder, { editedCount: photoCount, greenCount: photoCount, lastChanged: Date.now(), completed: true });
             // Create exports folder so Lightroom has an export destination
             if (EXPORTS_DIR) {
-                const exportFolder = path.join(EXPORTS_DIR, `${session.tracking_code} - ${session.client_name.replace(/[<>:"\/\\|?*]/g, '_').trim()}`);
+                const exportFolder = path.join(EXPORTS_DIR, `${session.tracking_code} - ${session.client_name.replace(/[<>:"\/\\|?*]/g, '_').trim()}-Exports`);
                 if (!fs.existsSync(exportFolder)) {
                     fs.mkdirSync(exportFolder, { recursive: true });
                     log(`Created exports folder: ${path.basename(exportFolder)}/`);
@@ -669,7 +669,7 @@ async function scan() {
                 });
                 // Create exports folder so Lightroom has an export destination
                 if (EXPORTS_DIR) {
-                    const exportFolder = path.join(EXPORTS_DIR, `${session.tracking_code} - ${session.client_name.replace(/[<>:"\/\\|?*]/g, '_').trim()}`);
+                    const exportFolder = path.join(EXPORTS_DIR, `${session.tracking_code} - ${session.client_name.replace(/[<>:"\/\\|?*]/g, '_').trim()}-Exports`);
                     if (!fs.existsSync(exportFolder)) {
                         fs.mkdirSync(exportFolder, { recursive: true });
                         log(`Created exports folder: ${path.basename(exportFolder)}/`);

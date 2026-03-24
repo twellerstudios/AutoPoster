@@ -1,5 +1,5 @@
 /**
- * Tweller Flow v2 — Client Tracker + Gallery
+ * Tweller Flow v2 — Client Tracker + Ken Burns Album
  */
 (function() {
     'use strict';
@@ -51,7 +51,9 @@
     var heroIdx = 0;
     var heroTimer = null;
 
-    // Elements
+    // Gallery elements
+    var cta         = document.getElementById('tf-gallery-cta');
+    var viewBtn     = document.getElementById('tf-gallery-view-btn');
     var pwSection   = document.getElementById('tf-gallery-password');
     var pwForm      = document.getElementById('tf-gallery-pw-form');
     var pwInput     = document.getElementById('tf-gallery-pw-input');
@@ -73,9 +75,46 @@
     var lbCounter   = document.getElementById('tf-lightbox-counter');
     var lbDownload  = document.getElementById('tf-lightbox-download');
 
-    loadGallery();
+    // Ken Burns album elements
+    var album       = document.getElementById('tf-album');
+    var albumSlideA = document.getElementById('tf-album-slide-a');
+    var albumSlideB = document.getElementById('tf-album-slide-b');
+    var albumImgA   = document.getElementById('tf-album-img-a');
+    var albumImgB   = document.getElementById('tf-album-img-b');
+    var albumCounter= document.getElementById('tf-album-counter');
+    var albumPrev   = document.getElementById('tf-album-prev');
+    var albumNext   = document.getElementById('tf-album-next');
+    var albumClose  = document.getElementById('tf-album-close');
+    var albumIdx    = 0;
+    var albumTimer  = null;
+    var albumActiveSlide = 'a'; // which slide is currently visible
+    var albumOpen   = false;
 
-    function loadGallery() {
+    // Track whether gallery has loaded data (to avoid re-fetching)
+    var galleryLoaded = false;
+    var needsPassword = false;
+
+    // ── "View Album" button ─────────────────────────────
+    if (viewBtn) {
+        viewBtn.addEventListener('click', function() {
+            if (galleryLoaded && photos.length) {
+                // Already loaded, go straight to album
+                openAlbum();
+            } else if (galleryLoaded && needsPassword) {
+                // Show password gate
+                cta.style.display = 'none';
+                pwSection.style.display = 'block';
+            } else {
+                // Fetch gallery first
+                loadGalleryForAlbum();
+            }
+        });
+    }
+
+    // Pre-fetch gallery info on page load (to know if password needed)
+    prefetchGallery();
+
+    function prefetchGallery() {
         var url = galleryUrl + code;
         if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
 
@@ -84,12 +123,36 @@
         .then(function(data) {
             if (!data.ok || !data.ready) return;
 
+            galleryLoaded = true;
             if (data.has_password && !data.unlocked) {
+                needsPassword = true;
+                return;
+            }
+
+            photos = data.photos || [];
+        })
+        .catch(function() {});
+    }
+
+    function loadGalleryForAlbum() {
+        var url = galleryUrl + code;
+        if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
+
+        fetch(url, { headers: { 'X-WP-Nonce': twellerFlowTracker.nonce } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.ok || !data.ready) return;
+
+            galleryLoaded = true;
+            if (data.has_password && !data.unlocked) {
+                needsPassword = true;
+                cta.style.display = 'none';
                 pwSection.style.display = 'block';
                 return;
             }
 
-            showGallery(data.photos || []);
+            photos = data.photos || [];
+            if (photos.length) openAlbum();
         })
         .catch(function() {});
     }
@@ -120,7 +183,9 @@
                     galleryToken = data.token;
                     sessionStorage.setItem('tf_gallery_token_' + code, data.token);
                     pwSection.style.display = 'none';
-                    loadGallery();
+                    needsPassword = false;
+                    // Reload gallery with token, then open album
+                    loadGalleryForAlbum();
                 }
             })
             .catch(function() {
@@ -130,6 +195,126 @@
             });
         });
     }
+
+    // ── Ken Burns Album ──────────────────────────────────
+
+    function openAlbum() {
+        if (!photos.length || !album) return;
+
+        albumOpen = true;
+        albumIdx = 0;
+        cta.style.display = 'none';
+
+        // Show album
+        album.style.display = '';
+
+        // Load first image into slide A
+        albumActiveSlide = 'a';
+        albumImgA.src = photos[0].url;
+        albumImgA.alt = photos[0].filename;
+        albumSlideA.className = 'tf-album__slide tf-album__slide--active';
+        albumSlideA.style.animation = '';
+        albumImgA.style.animation = 'none';
+        // Force reflow then start animation
+        void albumImgA.offsetWidth;
+        albumImgA.style.animation = '';
+
+        albumSlideB.className = 'tf-album__slide';
+        albumCounter.textContent = '1 / ' + photos.length;
+
+        // Scroll to top smoothly
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // Start auto-advance
+        startAlbumTimer();
+
+        // Also show the gallery grid below
+        showGallery(photos);
+    }
+
+    function closeAlbum() {
+        albumOpen = false;
+        clearInterval(albumTimer);
+        album.style.display = 'none';
+        cta.style.display = '';
+        // Hide grid/hero/actions
+        if (hero) hero.style.display = 'none';
+        grid.style.display = 'none';
+        actions.style.display = 'none';
+    }
+
+    function albumGo(dir) {
+        albumIdx = (albumIdx + dir + photos.length) % photos.length;
+        renderAlbumSlide();
+        resetAlbumTimer();
+    }
+
+    function renderAlbumSlide() {
+        var photo = photos[albumIdx];
+        if (!photo) return;
+
+        // Alternate zoom direction for visual variety
+        var zoomOut = albumIdx % 2 === 1;
+
+        // Crossfade: load into inactive slide, then swap
+        if (albumActiveSlide === 'a') {
+            // Load into B, fade B in, fade A out
+            albumImgB.src = photo.url;
+            albumImgB.alt = photo.filename;
+            albumImgB.style.animation = 'none';
+            void albumImgB.offsetWidth;
+            albumImgB.style.animation = '';
+
+            albumSlideB.className = 'tf-album__slide tf-album__slide--active' + (zoomOut ? ' tf-album__slide--zoom-out' : '');
+            albumSlideA.className = 'tf-album__slide';
+            albumActiveSlide = 'b';
+        } else {
+            // Load into A, fade A in, fade B out
+            albumImgA.src = photo.url;
+            albumImgA.alt = photo.filename;
+            albumImgA.style.animation = 'none';
+            void albumImgA.offsetWidth;
+            albumImgA.style.animation = '';
+
+            albumSlideA.className = 'tf-album__slide tf-album__slide--active' + (zoomOut ? ' tf-album__slide--zoom-out' : '');
+            albumSlideB.className = 'tf-album__slide';
+            albumActiveSlide = 'a';
+        }
+
+        albumCounter.textContent = (albumIdx + 1) + ' / ' + photos.length;
+    }
+
+    function startAlbumTimer() {
+        albumTimer = setInterval(function() {
+            albumIdx = (albumIdx + 1) % photos.length;
+            renderAlbumSlide();
+        }, 7000); // 7 seconds per slide to match Ken Burns duration
+    }
+
+    function resetAlbumTimer() {
+        clearInterval(albumTimer);
+        startAlbumTimer();
+    }
+
+    if (albumPrev) albumPrev.addEventListener('click', function() { albumGo(-1); });
+    if (albumNext) albumNext.addEventListener('click', function() { albumGo(1); });
+    if (albumClose) albumClose.addEventListener('click', closeAlbum);
+
+    // Album touch swipe
+    var albumTouchX = 0;
+    if (album) {
+        album.addEventListener('touchstart', function(e) {
+            albumTouchX = e.changedTouches[0].screenX;
+        }, { passive: true });
+        album.addEventListener('touchend', function(e) {
+            var dx = e.changedTouches[0].screenX - albumTouchX;
+            if (Math.abs(dx) > 50) {
+                albumGo(dx > 0 ? -1 : 1);
+            }
+        }, { passive: true });
+    }
+
+    // ── Gallery grid display (below album) ──────────────
 
     function showGallery(photoList) {
         photos = photoList;
@@ -192,7 +377,6 @@
     function buildHeroDots() {
         if (!heroDots) return;
         heroDots.innerHTML = '';
-        // Only show dots for <= 20 photos
         if (photos.length > 20) { heroDots.style.display = 'none'; return; }
         heroDots.style.display = '';
         photos.forEach(function(_, i) {
@@ -305,13 +489,21 @@
 
     // Keyboard navigation
     document.addEventListener('keydown', function(e) {
-        if (lightbox.style.display === 'none') return;
-        if (e.key === 'Escape') closeLightbox();
-        if (e.key === 'ArrowLeft') prevPhoto();
-        if (e.key === 'ArrowRight') nextPhoto();
+        // Album keyboard controls
+        if (albumOpen) {
+            if (e.key === 'ArrowLeft') albumGo(-1);
+            if (e.key === 'ArrowRight') albumGo(1);
+            if (e.key === 'Escape') closeAlbum();
+        }
+        // Lightbox keyboard controls
+        if (lightbox && lightbox.style.display !== 'none') {
+            if (e.key === 'Escape') closeLightbox();
+            if (e.key === 'ArrowLeft') prevPhoto();
+            if (e.key === 'ArrowRight') nextPhoto();
+        }
     });
 
-    // Touch swipe support
+    // Touch swipe support for lightbox
     var touchStartX = 0;
     if (lightbox) {
         lightbox.addEventListener('touchstart', function(e) {

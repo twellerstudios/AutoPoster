@@ -145,10 +145,40 @@ class TwellerFlow_Tracker_Shortcode {
             </div>
 
             <?php if ( in_array( $session->current_stage, array( 'delivering', 'delivered' ), true ) ) : ?>
+                <!-- Full-width Ken Burns album slider (hidden until "View Album" clicked) -->
+                <div class="tf-album" id="tf-album" style="display:none;">
+                    <div class="tf-album__slide tf-album__slide--active" id="tf-album-slide-a">
+                        <img class="tf-album__img" id="tf-album-img-a" src="" alt="">
+                    </div>
+                    <div class="tf-album__slide" id="tf-album-slide-b">
+                        <img class="tf-album__img" id="tf-album-img-b" src="" alt="">
+                    </div>
+                    <div class="tf-album__overlay"></div>
+                    <div class="tf-album__counter" id="tf-album-counter"></div>
+                    <button class="tf-album__nav tf-album__prev" id="tf-album-prev">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <button class="tf-album__nav tf-album__next" id="tf-album-next">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                    <button class="tf-album__close" id="tf-album-close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        Back to Gallery
+                    </button>
+                </div>
+
                 <div id="gallery" class="tf-gallery" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
-                    <div class="tf-gallery__header">
-                        <h3>Your Photos Are Ready!</h3>
-                        <p class="tf-gallery__subtitle">Click any photo to view full size. Download individually or all at once.</p>
+                    <!-- "View Album" CTA (shown first for delivered) -->
+                    <div class="tf-gallery__cta" id="tf-gallery-cta">
+                        <div class="tf-gallery__cta-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        </div>
+                        <h3>Your Photos Have Been Delivered</h3>
+                        <p class="tf-gallery__cta-subtitle">Your gallery is ready to view.</p>
+                        <button class="tf-gallery__cta-btn" id="tf-gallery-view-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            View Album
+                        </button>
                     </div>
 
                     <!-- Password gate (shown/hidden by JS) -->
@@ -164,7 +194,7 @@ class TwellerFlow_Tracker_Shortcode {
                         <p class="tf-gallery__pw-error" id="tf-gallery-pw-error" style="display:none;">Incorrect password. Please try again.</p>
                     </div>
 
-                    <!-- Hero Slider -->
+                    <!-- Hero Slider (kept for grid view) -->
                     <div class="tf-hero" id="tf-hero" style="display:none;">
                         <div class="tf-hero__viewport">
                             <img class="tf-hero__img" id="tf-hero-img" src="" alt="">

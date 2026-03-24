@@ -412,6 +412,16 @@ function createSessionFolder(session) {
 
     fs.mkdirSync(folderPath, { recursive: true });
 
+    // Also create the matching exports folder
+    if (EXPORTS_DIR) {
+        const exportFolderName = `${session.tracking_code} - ${safeName}-Exports`;
+        const exportPath = path.join(EXPORTS_DIR, exportFolderName);
+        if (!fs.existsSync(exportPath)) {
+            fs.mkdirSync(exportPath, { recursive: true });
+            log(`Created exports folder: ${exportFolderName}/`);
+        }
+    }
+
     createdSessions.add(session.tracking_code);
     log(`Created folder: ${folderName}/ — set as Lightroom import destination`);
 }

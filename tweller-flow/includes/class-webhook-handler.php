@@ -37,7 +37,8 @@ class TwellerFlow_Webhook_Handler {
         // Extract order data from SureCart webhook payload
         $event_type = $body['type'] ?? '';
 
-        if ( $event_type !== 'checkout.completed' && $event_type !== 'order.created' ) {
+        $handled_events = array( 'checkout.completed', 'order.created', 'order.paid', 'purchase.created', 'purchase.invoked' );
+        if ( ! in_array( $event_type, $handled_events, true ) ) {
             return rest_ensure_response( array( 'status' => 'ignored', 'reason' => 'Event type not handled' ) );
         }
 

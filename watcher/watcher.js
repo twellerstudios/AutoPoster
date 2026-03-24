@@ -30,6 +30,7 @@ function loadConfig() {
 const config = loadConfig();
 
 const WATCH_DIR = config.watchDir;
+const CULLED_DIR = config.culledDir || '';
 const EXPORTS_DIR = config.exportsDir;
 const WP_URL = config.wordpressUrl.replace(/\/$/, '');
 const API_KEY = config.apiKey;
@@ -42,6 +43,7 @@ const folderState = new Map(); // folderName -> { photoCount, lastNotified, stag
 const exportState = new Map(); // folderName -> { exportCount, lastChanged, exported, uploaded, uploadedFiles }
 const cullState = new Map();   // folderName -> { greenCount, totalPhotos, lastNotified }
 const editState = new Map();   // folderName -> { editedCount, greenCount, lastChanged, completed }
+const culledCopyState = new Map(); // folderName -> { copied: true, greenCount } — tracks green photos copied to FOR-IMAGEN
 const createdSessions = new Set(); // tracking codes we already created folders for
 
 // ── Persistent state file ────────────────────────────
@@ -352,6 +354,73 @@ function countGreenLabeled(folderPath) {
     return { greenCount, totalRawCount };
 }
 
+/**
+ * Copy green-labeled RAW photos + their XMP sidecars to a -FOR-IMAGEN folder.
+ * This folder contains only the keeper photos ready for Imagen AI editing.
+ * Returns the number of photos copied.
+ */
+function copyGreenToForImagen(sourceFolderPath, sessionFolder) {
+    if (!CULLED_DIR) return 0;
+
+    const RAW_EXT = new Set(['.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf']);
+    const imagenFolderName = `${sessionFolder}-FOR-IMAGEN`;
+    const imagenFolderPath = path.join(CULLED_DIR, imagenFolderName);
+
+    // Also create the base CULLED session folder for reference
+    const culledSessionPath = path.join(CULLED_DIR, sessionFolder);
+
+    let copiedCount = 0;
+
+    try {
+        const files = fs.readdirSync(sourceFolderPath, { recursive: true });
+
+        // Collect green-labeled RAW files
+        const greenFiles = [];
+        for (const f of files) {
+            const fullPath = path.join(sourceFolderPath, f);
+            if (!fs.statSync(fullPath).isFile()) continue;
+
+            const ext = path.extname(f).toLowerCase();
+            if (!RAW_EXT.has(ext)) continue;
+
+            const xmpPath = findXmpSidecar(fullPath);
+            if (xmpPath && hasGreenLabel(xmpPath)) {
+                greenFiles.push({ rawPath: fullPath, rawName: f, xmpPath, xmpName: path.basename(xmpPath) });
+            }
+        }
+
+        if (greenFiles.length === 0) return 0;
+
+        // Create FOR-IMAGEN folder
+        if (!fs.existsSync(imagenFolderPath)) {
+            fs.mkdirSync(imagenFolderPath, { recursive: true });
+        }
+
+        // Copy green-labeled RAW files + their XMP sidecars
+        for (const { rawPath, rawName, xmpPath, xmpName } of greenFiles) {
+            const destRaw = path.join(imagenFolderPath, path.basename(rawName));
+            const destXmp = path.join(imagenFolderPath, xmpName);
+
+            // Only copy if not already there or source is newer
+            if (!fs.existsSync(destRaw) || fs.statSync(rawPath).mtimeMs > fs.statSync(destRaw).mtimeMs) {
+                fs.copyFileSync(rawPath, destRaw);
+            }
+            if (!fs.existsSync(destXmp) || fs.statSync(xmpPath).mtimeMs > fs.statSync(destXmp).mtimeMs) {
+                fs.copyFileSync(xmpPath, destXmp);
+            }
+            copiedCount++;
+        }
+
+        if (copiedCount > 0) {
+            log(`Copied ${copiedCount} green-labeled photos to ${imagenFolderName}/`);
+        }
+    } catch (err) {
+        log(`Error copying green photos to FOR-IMAGEN: ${err.message}`, 'error');
+    }
+
+    return copiedCount;
+}
+
 function getTopLevelFolders(dir) {
     dir = dir || WATCH_DIR;
     try {
@@ -411,6 +480,15 @@ function createSessionFolder(session) {
     }
 
     fs.mkdirSync(folderPath, { recursive: true });
+
+    // Also create the matching CULLED folder (ready for FOR-IMAGEN separation)
+    if (CULLED_DIR) {
+        const culledFolderPath = path.join(CULLED_DIR, folderName);
+        if (!fs.existsSync(culledFolderPath)) {
+            fs.mkdirSync(culledFolderPath, { recursive: true });
+            log(`Created culled folder: ${folderName}/`);
+        }
+    }
 
     // Also create the matching exports folder
     if (EXPORTS_DIR) {
@@ -689,6 +767,20 @@ async function scan() {
                     lastChanged: Date.now(),
                     completed: true,
                 });
+
+                // Copy green-labeled photos to CULLED/{session}-FOR-IMAGEN folder
+                if (CULLED_DIR && !culledCopyState.has(folder)) {
+                    // Ensure CULLED_DIR exists
+                    if (!fs.existsSync(CULLED_DIR)) {
+                        fs.mkdirSync(CULLED_DIR, { recursive: true });
+                        log(`Created CULLED directory: ${CULLED_DIR}`);
+                    }
+                    const copied = copyGreenToForImagen(folderPath, folder);
+                    if (copied > 0) {
+                        culledCopyState.set(folder, { copied: true, greenCount: copied });
+                        log(`${copied} green-labeled photos ready for Imagen in ${folder}-FOR-IMAGEN/`);
+                    }
+                }
             }
         }
     }
@@ -819,10 +911,15 @@ async function scan() {
 
     // Scan exports directory — detect new exports + auto-upload to gallery
     // Stage flow: exporting → exported → uploading → uploaded → deliver (manual)
+    // NOTE: Only EXPORTS_DIR is scanned for gallery upload. CULLED_DIR / FOR-IMAGEN
+    //       folders are NEVER auto-uploaded — they're for Imagen editing only.
     if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) {
         const exportFolders = getTopLevelFolders(EXPORTS_DIR);
 
         for (const folder of exportFolders) {
+            // Skip FOR-IMAGEN folders — these are Imagen input, not gallery exports
+            if (folder.endsWith('-FOR-IMAGEN')) continue;
+
             const folderPath = path.join(EXPORTS_DIR, folder);
             const exportCount = countPhotosInFolder(folderPath);
 
@@ -1021,7 +1118,8 @@ function startWatcher() {
         process.exit(1);
     }
 
-    log(`Watching RAWs:   ${WATCH_DIR}`);
+    log(`Watching RAWs:    ${WATCH_DIR}`);
+    log(`Watching CULLED:  ${CULLED_DIR || '(not set)'}`);
     log(`Watching Exports: ${EXPORTS_DIR || '(not set)'}`);
     log(`WordPress: ${WP_URL}`);
     log(`Auto-upload to gallery: ${AUTO_UPLOAD ? 'ON' : 'OFF'}`);
@@ -1031,8 +1129,15 @@ function startWatcher() {
     // Initial scan
     scan();
 
+    // Ensure CULLED_DIR exists on startup
+    if (CULLED_DIR && !fs.existsSync(CULLED_DIR)) {
+        fs.mkdirSync(CULLED_DIR, { recursive: true });
+        log(`Created CULLED directory: ${CULLED_DIR}`);
+    }
+
     // Watch for new files (debounced via polling)
     const watchPaths = [WATCH_DIR];
+    if (CULLED_DIR && fs.existsSync(CULLED_DIR)) watchPaths.push(CULLED_DIR);
     if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) watchPaths.push(EXPORTS_DIR);
 
     const watcher = chokidar.watch(watchPaths, {
@@ -1113,7 +1218,7 @@ function log(message, level = 'info') {
 // ── Start ──────────────────────────────────────────────
 
 console.log('');
-console.log('  Tweller Flow — Folder Watcher v2.0');
+console.log('  Tweller Flow — Folder Watcher v2.1');
 console.log('  ─────────────────────────────────────');
 console.log('');
 

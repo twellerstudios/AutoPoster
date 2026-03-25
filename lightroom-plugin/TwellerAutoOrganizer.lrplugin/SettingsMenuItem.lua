@@ -46,11 +46,13 @@ LrFunctionContext.callWithContext( 'AutoOrganizerSettings', function( context )
                 f:push_button {
                     title = 'Browse...',
                     action = function()
+                        local initial = props.watchDir ~= '' and props.watchDir or nil
                         local dir = LrDialogs.runOpenPanel {
                             title = 'Select Watch Folder (LR-AUTO-IMPORT)',
-                            canChooseFiles = false,
+                            canChooseFiles = true,
                             canChooseDirectories = true,
                             allowsMultipleSelection = false,
+                            initialDirectory = initial,
                         }
                         if dir then props.watchDir = dir[1] end
                     end,
@@ -71,11 +73,13 @@ LrFunctionContext.callWithContext( 'AutoOrganizerSettings', function( context )
                 f:push_button {
                     title = 'Browse...',
                     action = function()
+                        local initial = props.destinationDir ~= '' and props.destinationDir or nil
                         local dir = LrDialogs.runOpenPanel {
                             title = 'Select Destination Folder',
-                            canChooseFiles = false,
+                            canChooseFiles = true,
                             canChooseDirectories = true,
                             allowsMultipleSelection = false,
+                            initialDirectory = initial,
                         }
                         if dir then props.destinationDir = dir[1] end
                     end,

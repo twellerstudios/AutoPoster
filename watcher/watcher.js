@@ -1077,6 +1077,24 @@ async function scan() {
                             lastChanged: Date.now(),
                             importedToLR: true,
                         });
+
+                        // Advance session to "edited" if still in editing stage
+                        const baseName = folder.replace(/-FOR-IMAGEN$/, '');
+                        const session = matchFolderToSession(baseName, sessions);
+                        if (session && session.current_stage === 'editing') {
+                            await wpAdvanceStage(
+                                session.tracking_code,
+                                'edited',
+                                `Editing complete: ${editedCount}/${greenCount} photos edited by Imagen (copied to LR Auto Import)`,
+                                { photo_count: editedCount }
+                            );
+                            editState.set(baseName, {
+                                editedCount,
+                                greenCount,
+                                lastChanged: Date.now(),
+                                completed: true,
+                            });
+                        }
                     }
                 }
             }

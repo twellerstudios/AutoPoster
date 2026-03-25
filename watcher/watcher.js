@@ -785,6 +785,40 @@ async function scan() {
         }
     }
 
+    // ── Catch-up: copy green photos to FOR-IMAGEN for any session past culling ──
+    // This runs on every scan so the watcher picks up where it left off,
+    // even if the session was already culled before this code was deployed.
+    if (CULLED_DIR) {
+        for (const folder of folders) {
+            const folderPath = path.join(WATCH_DIR, folder);
+            const session = matchFolderToSession(folder, sessions);
+            if (!session) continue;
+
+            // Copy for any session that's at 'culled' or beyond (culling is done)
+            const pastCulling = ['culled', 'editing', 'edited', 'exporting', 'exported', 'uploading', 'uploaded', 'delivered'];
+            if (!pastCulling.includes(session.current_stage)) continue;
+
+            const { greenCount } = countGreenLabeled(folderPath);
+            if (greenCount === 0) continue;
+
+            // Skip if already copied and green count hasn't changed
+            const prevCopy = culledCopyState.get(folder);
+            if (prevCopy && prevCopy.greenCount === greenCount) continue;
+
+            // Ensure CULLED_DIR exists
+            if (!fs.existsSync(CULLED_DIR)) {
+                fs.mkdirSync(CULLED_DIR, { recursive: true });
+            }
+
+            const copied = copyGreenToForImagen(folderPath, folder);
+            if (copied > 0) {
+                const isUpdate = prevCopy ? ` (was ${prevCopy.greenCount})` : '';
+                culledCopyState.set(folder, { copied: true, greenCount: copied });
+                log(`${prevCopy ? 'Updated' : 'Catch-up'}: ${copied} green-labeled photos in ${folder}-FOR-IMAGEN/${isUpdate}`);
+            }
+        }
+    }
+
     // ── Auto-advance: culled → editing ──────────────────
     // After culling completes, auto-advance to 'editing' after a short delay.
     // In the typical workflow, the photographer uploads to Imagen right after culling.

@@ -32,6 +32,7 @@ const config = loadConfig();
 const WATCH_DIR = config.watchDir;
 const CULLED_DIR = config.culledDir || '';
 const EXPORTS_DIR = config.exportsDir;
+const LR_AUTO_IMPORT_DIR = config.lrAutoImportDir || '';
 const WP_URL = config.wordpressUrl.replace(/\/$/, '');
 const API_KEY = config.apiKey;
 const PHOTO_EXT = new Set(config.photoExtensions.map(e => e.toLowerCase()));
@@ -44,6 +45,7 @@ const exportState = new Map(); // folderName -> { exportCount, lastChanged, expo
 const cullState = new Map();   // folderName -> { greenCount, totalPhotos, lastNotified }
 const editState = new Map();   // folderName -> { editedCount, greenCount, lastChanged, completed }
 const culledCopyState = new Map(); // folderName -> { copied: true, greenCount } — tracks green photos copied to FOR-IMAGEN
+const imagenImportState = new Map(); // FOR-IMAGEN folderName -> { editedCount, lastChanged, importedToLR }
 const createdSessions = new Set(); // tracking codes we already created folders for
 
 // ── Persistent state file ────────────────────────────
@@ -416,6 +418,48 @@ function copyGreenToForImagen(sourceFolderPath, sessionFolder) {
         }
     } catch (err) {
         log(`Error copying green photos to FOR-IMAGEN: ${err.message}`, 'error');
+    }
+
+    return copiedCount;
+}
+
+/**
+ * Copy Imagen-edited RAW photos + XMP sidecars to LR Auto Import staging folder.
+ * Only copies files with develop settings (edited by Imagen).
+ */
+function copyToLRAutoImport(imagenFolderPath, imagenFolderName) {
+    if (!LR_AUTO_IMPORT_DIR) return 0;
+
+    const RAW_EXT = new Set(['.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf']);
+    let copiedCount = 0;
+
+    try {
+        const files = fs.readdirSync(imagenFolderPath);
+
+        for (const f of files) {
+            const fullPath = path.join(imagenFolderPath, f);
+            if (!fs.statSync(fullPath).isFile()) continue;
+
+            const ext = path.extname(f).toLowerCase();
+            if (!RAW_EXT.has(ext)) continue;
+
+            const xmpPath = findXmpSidecar(fullPath);
+            if (!xmpPath || !hasEditSettings(xmpPath)) continue;
+
+            const destRaw = path.join(LR_AUTO_IMPORT_DIR, f);
+            const destXmp = path.join(LR_AUTO_IMPORT_DIR, path.basename(xmpPath));
+
+            // Only copy if not already there or source is newer
+            if (!fs.existsSync(destRaw) || fs.statSync(fullPath).mtimeMs > fs.statSync(destRaw).mtimeMs) {
+                fs.copyFileSync(fullPath, destRaw);
+            }
+            if (!fs.existsSync(destXmp) || fs.statSync(xmpPath).mtimeMs > fs.statSync(destXmp).mtimeMs) {
+                fs.copyFileSync(xmpPath, destXmp);
+            }
+            copiedCount++;
+        }
+    } catch (err) {
+        log(`Error copying to LR Auto Import: ${err.message}`, 'error');
     }
 
     return copiedCount;
@@ -937,6 +981,60 @@ async function scan() {
                     if (!fs.existsSync(exportFolder)) {
                         fs.mkdirSync(exportFolder, { recursive: true });
                         log(`Created exports folder: ${path.basename(exportFolder)}/`);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Auto-import Imagen edits into Lightroom ─────────
+    // Monitor FOR-IMAGEN folders in CULLED_DIR for XMP files with develop settings.
+    // When Imagen writes edits back, copy RAW+XMP to LR Auto Import staging folder.
+    if (LR_AUTO_IMPORT_DIR && CULLED_DIR && fs.existsSync(CULLED_DIR)) {
+        const culledFolders = getTopLevelFolders(CULLED_DIR);
+
+        for (const folder of culledFolders) {
+            if (!folder.endsWith('-FOR-IMAGEN')) continue;
+
+            const prev = imagenImportState.get(folder);
+            if (prev && prev.importedToLR) continue;
+
+            const folderPath = path.join(CULLED_DIR, folder);
+            const { editedCount, greenCount } = countEditedPhotos(folderPath);
+
+            if (editedCount === 0) continue;
+
+            if (!prev || prev.editedCount !== editedCount) {
+                log(`Imagen edits detected in "${folder}": ${editedCount}/${greenCount} photos have develop settings`);
+                imagenImportState.set(folder, {
+                    editedCount,
+                    greenCount,
+                    lastChanged: Date.now(),
+                    importedToLR: false,
+                });
+            } else if (prev && prev.editedCount === editedCount) {
+                // Stable — check if ready to copy to LR
+                const elapsed = Date.now() - prev.lastChanged;
+                const IMAGEN_STABLE_MS = (config.imagenStableSeconds || 120) * 1000;
+                const editRatio = greenCount > 0 ? editedCount / greenCount : 0;
+
+                // Copy when: stable for 2 min AND at least 80% have edits
+                if (elapsed >= IMAGEN_STABLE_MS && editRatio >= 0.8) {
+                    // Ensure LR Auto Import dir exists
+                    if (!fs.existsSync(LR_AUTO_IMPORT_DIR)) {
+                        fs.mkdirSync(LR_AUTO_IMPORT_DIR, { recursive: true });
+                        log(`Created LR Auto Import directory: ${LR_AUTO_IMPORT_DIR}`);
+                    }
+
+                    const copied = copyToLRAutoImport(folderPath, folder);
+                    if (copied > 0) {
+                        log(`LR Auto Import: ${copied} Imagen-edited photos from "${folder}" → ${LR_AUTO_IMPORT_DIR}`);
+                        imagenImportState.set(folder, {
+                            editedCount,
+                            greenCount,
+                            lastChanged: Date.now(),
+                            importedToLR: true,
+                        });
                     }
                 }
             }

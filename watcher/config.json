@@ -2,6 +2,7 @@
   "watchDir": "T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\RAWS-FOR AUTOMATION",
   "culledDir": "T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\CULLED",
   "exportsDir": "T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\EXPORTS-FOR AUTOMATION",
+  "lrAutoImportDir": "T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\LR-AUTO-IMPORT",
   "wordpressUrl": "https://www.twellerstudios.com",
   "apiKey": "tweller2024",
   "pollIntervalSeconds": 30,

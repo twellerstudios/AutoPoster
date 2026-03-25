@@ -1102,7 +1102,7 @@ async function scan() {
     }
 
     // Scan exports directory — detect new exports + auto-upload to gallery
-    // Stage flow: exporting → exported → uploading → uploaded → deliver (manual)
+    // Stage flow: exporting → exported → uploading → uploaded → delivered (auto, sends email)
     // NOTE: Only EXPORTS_DIR is scanned for gallery upload. CULLED_DIR / FOR-IMAGEN
     //       folders are NEVER auto-uploaded — they're for Imagen editing only.
     if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) {
@@ -1128,12 +1128,13 @@ async function scan() {
 
                 // Advance to 'exporting' if in early stages
                 if (['imported', 'culling', 'culled', 'editing', 'edited'].includes(session.current_stage)) {
-                    await wpAdvanceStage(
+                    const res = await wpAdvanceStage(
                         session.tracking_code,
                         'exporting',
                         `Exporting photos (${exportCount} so far)`,
                         { photo_count: exportCount }
                     );
+                    if (res) session.current_stage = 'exporting';
                 }
 
                 exportState.set(folder, {
@@ -1155,12 +1156,13 @@ async function scan() {
 
                     // Advance to 'exported'
                     if (['exporting'].includes(session.current_stage)) {
-                        await wpAdvanceStage(
+                        const res = await wpAdvanceStage(
                             session.tracking_code,
                             'exported',
                             `${exportCount} photos exported`,
                             { photo_count: exportCount }
                         );
+                        if (res) session.current_stage = 'exported';
                     }
 
                     exportState.set(folder, {
@@ -1184,22 +1186,38 @@ async function scan() {
 
                             // Advance to 'uploaded' if not already past it
                             if (['exported', 'uploading'].includes(session.current_stage)) {
-                                await wpAdvanceStage(
+                                const res = await wpAdvanceStage(
                                     session.tracking_code,
                                     'uploaded',
                                     `All ${serverFiles.size} photos already uploaded`,
                                     { photo_count: serverFiles.size }
                                 );
+                                if (res) session.current_stage = 'uploaded';
+                            }
+
+                            // Auto-advance to 'delivered' — triggers client email
+                            if (session.current_stage === 'uploaded') {
+                                const res = await wpAdvanceStage(
+                                    session.tracking_code,
+                                    'delivered',
+                                    `Gallery delivered with ${serverFiles.size} photos`,
+                                    { photo_count: serverFiles.size }
+                                );
+                                if (res) {
+                                    session.current_stage = 'delivered';
+                                    log(`Gallery delivered for ${session.client_name} — notification email triggered`);
+                                }
                             }
                         } else {
                             // Advance to 'uploading' before starting
                             if (['exported'].includes(session.current_stage)) {
-                                await wpAdvanceStage(
+                                const res = await wpAdvanceStage(
                                     session.tracking_code,
                                     'uploading',
                                     `Uploading ${exportCount} photos to gallery`,
                                     { photo_count: exportCount }
                                 );
+                                if (res) session.current_stage = 'uploading';
                             }
 
                             const alreadyCount = Math.max(serverFiles.size, prev?.uploadedFiles?.size || 0);
@@ -1215,12 +1233,27 @@ async function scan() {
 
                                 // Advance to 'uploaded'
                                 if (['uploading'].includes(session.current_stage)) {
-                                    await wpAdvanceStage(
+                                    const res = await wpAdvanceStage(
                                         session.tracking_code,
                                         'uploaded',
                                         `${result.uploaded} photos uploaded to gallery`,
                                         { photo_count: result.total }
                                     );
+                                    if (res) session.current_stage = 'uploaded';
+                                }
+
+                                // Auto-advance to 'delivered' — triggers client email
+                                if (session.current_stage === 'uploaded') {
+                                    const res = await wpAdvanceStage(
+                                        session.tracking_code,
+                                        'delivered',
+                                        `Gallery delivered with ${result.total} photos`,
+                                        { photo_count: result.total }
+                                    );
+                                    if (res) {
+                                        session.current_stage = 'delivered';
+                                        log(`Gallery delivered for ${session.client_name} — notification email triggered`);
+                                    }
                                 }
 
                                 exportState.set(folder, {
@@ -1250,22 +1283,38 @@ async function scan() {
                     savePersistedState();
 
                     if (['exported', 'uploading'].includes(session.current_stage)) {
-                        await wpAdvanceStage(
+                        const res = await wpAdvanceStage(
                             session.tracking_code,
                             'uploaded',
                             `All ${serverFiles.size} photos uploaded`,
                             { photo_count: serverFiles.size }
                         );
+                        if (res) session.current_stage = 'uploaded';
+                    }
+
+                    // Auto-advance to 'delivered' — triggers client email
+                    if (session.current_stage === 'uploaded') {
+                        const res = await wpAdvanceStage(
+                            session.tracking_code,
+                            'delivered',
+                            `Gallery delivered with ${serverFiles.size} photos`,
+                            { photo_count: serverFiles.size }
+                        );
+                        if (res) {
+                            session.current_stage = 'delivered';
+                            log(`Gallery delivered for ${session.client_name} — notification email triggered`);
+                        }
                     }
                 } else {
                     // Advance to 'uploading' if not already there
                     if (['exported'].includes(session.current_stage)) {
-                        await wpAdvanceStage(
+                        const res = await wpAdvanceStage(
                             session.tracking_code,
                             'uploading',
                             `Uploading photos to gallery`,
                             { photo_count: exportCount }
                         );
+                        if (res) session.current_stage = 'uploading';
                     }
 
                     log(`Retrying upload for ${session.client_name}...`);
@@ -1279,12 +1328,27 @@ async function scan() {
                             log(`Gallery upload complete: ${result.uploaded}/${result.total} for ${session.client_name}`);
 
                             if (['uploading'].includes(session.current_stage)) {
-                                await wpAdvanceStage(
+                                const res = await wpAdvanceStage(
                                     session.tracking_code,
                                     'uploaded',
                                     `${result.uploaded} photos uploaded to gallery`,
                                     { photo_count: result.total }
                                 );
+                                if (res) session.current_stage = 'uploaded';
+                            }
+
+                            // Auto-advance to 'delivered' — triggers client email
+                            if (session.current_stage === 'uploaded') {
+                                const res = await wpAdvanceStage(
+                                    session.tracking_code,
+                                    'delivered',
+                                    `Gallery delivered with ${result.total} photos`,
+                                    { photo_count: result.total }
+                                );
+                                if (res) {
+                                    session.current_stage = 'delivered';
+                                    log(`Gallery delivered for ${session.client_name} — notification email triggered`);
+                                }
                             }
                         }
 

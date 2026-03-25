@@ -9,8 +9,40 @@ local LrView            = import 'LrView'
 local LrPrefs           = import 'LrPrefs'
 local LrBinding         = import 'LrBinding'
 local LrTasks           = import 'LrTasks'
+local LrPathUtils       = import 'LrPathUtils'
+local LrFileUtils       = import 'LrFileUtils'
 
 local AutoOrganizer = require 'AutoOrganizer'
+
+--- Pick a folder using the OS dialog. On Windows the native folder picker
+--- can sometimes appear empty; if the user cancels, fall back to prompting
+--- them to paste the path manually.
+local function pickFolder( title, currentPath )
+    local initial = ( currentPath and currentPath ~= '' ) and currentPath or nil
+
+    -- Try the native folder picker first (canChooseFiles=false gives "Select Folder" on Windows)
+    local dir = LrDialogs.runOpenPanel {
+        title = title,
+        prompt = 'Select Folder',
+        canChooseFiles = false,
+        canChooseDirectories = true,
+        allowsMultipleSelection = false,
+        initialDirectory = initial,
+    }
+
+    if dir then return dir[1] end
+
+    -- User cancelled — offer to paste the path manually
+    local result = LrDialogs.confirm(
+        title,
+        'If the folder browser appeared empty, you can paste the full path directly ' ..
+        'into the text field in the settings dialog.\n\n' ..
+        'Example: T:\\TWELLER STUDIOS\\PHOTOGRAPHY\\LR-AUTO-IMPORT',
+        'OK'
+    )
+
+    return nil
+end
 
 LrFunctionContext.callWithContext( 'AutoOrganizerSettings', function( context )
     local prefs = LrPrefs.prefsForPlugin()
@@ -32,6 +64,11 @@ LrFunctionContext.callWithContext( 'AutoOrganizerSettings', function( context )
             title = 'Directories',
             fill_horizontal = 1,
 
+            f:static_text {
+                title = 'Tip: You can paste folder paths directly into the text fields below.',
+                text_color = LrView.kTextColorForInfoLabel,
+            },
+
             f:row {
                 f:static_text {
                     title = 'Watch Folder (LR-AUTO-IMPORT):',
@@ -46,15 +83,11 @@ LrFunctionContext.callWithContext( 'AutoOrganizerSettings', function( context )
                 f:push_button {
                     title = 'Browse...',
                     action = function()
-                        local initial = props.watchDir ~= '' and props.watchDir or nil
-                        local dir = LrDialogs.runOpenPanel {
-                            title = 'Select Watch Folder (LR-AUTO-IMPORT)',
-                            canChooseFiles = true,
-                            canChooseDirectories = true,
-                            allowsMultipleSelection = false,
-                            initialDirectory = initial,
-                        }
-                        if dir then props.watchDir = dir[1] end
+                        local picked = pickFolder(
+                            'Select Watch Folder (LR-AUTO-IMPORT)',
+                            props.watchDir
+                        )
+                        if picked then props.watchDir = picked end
                     end,
                 },
             },
@@ -73,15 +106,11 @@ LrFunctionContext.callWithContext( 'AutoOrganizerSettings', function( context )
                 f:push_button {
                     title = 'Browse...',
                     action = function()
-                        local initial = props.destinationDir ~= '' and props.destinationDir or nil
-                        local dir = LrDialogs.runOpenPanel {
-                            title = 'Select Destination Folder',
-                            canChooseFiles = true,
-                            canChooseDirectories = true,
-                            allowsMultipleSelection = false,
-                            initialDirectory = initial,
-                        }
-                        if dir then props.destinationDir = dir[1] end
+                        local picked = pickFolder(
+                            'Select Destination Folder',
+                            props.destinationDir
+                        )
+                        if picked then props.destinationDir = picked end
                     end,
                 },
             },
@@ -154,6 +183,26 @@ LrFunctionContext.callWithContext( 'AutoOrganizerSettings', function( context )
     }
 
     if result == 'ok' then
+        -- Validate paths before saving
+        local watchOk = props.watchDir ~= '' and LrFileUtils.exists( props.watchDir )
+        local destOk  = props.destinationDir ~= '' and LrFileUtils.exists( props.destinationDir )
+
+        if props.enabled and ( not watchOk or not destOk ) then
+            local missing = {}
+            if not watchOk then missing[#missing + 1] = 'Watch Folder' end
+            if not destOk  then missing[#missing + 1] = 'Destination'  end
+
+            LrDialogs.message(
+                'Tweller Auto Organizer',
+                'The following directories do not exist:\n  • ' ..
+                table.concat( missing, '\n  • ' ) ..
+                '\n\nPlease check the paths and try again.\n' ..
+                'Tip: Copy the path from Windows Explorer\'s address bar and paste it into the text field.',
+                'warning'
+            )
+            return
+        end
+
         -- Save settings
         prefs.watchDir       = props.watchDir
         prefs.destinationDir = props.destinationDir

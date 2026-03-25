@@ -355,6 +355,44 @@
                 <?php endif; ?>
             </div>
 
+            <!-- Client Activity -->
+            <?php $activity = TwellerFlow_Client_Activity::get_summary( $session->id ); ?>
+            <div class="tf-card tf-mb-6">
+                <h2>Client Activity</h2>
+                <?php if ( $activity['first_viewed'] ) : ?>
+                    <div class="tf-client-info">
+                        <div class="tf-client-info__item">
+                            <span class="tf-client-info__label">First Viewed</span>
+                            <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['first_viewed'] ) ); ?></span>
+                        </div>
+                        <div class="tf-client-info__item">
+                            <span class="tf-client-info__label">Last Viewed</span>
+                            <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['last_viewed'] ) ); ?></span>
+                        </div>
+                        <div class="tf-client-info__item">
+                            <span class="tf-client-info__label">Total Views</span>
+                            <span class="tf-client-info__value"><?php echo $activity['total_views']; ?></span>
+                        </div>
+                        <?php if ( $activity['first_downloaded'] ) : ?>
+                            <div class="tf-client-info__item">
+                                <span class="tf-client-info__label">First Download</span>
+                                <span class="tf-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['first_downloaded'] ) ); ?></span>
+                            </div>
+                            <div class="tf-client-info__item">
+                                <span class="tf-client-info__label">Last Download</span>
+                                <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['last_downloaded'] ) ); ?></span>
+                            </div>
+                        <?php endif; ?>
+                        <div class="tf-client-info__item">
+                            <span class="tf-client-info__label">Photos Downloaded</span>
+                            <span class="tf-client-info__value"><?php echo $activity['total_downloads']; ?> individual<?php if ( $activity['full_downloads'] ) echo ' + ' . $activity['full_downloads'] . ' full gallery'; ?></span>
+                        </div>
+                    </div>
+                <?php else : ?>
+                    <p class="tf-muted" style="font-size:13px;">Client has not viewed the gallery yet.</p>
+                <?php endif; ?>
+            </div>
+
             <!-- Gallery Management -->
             <?php
             $gallery_info = TwellerFlow_Gallery::get_gallery_info( $session->id, $session->tracking_code );

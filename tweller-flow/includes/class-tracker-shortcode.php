@@ -12,9 +12,9 @@ class TwellerFlow_Tracker_Shortcode {
         wp_enqueue_script( 'tweller-flow-tracker' );
 
         wp_localize_script( 'tweller-flow-tracker', 'twellerFlowTracker', array(
-            'apiUrl'    => rest_url( 'tweller-flow/v1/track/' ),
-            'galleryUrl'=> rest_url( 'tweller-flow/v1/gallery/' ),
-            'nonce'     => wp_create_nonce( 'wp_rest' ),
+            'apiUrl'      => rest_url( 'tweller-flow/v1/track/' ),
+            'galleryUrl'  => rest_url( 'tweller-flow/v1/gallery/' ),
+            'nonce'       => wp_create_nonce( 'wp_rest' ),
         ));
 
         $code = isset( $_GET['code'] ) ? sanitize_text_field( $_GET['code'] ) : '';

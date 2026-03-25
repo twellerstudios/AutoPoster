@@ -1,5 +1,5 @@
 /**
- * Tweller Flow v2.5 — Client Tracker + Gallery
+ * Tweller Flow v2.6 — Client Tracker + Gallery + Activity Tracking
  */
 (function() {
     'use strict';
@@ -38,6 +38,28 @@
         });
     }
 
+    // ── Activity Tracking ──────────────────────────────
+    function trackActivity(eventType, detail) {
+        var url = twellerFlowTracker.galleryUrl + code + '/activity';
+        var body = { event: eventType };
+        if (detail) body.detail = detail;
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': twellerFlowTracker.nonce
+            },
+            body: JSON.stringify(body)
+        }).catch(function() {}); // fire-and-forget
+    }
+
+    // Track page view (gallery_viewed = loaded the tracker page when gallery is ready)
+    var gallerySection = document.querySelector('.tf-gallery[data-code]');
+    if (gallerySection) {
+        trackActivity('gallery_viewed');
+    }
+
     // ── Gallery ────────────────────────────────────────
     var gallery = document.querySelector('.tf-gallery[data-code]');
     if (!gallery) return;
@@ -71,6 +93,7 @@
     var galleryLoaded = false;
     var needsPassword = false;
     var galleryRevealed = false;
+    var galleryError = false;
 
     // Pre-fetch gallery on page load to set up hero cover
     prefetchGallery();
@@ -79,35 +102,81 @@
         var url = galleryUrl + code;
         if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
 
+        // Show a subtle loading indicator on the hero
+        if (heroCover) {
+            heroCover.style.display = '';
+            heroCover.classList.add('tf-hero-cover--loading');
+        }
+
         fetch(url, { headers: { 'X-WP-Nonce': twellerFlowTracker.nonce } })
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
         .then(function(data) {
-            if (!data.ok || !data.ready) return;
+            if (heroCover) heroCover.classList.remove('tf-hero-cover--loading');
+
+            if (!data.ok) {
+                showGalleryMessage('Gallery is being prepared. Please check back soon.');
+                return;
+            }
+
+            if (!data.ready) {
+                showGalleryMessage('Your gallery is being prepared. Please check back soon.');
+                return;
+            }
 
             galleryLoaded = true;
 
             if (data.has_password && !data.unlocked) {
                 needsPassword = true;
-                // Still show hero cover with a placeholder or first photo if available
                 if (heroCover) heroCover.style.display = '';
                 return;
             }
 
             photos = data.photos || [];
+            if (photos.length === 0) {
+                showGalleryMessage('Your photos are being uploaded to the gallery. Please refresh in a moment.');
+                return;
+            }
+
             // Set hero cover background to first photo
             if (photos.length && heroCover && heroCoverBg) {
                 heroCoverBg.style.backgroundImage = 'url(' + photos[0].url + ')';
                 heroCover.style.display = '';
             }
         })
-        .catch(function() {});
+        .catch(function(err) {
+            galleryError = true;
+            if (heroCover) heroCover.classList.remove('tf-hero-cover--loading');
+            showGalleryMessage('Unable to load gallery. Please try refreshing the page.');
+            console.error('[Tweller Gallery]', err.message || err);
+        });
+    }
+
+    function showGalleryMessage(msg) {
+        // Create or update a message element below the gallery section
+        var msgEl = document.getElementById('tf-gallery-message');
+        if (!msgEl) {
+            msgEl = document.createElement('div');
+            msgEl.id = 'tf-gallery-message';
+            msgEl.className = 'tf-gallery__message';
+            gallery.appendChild(msgEl);
+        }
+        msgEl.textContent = msg;
+        msgEl.style.display = 'block';
+
+        // Hide the hero cover if we're showing an error/info message
+        if (heroCover) heroCover.style.display = 'none';
     }
 
     // ── "VIEW GALLERY" button ───────────────────────────
     if (viewBtn) {
         viewBtn.addEventListener('click', function() {
+            // Track that client clicked to open gallery
+            trackActivity('gallery_opened');
+
             if (needsPassword) {
-                // Show password gate below the hero
                 pwSection.style.display = 'block';
                 pwSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 return;
@@ -116,7 +185,6 @@
             if (photos.length) {
                 revealGallery();
             } else {
-                // Try loading first
                 loadGalleryAndReveal();
             }
         });
@@ -127,9 +195,15 @@
         if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
 
         fetch(url, { headers: { 'X-WP-Nonce': twellerFlowTracker.nonce } })
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
         .then(function(data) {
-            if (!data.ok || !data.ready) return;
+            if (!data.ok || !data.ready) {
+                showGalleryMessage('Gallery is not ready yet. Please check back soon.');
+                return;
+            }
 
             galleryLoaded = true;
             if (data.has_password && !data.unlocked) {
@@ -140,14 +214,25 @@
             }
 
             photos = data.photos || [];
-            if (photos.length) revealGallery();
+            if (photos.length) {
+                revealGallery();
+            } else {
+                showGalleryMessage('Your photos are being uploaded. Please refresh in a moment.');
+            }
         })
-        .catch(function() {});
+        .catch(function(err) {
+            showGalleryMessage('Unable to load gallery. Please try refreshing the page.');
+            console.error('[Tweller Gallery]', err.message || err);
+        });
     }
 
     function revealGallery() {
         if (galleryRevealed) return;
         galleryRevealed = true;
+
+        // Hide any message
+        var msgEl = document.getElementById('tf-gallery-message');
+        if (msgEl) msgEl.style.display = 'none';
 
         // Build the grid
         buildGrid();
@@ -159,6 +244,11 @@
         // Set download all link
         downloadAll.href = galleryUrl + code + '/download-all'
             + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
+
+        // Track download-all clicks
+        downloadAll.addEventListener('click', function() {
+            trackActivity('all_downloaded', photos.length + ' photos');
+        });
 
         // Smooth scroll so toolbar is at top
         setTimeout(function() {
@@ -193,7 +283,6 @@
                     sessionStorage.setItem('tf_gallery_token_' + code, data.token);
                     pwSection.style.display = 'none';
                     needsPassword = false;
-                    // Reload gallery with token, then reveal
                     loadGalleryAndReveal();
                 }
             })
@@ -218,9 +307,13 @@
             img.className = 'loading';
             img.alt = photo.filename;
             img.loading = 'lazy';
-            // Use full-size URL for masonry (natural aspect ratio)
             img.src = photo.thumb_url;
             img.onload = function() { img.classList.remove('loading'); };
+            img.onerror = function() {
+                img.classList.remove('loading');
+                img.classList.add('tf-gallery__img-error');
+                img.alt = 'Could not load image';
+            };
 
             item.appendChild(img);
             item.addEventListener('click', function() { openLightbox(idx); });
@@ -263,6 +356,16 @@
     if (lbClose) lbClose.addEventListener('click', closeLightbox);
     if (lbPrev)  lbPrev.addEventListener('click', prevPhoto);
     if (lbNext)  lbNext.addEventListener('click', nextPhoto);
+
+    // Track individual photo downloads
+    if (lbDownload) {
+        lbDownload.addEventListener('click', function() {
+            var photo = photos[currentIdx];
+            if (photo) {
+                trackActivity('photo_downloaded', photo.filename);
+            }
+        });
+    }
 
     // Click backdrop to close
     if (lightbox) {

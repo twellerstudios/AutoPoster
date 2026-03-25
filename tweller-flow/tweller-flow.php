@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Flow
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client notifications, and folder watcher integration.
- * Version: 2.5.1
+ * Version: 2.6.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_VERSION', '2.5.1' );
+define( 'TWELLER_FLOW_VERSION', '2.6.0' );
 define( 'TWELLER_FLOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_TABLE_SESSIONS', 'tweller_sessions' );
@@ -29,6 +29,7 @@ require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-tracker-shortcode.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-webhook-handler.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-photo-automation.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-gallery.php';
+require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-client-activity.php';
 
 if ( is_admin() ) {
     require_once TWELLER_FLOW_PLUGIN_DIR . 'admin/class-admin.php';
@@ -41,6 +42,7 @@ function tweller_flow_activate() {
     TwellerFlow_Database::create_tables();
     TwellerFlow_Database::seed_defaults();
     TwellerFlow_Gallery::create_table();
+    TwellerFlow_Client_Activity::create_table();
     tweller_flow_ensure_tracker_page();
     flush_rewrite_rules();
 }
@@ -114,12 +116,14 @@ function tweller_flow_init() {
     TwellerFlow_Webhook_Handler::init();
     TwellerFlow_Photo_Automation::init();
     TwellerFlow_Gallery::init();
+    TwellerFlow_Client_Activity::init();
 
-    // Auto-upgrade: create gallery table if missing
+    // Auto-upgrade: create tables if missing
     $db_version = get_option( 'tweller_flow_db_version', '2.1.2' );
-    if ( version_compare( $db_version, '2.2.0', '<' ) ) {
+    if ( version_compare( $db_version, '2.6.0', '<' ) ) {
         TwellerFlow_Gallery::create_table();
-        update_option( 'tweller_flow_db_version', '2.2.0' );
+        TwellerFlow_Client_Activity::create_table();
+        update_option( 'tweller_flow_db_version', '2.6.0' );
     }
     add_action( 'wp_enqueue_scripts', 'tweller_flow_public_assets' );
 }

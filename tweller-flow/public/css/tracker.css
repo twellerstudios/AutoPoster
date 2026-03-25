@@ -657,3 +657,35 @@
     opacity: 1;
     color: #FFFFFF;
 }
+
+/* ── Gallery Messages & Loading ──────────────────────── */
+
+.tf-gallery__message {
+    text-align: center;
+    padding: 40px 24px;
+    font-size: 15px;
+    color: #6B7280;
+    line-height: 1.6;
+    background: #F9FAFB;
+    border-radius: 12px;
+    margin: 20px 0;
+}
+
+.tf-hero-cover--loading .tf-hero-cover__bg {
+    background: linear-gradient(135deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+    background-size: 200% 100%;
+    animation: tf-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes tf-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.tf-gallery__img-error {
+    background: #F3F4F6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100px;
+}

@@ -308,6 +308,11 @@ class TwellerFlow_Gallery {
             return new WP_Error( 'not_found', 'Photo not found', array( 'status' => 404 ) );
         }
 
+        // Track download
+        if ( class_exists( 'TwellerFlow_Client_Activity' ) ) {
+            TwellerFlow_Client_Activity::log( $session->id, $code, 'photo_downloaded', $filename );
+        }
+
         header( 'Content-Type: image/jpeg' );
         header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
         header( 'Content-Length: ' . filesize( $file_path ) );
@@ -327,6 +332,11 @@ class TwellerFlow_Gallery {
         $photos = self::get_photos( $session->id );
         if ( empty( $photos ) ) {
             return new WP_Error( 'empty', 'No photos in gallery', array( 'status' => 404 ) );
+        }
+
+        // Track download
+        if ( class_exists( 'TwellerFlow_Client_Activity' ) ) {
+            TwellerFlow_Client_Activity::log( $session->id, $code, 'all_downloaded', count( $photos ) . ' photos' );
         }
 
         $zip_name = sanitize_file_name( $session->client_name ) . '-photos.zip';

@@ -458,11 +458,53 @@ function copyToLRAutoImport(imagenFolderPath, imagenFolderName) {
             }
             copiedCount++;
         }
+
+        // Track which session these files belong to, so the post-import
+        // organizer can sort them into the correct subfolder.
+        if (copiedCount > 0) {
+            trackSessionFiles(imagenFolderName, files.filter(f => {
+                const ext = path.extname(f).toLowerCase();
+                return RAW_EXT.has(ext);
+            }));
+        }
     } catch (err) {
         log(`Error copying to LR Auto Import: ${err.message}`, 'error');
     }
 
     return copiedCount;
+}
+
+/**
+ * Track which files belong to which session for post-import organization.
+ * Stores a mapping file so the post-import organizer knows where to sort files.
+ */
+function trackSessionFiles(sessionName, fileNames) {
+    const trackingFile = path.join(LR_AUTO_IMPORT_DIR, '.session-tracking.json');
+    let tracking = {};
+
+    try {
+        if (fs.existsSync(trackingFile)) {
+            tracking = JSON.parse(fs.readFileSync(trackingFile, 'utf8'));
+        }
+    } catch (err) {
+        log(`Warning: Could not read session tracking file, starting fresh`, 'warn');
+    }
+
+    if (!tracking[sessionName]) {
+        tracking[sessionName] = [];
+    }
+
+    for (const f of fileNames) {
+        if (!tracking[sessionName].includes(f)) {
+            tracking[sessionName].push(f);
+        }
+    }
+
+    try {
+        fs.writeFileSync(trackingFile, JSON.stringify(tracking, null, 2));
+    } catch (err) {
+        log(`Error writing session tracking file: ${err.message}`, 'error');
+    }
 }
 
 function getTopLevelFolders(dir) {
@@ -1253,6 +1295,7 @@ function startWatcher() {
     log(`Watching RAWs:    ${WATCH_DIR}`);
     log(`Watching CULLED:  ${CULLED_DIR || '(not set)'}`);
     log(`Watching Exports: ${EXPORTS_DIR || '(not set)'}`);
+    log(`LR Auto Import:   ${LR_AUTO_IMPORT_DIR || '(not set)'}`);
     log(`WordPress: ${WP_URL}`);
     log(`Auto-upload to gallery: ${AUTO_UPLOAD ? 'ON' : 'OFF'}`);
     log(`Poll interval: ${POLL_INTERVAL / 1000}s`);
@@ -1330,6 +1373,7 @@ function startWatcher() {
 
     // Also poll periodically (uses safeScan to avoid overlapping with event-driven scans)
     setInterval(() => safeScan('Periodic scan...'), POLL_INTERVAL);
+
 
     // Graceful shutdown
     process.on('SIGINT', () => {

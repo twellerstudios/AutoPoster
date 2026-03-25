@@ -33,3 +33,41 @@ SETTINGS:
 - Session Code: The 6-character tracking code for this session
 - Local Folder: Where to save copies on your PC
 - Gallery Password: Optional password clients need to enter to view photos
+
+
+Tweller Auto Organizer — Session-Based Import Organization
+==========================================================
+
+INSTALL:
+1. Copy "TwellerAutoOrganizer.lrplugin" to your Lightroom plugins folder
+   (same location as TwellerFlow.lrplugin above)
+
+2. In Lightroom Classic:
+   - Go to File > Plug-in Manager
+   - Click "Add" and navigate to the TwellerAutoOrganizer.lrplugin folder
+   - Click "Done"
+
+3. DISABLE Lightroom's built-in Auto Import:
+   - Go to File > Auto Import Settings
+   - UNCHECK "Enable Auto Import"
+   - Click OK
+
+4. Configure the Auto Organizer:
+   - Go to Library > Plug-in Extras > Auto Organizer Settings
+   - Set Watch Folder to your LR-AUTO-IMPORT path
+     (e.g., T:\TWELLER STUDIOS\PHOTOGRAPHY\LR-AUTO-IMPORT)
+   - Set Destination to where you want organized session folders
+     (e.g., T:\TWELLER STUDIOS\PHOTOGRAPHY\EDITED CULLED AUTO IMPORTS)
+   - Check "Enable background auto-organizer"
+   - Click Save
+
+HOW IT WORKS:
+- The watcher copies Imagen-edited photos to LR-AUTO-IMPORT (flat)
+- The watcher writes .session-tracking.json mapping files to sessions
+- This plugin picks up the files and moves them into organized folders:
+    {destination}/{session name} To Export/
+- Photos are imported into your LR catalog in the correct session folder
+- Collections are created: "Sessions To Export > {session} To Export"
+
+You can also manually trigger organization:
+  Library > Plug-in Extras > Organize Imports by Session

@@ -86,7 +86,6 @@ class TwellerFlow_Database {
                 'exported'   => array( 'label' => 'Exported',   'client_label' => 'Exporting',     'icon' => 'package',      'notify' => false ),
                 'uploading'  => array( 'label' => 'Uploading',  'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
                 'uploaded'   => array( 'label' => 'Uploaded',   'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
-                'deliver'    => array( 'label' => 'Deliver',    'client_label' => 'Gallery Ready', 'icon' => 'send',         'notify' => true ),
                 'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',     'icon' => 'check-circle', 'notify' => true ),
             ),
             'tweller_flow_client_stages' => array(

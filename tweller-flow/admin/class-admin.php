@@ -203,14 +203,16 @@ class TwellerFlow_Admin {
             check_admin_referer( 'tweller_flow_deliver_' . $_GET['session_id'] );
             $id = intval( $_GET['session_id'] );
             $session = TwellerFlow_Session::get( $id );
-            if ( $session && $session->current_stage === 'deliver' ) {
+            if ( $session && in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
                 // Send the delivery email
-                $template = TwellerFlow_Notifications::get_email_template( 'deliver', $session );
+                $template = TwellerFlow_Notifications::get_email_template( 'delivered', $session );
                 if ( $template && ! empty( $session->client_email ) ) {
                     $sent = TwellerFlow_Notifications::send_email( $session, $template['subject'], $template['body'] );
                     if ( $sent ) {
-                        // Advance to delivered
-                        TwellerFlow_Session::set_stage( $id, 'delivered', 'Gallery delivery email sent to ' . $session->client_email );
+                        // Advance to delivered if not already
+                        if ( $session->current_stage !== 'delivered' ) {
+                            TwellerFlow_Session::set_stage( $id, 'delivered', 'Gallery delivery email sent to ' . $session->client_email );
+                        }
                         wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&delivered=1' ) );
                     } else {
                         wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&email_failed=1' ) );

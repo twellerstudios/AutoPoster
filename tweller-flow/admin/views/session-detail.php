@@ -90,7 +90,7 @@
                     </a>
                 <?php endif; ?>
 
-                <?php if ( $session->current_stage === 'deliver' ) : ?>
+                <?php if ( in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) : ?>
                     <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-session&action=send_delivery&session_id=' . $session->id ), 'tweller_flow_deliver_' . $session->id ); ?>"
                        class="tf-btn tf-btn--primary"
                        style="background:#10B981; color:#FFFFFF; border-color:#10B981;"

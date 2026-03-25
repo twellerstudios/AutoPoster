@@ -145,7 +145,7 @@ class TwellerFlow_Tracker_Shortcode {
                 <?php endforeach; ?>
             </div>
 
-            <?php if ( in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ) : ?>
+            <?php if ( in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) : ?>
                 <div id="gallery" class="tf-gallery" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
 
                     <!-- Hero Cover (full-width, first photo as background with Ken Burns) -->

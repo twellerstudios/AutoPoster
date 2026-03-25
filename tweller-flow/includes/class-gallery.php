@@ -217,7 +217,7 @@ class TwellerFlow_Gallery {
         }
 
         // Show gallery once images are uploaded or delivered
-        if ( ! in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ) {
+        if ( ! in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
             return rest_ensure_response( array(
                 'ok'            => true,
                 'ready'         => false,
@@ -299,7 +299,7 @@ class TwellerFlow_Gallery {
         $filename = sanitize_file_name( $request->get_param( 'file' ) );
 
         $session = TwellerFlow_Session::get_by_code( $code );
-        if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ) {
+        if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
             return new WP_Error( 'not_found', 'Not found', array( 'status' => 404 ) );
         }
 
@@ -319,7 +319,7 @@ class TwellerFlow_Gallery {
         $code = sanitize_text_field( $request['code'] );
 
         $session = TwellerFlow_Session::get_by_code( $code );
-        if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ) {
+        if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
             return new WP_Error( 'not_found', 'Not found', array( 'status' => 404 ) );
         }
 

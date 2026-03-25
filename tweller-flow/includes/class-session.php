@@ -269,7 +269,7 @@ class TwellerFlow_Session {
             'current_stage_index'=> $client_stage_idx,
             'stages'             => $client_stages,
             'estimated_delivery' => $session->estimated_delivery,
-            'gallery_url'        => in_array( $session->current_stage, array( 'uploaded', 'deliver', 'delivered' ), true ) ? $session->gallery_url : '',
+            'gallery_url'        => in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ? $session->gallery_url : '',
             'history'            => $client_history,
         ));
     }

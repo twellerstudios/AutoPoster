@@ -1103,8 +1103,7 @@ async function scan() {
 
     // Scan exports directory — detect new exports + auto-upload to gallery
     // Stage flow: exporting → exported → uploading → uploaded → delivered (auto, sends email)
-    // NOTE: Only EXPORTS_DIR is scanned for gallery upload. CULLED_DIR / FOR-IMAGEN
-    //       folders are NEVER auto-uploaded — they're for Imagen editing only.
+    // Works for BOTH Lightroom exports and Imagen JPG exports — anything in EXPORTS_DIR.
     if (EXPORTS_DIR && fs.existsSync(EXPORTS_DIR)) {
         const exportFolders = getTopLevelFolders(EXPORTS_DIR);
 
@@ -1118,13 +1117,16 @@ async function scan() {
             if (exportCount === 0) continue;
 
             const session = matchFolderToSession(folder, sessions);
-            if (!session) continue;
+            if (!session) {
+                log(`Exports "${folder}": ${exportCount} photos but no matching session — skipping`, 'debug');
+                continue;
+            }
 
             const prev = exportState.get(folder);
 
             if (!prev || prev.exportCount !== exportCount) {
                 // New exports detected or count changed — still exporting
-                log(`Exports "${folder}" → ${session.client_name} [${session.tracking_code}]: ${exportCount} exports`);
+                log(`Exports "${folder}" → ${session.client_name} [${session.tracking_code}]: ${exportCount} exports (stage: ${session.current_stage})`);
 
                 // Advance to 'exporting' if in early stages
                 if (['imported', 'culling', 'culled', 'editing', 'edited'].includes(session.current_stage)) {
@@ -1154,8 +1156,9 @@ async function scan() {
                 if (elapsed >= EXPORT_STABLE_MS) {
                     log(`Export complete for ${session.client_name}: ${exportCount} photos (stable for ${Math.round(elapsed / 1000)}s)`);
 
-                    // Advance to 'exported'
-                    if (['exporting'].includes(session.current_stage)) {
+                    // Advance to 'exported' — accept both 'exporting' and 'edited'
+                    // (Imagen may export JPGs directly without going through 'exporting' first)
+                    if (['edited', 'exporting'].includes(session.current_stage)) {
                         const res = await wpAdvanceStage(
                             session.tracking_code,
                             'exported',

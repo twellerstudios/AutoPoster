@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tweller Flow — Photo Workflow</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; color: #1F2937; line-height: 1.6; padding: 40px; max-width: 900px; margin: 0 auto; background: #fff; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; color: #111827; }
+  h1 span { color: #6366F1; }
+  .subtitle { font-size: 14px; color: #6B7280; margin-bottom: 40px; }
+  h2 { font-size: 20px; font-weight: 700; color: #111827; margin: 36px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #E5E7EB; }
+  h3 { font-size: 15px; font-weight: 600; color: #374151; margin: 20px 0 8px; }
+
+  /* Folder config table */
+  .config-table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+  .config-table th { text-align: left; background: #F9FAFB; padding: 10px 14px; font-weight: 600; color: #374151; border-bottom: 2px solid #E5E7EB; }
+  .config-table td { padding: 10px 14px; border-bottom: 1px solid #F3F4F6; }
+  .config-table td:first-child { font-weight: 500; white-space: nowrap; }
+  .config-table code { background: #F3F4F6; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #6366F1; }
+
+  /* Stage pipeline */
+  .pipeline { display: flex; flex-wrap: wrap; gap: 0; margin: 20px 0 30px; align-items: stretch; }
+  .stage { display: flex; align-items: center; gap: 0; }
+  .stage-box { padding: 10px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; text-align: center; min-width: 90px; }
+  .stage-box small { display: block; font-weight: 400; font-size: 10px; margin-top: 2px; opacity: 0.8; }
+  .stage-arrow { font-size: 18px; color: #9CA3AF; padding: 0 4px; }
+  .s-booked { background: #DBEAFE; color: #1E40AF; }
+  .s-imported { background: #E0E7FF; color: #3730A3; }
+  .s-culling { background: #FEF3C7; color: #92400E; }
+  .s-culled { background: #FDE68A; color: #78350F; }
+  .s-editing { background: #FCE7F3; color: #9D174D; }
+  .s-edited { background: #FBCFE8; color: #831843; }
+  .s-exporting { background: #E0F2FE; color: #075985; }
+  .s-exported { background: #BAE6FD; color: #0C4A6E; }
+  .s-uploading { background: #D1FAE5; color: #065F46; }
+  .s-uploaded { background: #A7F3D0; color: #064E3B; }
+  .s-delivered { background: #10B981; color: #FFFFFF; }
+
+  /* Step cards */
+  .step { background: #FAFAFA; border: 1px solid #E5E7EB; border-radius: 10px; padding: 20px 24px; margin: 16px 0; page-break-inside: avoid; }
+  .step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .step-num { width: 32px; height: 32px; border-radius: 50%; background: #6366F1; color: #fff; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-title { font-size: 15px; font-weight: 700; color: #111827; }
+  .step-transition { font-size: 12px; color: #6366F1; font-weight: 600; background: #EEF2FF; padding: 2px 8px; border-radius: 4px; margin-left: auto; white-space: nowrap; }
+  .step p { font-size: 13px; color: #4B5563; margin: 6px 0; }
+  .step .folder { display: inline-block; background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-family: 'Courier New', monospace; font-weight: 500; margin: 2px 0; }
+  .step .action { background: #D1FAE5; color: #065F46; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; display: inline-block; margin: 2px 0; }
+  .step .wait { background: #FEE2E2; color: #991B1B; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; display: inline-block; margin: 2px 0; }
+  .step .trigger { background: #E0E7FF; color: #3730A3; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; display: inline-block; margin: 2px 0; }
+  .step .copy-arrow { font-size: 14px; color: #6366F1; font-weight: 700; }
+
+  .detail-row { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
+  .detail-label { font-size: 12px; font-weight: 600; color: #6B7280; min-width: 80px; flex-shrink: 0; }
+  .detail-value { font-size: 12px; color: #374151; }
+
+  /* Timers table */
+  .timers-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  .timers-table th { text-align: left; background: #F9FAFB; padding: 8px 12px; font-weight: 600; font-size: 12px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #E5E7EB; }
+  .timers-table td { padding: 8px 12px; border-bottom: 1px solid #F3F4F6; }
+  .timers-table td:nth-child(2) { font-weight: 600; color: #DC2626; }
+
+  .note { background: #EEF2FF; border-left: 3px solid #6366F1; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 13px; color: #3730A3; }
+
+  @media print {
+    body { padding: 20px; }
+    .step { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Tweller <span>Flow</span> — Photo Workflow</h1>
+<p class="subtitle">Automated photo session pipeline from import to client delivery</p>
+
+<!-- ── CONFIGURED FOLDERS ── -->
+<h2>Configured Folders</h2>
+<table class="config-table">
+  <tr><th>Purpose</th><th>Path</th></tr>
+  <tr><td>RAW Imports</td><td><code>T:\TWELLER STUDIOS\PHOTOGRAPHY\RAWS-FOR AUTOMATION\</code></td></tr>
+  <tr><td>Culled / FOR-IMAGEN</td><td><code>T:\TWELLER STUDIOS\PHOTOGRAPHY\CULLED\</code></td></tr>
+  <tr><td>Lightroom Auto-Import</td><td><code>T:\TWELLER STUDIOS\PHOTOGRAPHY\LR-AUTO-IMPORT\</code></td></tr>
+  <tr><td>Lightroom Exports</td><td><code>T:\TWELLER STUDIOS\PHOTOGRAPHY\EXPORTS-FOR AUTOMATION\</code></td></tr>
+</table>
+
+<h3>Folder Naming Convention</h3>
+<p style="font-size:13px; color:#4B5563; margin-bottom:4px;">Each session gets folders named by tracking code + client name:</p>
+<table class="config-table">
+  <tr><th>Folder</th><th>Example</th></tr>
+  <tr><td>RAW folder</td><td><code>74C33F - Vijay Ramcharitar</code></td></tr>
+  <tr><td>FOR-IMAGEN folder</td><td><code>74C33F - Vijay Ramcharitar-FOR-IMAGEN</code></td></tr>
+  <tr><td>Exports folder</td><td><code>74C33F - Vijay Ramcharitar-Exports</code></td></tr>
+</table>
+
+<!-- ── STAGE PIPELINE ── -->
+<h2>Stage Pipeline</h2>
+<div class="pipeline">
+  <div class="stage"><div class="stage-box s-booked">Booked</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-imported">Imported</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-culling">Culling</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-culled">Culled</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-editing">Editing</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-edited">Edited</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-exporting">Exporting</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-exported">Exported</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-uploading">Uploading</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-uploaded">Uploaded</div><span class="stage-arrow">&#8594;</span></div>
+  <div class="stage"><div class="stage-box s-delivered">Delivered</div></div>
+</div>
+
+<p class="note"><strong>Client sees simplified stages:</strong> Booked &rarr; Editing &rarr; Done Editing &rarr; Exporting &rarr; Gallery Ready &rarr; Delivered</p>
+
+<!-- ── STEP BY STEP ── -->
+<h2>Step-by-Step Workflow</h2>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">1</div>
+    <div class="step-title">RAW Photos Imported</div>
+    <div class="step-transition">booked &rarr; imported</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> Photos appear in the session folder</p>
+  <div class="detail-row"><span class="detail-label">Reads from:</span><span class="detail-value"><span class="folder">RAWS-FOR AUTOMATION\{Code} - {Client}\</span></span></div>
+  <div class="detail-row"><span class="detail-label">Detects:</span><span class="detail-value">Any RAW or image files (.cr3, .nef, .arw, .jpg, etc.)</span></div>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value"><span class="action">Stage advances to Imported</span> &mdash; photo count sent to WordPress</span></div>
+</div>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">2</div>
+    <div class="step-title">Culling Started (Green Labels)</div>
+    <div class="step-transition">imported &rarr; culling</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> Green-labeled photos detected in Lightroom XMP sidecars</p>
+  <div class="detail-row"><span class="detail-label">Reads from:</span><span class="detail-value"><span class="folder">RAWS-FOR AUTOMATION\{Code} - {Client}\</span> (reads .xmp files)</span></div>
+  <div class="detail-row"><span class="detail-label">Detects:</span><span class="detail-value"><code>xmp:Label="Green"</code> in XMP sidecar files</span></div>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value"><span class="action">Stage advances to Culling</span> &mdash; green count reported</span></div>
+</div>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">3</div>
+    <div class="step-title">Culling Complete</div>
+    <div class="step-transition">culling &rarr; culled</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> Green count unchanged for 2 minutes</p>
+  <div class="detail-row"><span class="detail-label">Wait time:</span><span class="detail-value"><span class="wait">120 seconds (cullStableSeconds)</span></span></div>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value"><span class="action">Stage advances to Culled</span> + green-labeled RAWs copied:</span></div>
+  <p style="margin-top:8px;">
+    <span class="folder">RAWS-FOR AUTOMATION\{Code} - {Client}\*.cr3 + *.xmp</span><br>
+    <span class="copy-arrow">&nbsp;&nbsp;&nbsp;&darr; copies green-labeled RAWs + XMP sidecars</span><br>
+    <span class="folder">CULLED\{Code} - {Client}-FOR-IMAGEN\</span>
+  </p>
+</div>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">4</div>
+    <div class="step-title">Auto-Advance to Editing</div>
+    <div class="step-transition">culled &rarr; editing</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> Automatic after 30 seconds in "culled" stage</p>
+  <div class="detail-row"><span class="detail-label">Wait time:</span><span class="detail-value"><span class="wait">30 seconds (editAutoAdvanceSeconds)</span></span></div>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value"><span class="action">Stage advances to Editing</span> + exports folder auto-created</span></div>
+  <p style="margin-top:4px; font-size:13px; color:#6B7280;"><em>You upload the FOR-IMAGEN folder to Imagen AI at this point.</em></p>
+</div>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">5</div>
+    <div class="step-title">Imagen Edits Detected</div>
+    <div class="step-transition">editing &rarr; edited</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> Develop settings appear in XMP sidecars (80%+ photos edited, stable 2 min)</p>
+  <div class="detail-row"><span class="detail-label">Reads from:</span><span class="detail-value"><span class="folder">CULLED\{Code} - {Client}-FOR-IMAGEN\</span> (CULLED folder)</span></div>
+  <div class="detail-row"><span class="detail-label">Detects:</span><span class="detail-value">Camera Raw settings: ToneCurve, Exposure, Contrast, Highlights, Shadows, etc. (2+ indicators)</span></div>
+  <div class="detail-row"><span class="detail-label">Wait time:</span><span class="detail-value"><span class="wait">120 seconds (imagenStableSeconds)</span> + 80% edit threshold</span></div>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value"><span class="action">Stage advances to Edited</span> + edited RAWs copied to Lightroom:</span></div>
+  <p style="margin-top:8px;">
+    <span class="folder">CULLED\{Code} - {Client}-FOR-IMAGEN\*.cr3 + *.xmp</span><br>
+    <span class="copy-arrow">&nbsp;&nbsp;&nbsp;&darr; copies edited RAWs + XMP with develop settings</span><br>
+    <span class="folder">LR-AUTO-IMPORT\</span>
+  </p>
+  <p style="font-size:13px; color:#6B7280; margin-top:4px;"><em>Lightroom auto-imports these, then you export JPGs.</em></p>
+</div>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">6</div>
+    <div class="step-title">Exports Detected</div>
+    <div class="step-transition">edited &rarr; exporting &rarr; exported</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> JPG/PNG files appear in exports folder</p>
+  <div class="detail-row"><span class="detail-label">Reads from:</span><span class="detail-value"><span class="folder">EXPORTS-FOR AUTOMATION\{Code} - {Client}-Exports\</span></span></div>
+  <div class="detail-row"><span class="detail-label">Detects:</span><span class="detail-value">.jpg, .jpeg, .png, .webp, .tif, .tiff files</span></div>
+  <div class="detail-row"><span class="detail-label">Wait time:</span><span class="detail-value"><span class="wait">60 seconds (exportStableSeconds)</span> for file count to stabilize</span></div>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value"><span class="action">Stage advances to Exported</span> &mdash; ready for upload</span></div>
+</div>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">7</div>
+    <div class="step-title">Auto-Upload to WordPress Gallery</div>
+    <div class="step-transition">exported &rarr; uploading &rarr; uploaded</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> Exports stable + auto-upload enabled</p>
+  <div class="detail-row"><span class="detail-label">Reads from:</span><span class="detail-value"><span class="folder">EXPORTS-FOR AUTOMATION\{Code} - {Client}-Exports\</span></span></div>
+  <div class="detail-row"><span class="detail-label">Uploads to:</span><span class="detail-value"><span class="action">WordPress gallery</span> via REST API (2s between each photo, 3 retries)</span></div>
+  <div class="detail-row"><span class="detail-label">Skips:</span><span class="detail-value">Photos already on server (deduplication check)</span></div>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value">Each JPG uploaded, thumbnails generated server-side, stored in <code>wp-content/uploads/tweller-gallery/{code}/</code></span></div>
+</div>
+
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">8</div>
+    <div class="step-title">Gallery Delivered</div>
+    <div class="step-transition">uploaded &rarr; delivered</div>
+  </div>
+  <p><span class="trigger">Trigger:</span> All photos uploaded successfully</p>
+  <div class="detail-row"><span class="detail-label">What happens:</span><span class="detail-value"><span class="action">Stage advances to Delivered</span> &mdash; client notification email sent automatically</span></div>
+  <div class="detail-row"><span class="detail-label">Client gets:</span><span class="detail-value">Email with gallery link: <code>twellerstudios.com/session-tracker/?code={CODE}#gallery</code></span></div>
+  <div class="detail-row"><span class="detail-label">Client can:</span><span class="detail-value">View gallery, browse photos in lightbox, download individual or all as ZIP</span></div>
+</div>
+
+<!-- ── TIMERS ── -->
+<h2>Timers &amp; Wait Times</h2>
+<table class="timers-table">
+  <tr><th>What</th><th>Wait</th><th>Config Key</th></tr>
+  <tr><td>Green count stabilization (culling &rarr; culled)</td><td>2 min</td><td>cullStableSeconds</td></tr>
+  <tr><td>Auto-advance to editing (culled &rarr; editing)</td><td>30 sec</td><td>editAutoAdvanceSeconds</td></tr>
+  <tr><td>Edit ratio stabilization (editing &rarr; edited)</td><td>2 min</td><td>editStableSeconds</td></tr>
+  <tr><td>Imagen import readiness</td><td>2 min</td><td>imagenStableSeconds</td></tr>
+  <tr><td>Export count stabilization</td><td>60 sec</td><td>exportStableSeconds</td></tr>
+  <tr><td>Watcher poll interval</td><td>30 sec</td><td>pollIntervalSeconds</td></tr>
+  <tr><td>Delay between photo uploads</td><td>2 sec</td><td>(hardcoded)</td></tr>
+  <tr><td>XMP change debounce</td><td>15 sec</td><td>(hardcoded)</td></tr>
+  <tr><td>New file debounce</td><td>10 sec</td><td>(hardcoded)</td></tr>
+</table>
+
+<!-- ── VISUAL FLOW ── -->
+<h2>Complete File Journey</h2>
+<div style="background:#F9FAFB; border:1px solid #E5E7EB; border-radius:10px; padding:24px; font-size:13px; line-height:2;">
+  <strong>1.</strong> Import RAWs &rarr; <span class="folder">RAWS-FOR AUTOMATION\{Code} - Client\</span><br>
+  <strong>2.</strong> Green-label keepers in Lightroom (XMP sidecars updated)<br>
+  <strong>3.</strong> Watcher copies green RAWs + XMP <span class="copy-arrow">&rarr;</span> <span class="folder">CULLED\{Code} - Client-FOR-IMAGEN\</span><br>
+  <strong>4.</strong> Upload FOR-IMAGEN folder to Imagen AI<br>
+  <strong>5.</strong> Imagen writes edits back to XMP sidecars<br>
+  <strong>6.</strong> Watcher copies edited RAWs + XMP <span class="copy-arrow">&rarr;</span> <span class="folder">LR-AUTO-IMPORT\</span><br>
+  <strong>7.</strong> Lightroom auto-imports edited RAWs<br>
+  <strong>8.</strong> Export JPGs from Lightroom <span class="copy-arrow">&rarr;</span> <span class="folder">EXPORTS-FOR AUTOMATION\{Code} - Client-Exports\</span><br>
+  <strong>9.</strong> Watcher uploads JPGs <span class="copy-arrow">&rarr;</span> <span class="action">WordPress Gallery</span><br>
+  <strong>10.</strong> Client receives email with gallery link <span class="action">Delivered!</span>
+</div>
+
+</body>
+</html>

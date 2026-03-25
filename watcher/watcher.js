@@ -1117,10 +1117,7 @@ async function scan() {
             if (exportCount === 0) continue;
 
             const session = matchFolderToSession(folder, sessions);
-            if (!session) {
-                log(`Exports "${folder}": ${exportCount} photos but no matching session — skipping`, 'debug');
-                continue;
-            }
+            if (!session) continue;
 
             const prev = exportState.get(folder);
 

@@ -1047,7 +1047,7 @@ async function scan() {
             if (editedCount === 0) continue;
 
             if (!prev || prev.editedCount !== editedCount) {
-                log(`Imagen edits detected in "${folder}": ${editedCount}/${greenCount} photos have develop settings`);
+                log(`Imagen edits detected in CULLED folder -> "${folder}": ${editedCount}/${greenCount} photos have develop settings`);
                 imagenImportState.set(folder, {
                     editedCount,
                     greenCount,
@@ -1070,7 +1070,7 @@ async function scan() {
 
                     const copied = copyToLRAutoImport(folderPath, folder);
                     if (copied > 0) {
-                        log(`LR Auto Import: ${copied} Imagen-edited photos from "${folder}" → ${LR_AUTO_IMPORT_DIR}`);
+                        log(`LR Auto Import: ${copied} Imagen-edited photos from CULLED folder -> "${folder}" → ${LR_AUTO_IMPORT_DIR}`);
                         imagenImportState.set(folder, {
                             editedCount,
                             greenCount,

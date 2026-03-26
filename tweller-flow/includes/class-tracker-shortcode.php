@@ -97,6 +97,15 @@ class TwellerFlow_Tracker_Shortcode {
             'Delivered'     => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
         );
         ?>
+        <style>
+            /* Hide WordPress page title/hero banner for tracker page */
+            .entry-header, .page-header, .ast-archive-description,
+            article > header, .hero-section, .page-hero,
+            .entry-title, .page-title,
+            .ast-hero-section, .fl-module-heading,
+            .elementor-page-title, .has-page-header,
+            .page-title-section { display: none !important; }
+        </style>
         <div class="tf-tracker" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
             <div class="tf-tracker__header">
                 <p class="tf-tracker__greeting">Hi <?php echo esc_html( $session->client_name ); ?>! Here's the progress of your <strong><?php echo esc_html( $pkg_name ); ?></strong>.</p>

@@ -1,4 +1,4 @@
-/* Tweller Flow v2.8 — Client Tracker + Gallery
+/* Tweller Flow v2.9 — Client Tracker + Gallery
    Design: Stripe-inspired, Brand colors: black, white, gold (#C9A84C) */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -20,10 +20,24 @@
     --tf-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* ── Hide WordPress page title/hero when tracker is present ── */
+.tf-tracker ~ .entry-title,
+.tf-tracker ~ .page-title,
+body.page .entry-header,
+body.page .page-header,
+body.page .entry-title,
+body.page .page-title,
+body.page .ast-archive-description,
+body.page article > header,
+body.page .hero-section,
+body.page .page-hero {
+    display: none !important;
+}
+
 .tf-tracker {
-    max-width: 560px;
+    max-width: 480px;
     margin: 0 auto;
-    padding: 32px 24px;
+    padding: 24px 24px 32px;
     font-family: var(--tf-font);
     -webkit-font-smoothing: antialiased;
 }
@@ -32,11 +46,11 @@
 
 .tf-tracker__header {
     text-align: center;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
 }
 
 .tf-tracker__greeting {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--tf-gray-500);
     margin: 0;
     line-height: 1.6;
@@ -53,49 +67,47 @@
     display: flex;
     justify-content: center;
     gap: 20px;
-    margin-top: 12px;
+    margin-top: 10px;
     flex-wrap: wrap;
 }
 
 .tf-tracker__meta-item {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--tf-gray-400);
     font-weight: 500;
     letter-spacing: -0.01em;
 }
 
-/* ── Stages ─────────────────────────────────────────── */
+/* ── Stages (center-aligned, Stripe-style) ─────────── */
 
 .tf-tracker__stages {
-    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     padding: 0;
 }
 
 .tf-tracker__stage {
     display: flex;
-    align-items: flex-start;
-    gap: 16px;
-    padding: 0 0 28px 0;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0;
     position: relative;
+    width: 100%;
 }
 
-.tf-tracker__stage:last-child {
-    padding-bottom: 0;
-}
-
-/* Connector Line */
+/* Connector Line — vertical between stages */
 .tf-tracker__stage-connector {
     display: flex;
     flex-direction: column;
     align-items: center;
     flex-shrink: 0;
-    width: 40px;
 }
 
 .tf-tracker__stage-line {
     width: 2px;
-    flex: 1;
-    min-height: 10px;
+    height: 20px;
 }
 
 .tf-tracker__stage--completed .tf-tracker__stage-line { background: var(--tf-gold); }
@@ -103,13 +115,13 @@
 .tf-tracker__stage--current .tf-tracker__stage-line:last-child { background: var(--tf-gray-200); }
 .tf-tracker__stage--upcoming .tf-tracker__stage-line { background: var(--tf-gray-200); }
 
-.tf-tracker__stage:first-child .tf-tracker__stage-line:first-child { background: transparent; }
-.tf-tracker__stage:last-child .tf-tracker__stage-line:last-child { background: transparent; }
+.tf-tracker__stage:first-child .tf-tracker__stage-line:first-child { display: none; }
+.tf-tracker__stage:last-child .tf-tracker__stage-line:last-child { display: none; }
 
 /* Dot */
 .tf-tracker__stage-dot {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -126,12 +138,13 @@
 .tf-tracker__stage--current .tf-tracker__stage-dot {
     background: var(--tf-black);
     color: var(--tf-white);
-    box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.12);
+    box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.10);
 }
 
 .tf-tracker__stage--upcoming .tf-tracker__stage-dot {
-    background: var(--tf-gray-100);
-    color: var(--tf-gray-300);
+    background: var(--tf-gray-200);
+    color: var(--tf-gray-400);
+    border: 2px solid var(--tf-gray-200);
 }
 
 /* Pulse animation */
@@ -148,48 +161,45 @@
     50% { opacity: 0.6; transform: scale(0.7); }
 }
 
-/* Content */
+/* Content — centered below the dot */
 .tf-tracker__stage-content {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 4px 0;
-    flex: 1;
+    gap: 4px;
+    padding: 6px 0 0;
 }
 
 .tf-tracker__stage-icon {
-    color: var(--tf-gray-300);
-    flex-shrink: 0;
+    display: none; /* Icons are in the dot context now; hide the separate icon */
 }
 
-.tf-tracker__stage--completed .tf-tracker__stage-icon { color: var(--tf-gold); }
-.tf-tracker__stage--current .tf-tracker__stage-icon { color: var(--tf-black); }
-
 .tf-tracker__stage-info {
-    flex: 1;
+    text-align: center;
 }
 
 .tf-tracker__stage-name {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     margin: 0;
     line-height: 1.3;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
 }
 
 .tf-tracker__stage--completed .tf-tracker__stage-name { color: var(--tf-gold-dark); }
-.tf-tracker__stage--current .tf-tracker__stage-name { color: var(--tf-black); }
-.tf-tracker__stage--upcoming .tf-tracker__stage-name { color: var(--tf-gray-400); }
+.tf-tracker__stage--current .tf-tracker__stage-name { color: var(--tf-black); font-weight: 700; }
+.tf-tracker__stage--upcoming .tf-tracker__stage-name { color: var(--tf-gray-400); font-weight: 500; }
 
 /* ── Progress Bar ──────────────────────────────────── */
 
 .tf-tracker__progress {
-    margin-top: 6px;
+    margin-top: 4px;
+    width: 120px;
 }
 
 .tf-tracker__progress-bar {
     width: 100%;
-    height: 4px;
+    height: 3px;
     background: var(--tf-gray-200);
     border-radius: 100px;
     overflow: hidden;

@@ -925,6 +925,7 @@ async function uploadCullingProofs(session, folderPath) {
     log(`Generating ${toUpload.length} culling preview(s) for ${session.client_name} (${raws.length} total RAWs)...`);
 
     let uploaded = 0;
+    let failed = 0;
     for (const raw of toUpload) {
         const previewName = raw.name.replace(/\.[^.]+$/, '.jpg');
         const previewPath = path.join(tmpDir, previewName);
@@ -932,7 +933,8 @@ async function uploadCullingProofs(session, folderPath) {
         // Extract preview from RAW
         const ok = extractRawPreview(raw.path, previewPath);
         if (!ok) {
-            log(`Could not extract preview from ${raw.name} — skipping`, 'error');
+            failed++;
+            log(`Could not extract preview from ${raw.name} — skipping`);
             continue;
         }
 
@@ -940,6 +942,8 @@ async function uploadCullingProofs(session, folderPath) {
         const result = await wpUploadProof(code, previewPath, previewName, raw.name);
         if (result && result.ok) {
             uploaded++;
+        } else {
+            failed++;
         }
 
         // Throttle
@@ -952,16 +956,25 @@ async function uploadCullingProofs(session, folderPath) {
     } catch (e) { /* ok */ }
 
     if (uploaded > 0) {
-        log(`Uploaded ${uploaded} culling proof(s) for ${session.client_name}`);
+        log(`Uploaded ${uploaded} culling proof(s) for ${session.client_name}${failed > 0 ? ` (${failed} failed)` : ''}`);
     }
 
-    // Check if all done
-    const finalCount = await wpGetCullingFilenames(code);
-    if (finalCount.size >= raws.length) {
-        const password = config.defaultGalleryPassword || '';
-        await wpMarkCullingReady(code, password);
-        log(`Culling proofs ready for ${session.client_name} — email sent to client`);
-        cullingState.set(code, { ...state, proofsUploaded: true });
+    // All files attempted — check if we can mark as done
+    if (uploaded + failed >= toUpload.length || uploaded > 0) {
+        const finalCount = await wpGetCullingFilenames(code);
+        if (finalCount.size >= raws.length - failed) {
+            const password = config.defaultGalleryPassword || '';
+            await wpMarkCullingReady(code, password);
+            log(`Culling proofs ready for ${session.client_name} — email sent to client`);
+            cullingState.set(code, { ...state, proofsUploaded: true });
+        } else if (uploaded === 0 && failed > 0) {
+            // All extractions failed (exiftool/dcraw likely not installed)
+            log(`ERROR: Could not extract any RAW previews for ${session.client_name}. Install exiftool: https://exiftool.org`);
+            log(`Marking proofs as attempted to stop retry loop. Upload proofs manually or install exiftool and restart watcher.`);
+            cullingState.set(code, { ...state, proofsUploaded: true, proofsFailed: true });
+        } else {
+            cullingState.set(code, { ...state, proofsUploaded: true });
+        }
     }
 }
 

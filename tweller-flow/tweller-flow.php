@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Flow
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client notifications, and folder watcher integration.
- * Version: 2.8.0
+ * Version: 2.8.1
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_VERSION', '2.8.0' );
+define( 'TWELLER_FLOW_VERSION', '2.8.1' );
 define( 'TWELLER_FLOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_TABLE_SESSIONS', 'tweller_sessions' );
@@ -163,11 +163,12 @@ function tweller_flow_init() {
 
     // Auto-upgrade: create tables if missing
     $db_version = get_option( 'tweller_flow_db_version', '2.1.2' );
-    if ( version_compare( $db_version, '2.8.0', '<' ) ) {
+    if ( version_compare( $db_version, '2.8.1', '<' ) ) {
         TwellerFlow_Gallery::create_table();
         TwellerFlow_Client_Activity::create_table();
         TwellerFlow_Culling::create_tables();
-        update_option( 'tweller_flow_db_version', '2.8.0' );
+        tweller_flow_ensure_culling_page();
+        update_option( 'tweller_flow_db_version', '2.8.1' );
     }
     add_action( 'wp_enqueue_scripts', 'tweller_flow_public_assets' );
 }

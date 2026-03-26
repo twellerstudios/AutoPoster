@@ -78,7 +78,7 @@ class TwellerFlow_Database {
             'tweller_flow_stages' => array(
                 'booked'     => array( 'label' => 'Booked',     'client_label' => 'Booked',        'icon' => 'calendar',     'notify' => true ),
                 'imported'   => array( 'label' => 'Imported',   'client_label' => 'Editing',       'icon' => 'download',     'notify' => false ),
-                'culling'    => array( 'label' => 'Culling',    'client_label' => 'Editing',       'icon' => 'filter',       'notify' => false ),
+                'culling'    => array( 'label' => 'Culling',    'client_label' => 'Select Photos for Editing', 'icon' => 'filter', 'notify' => false ),
                 'culled'     => array( 'label' => 'Culled',     'client_label' => 'Editing',       'icon' => 'check-square', 'notify' => false ),
                 'editing'    => array( 'label' => 'Editing',    'client_label' => 'Editing',       'icon' => 'edit-2',       'notify' => false ),
                 'edited'     => array( 'label' => 'Edited',     'client_label' => 'Done Editing',  'icon' => 'check-circle', 'notify' => true ),
@@ -89,7 +89,7 @@ class TwellerFlow_Database {
                 'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',     'icon' => 'check-circle', 'notify' => true ),
             ),
             'tweller_flow_client_stages' => array(
-                'Booked', 'Editing', 'Done Editing', 'Exporting', 'Gallery Ready', 'Delivered'
+                'Booked', 'Select Photos for Editing', 'Editing', 'Done Editing', 'Exporting', 'Gallery Ready', 'Delivered'
             ),
             'tweller_flow_packages' => array(
                 'mini' => array(

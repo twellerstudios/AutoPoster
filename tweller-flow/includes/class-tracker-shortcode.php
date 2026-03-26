@@ -101,11 +101,47 @@ class TwellerFlow_Tracker_Shortcode {
             /* Hide WordPress page title/hero banner for tracker page */
             .entry-header, .page-header, .ast-archive-description,
             article > header, .hero-section, .page-hero,
-            .entry-title, .page-title,
+            .entry-title, .page-title, h1.page-title, h1.entry-title,
             .ast-hero-section, .fl-module-heading,
             .elementor-page-title, .has-page-header,
-            .page-title-section { display: none !important; }
+            .page-title-section, .flavor-page-header,
+            .flavor-hero, .flavor-title-bar,
+            .flavor-page-title, .flavor-banner,
+            #flavor-page-title, .flavor_header_title_container,
+            .flavor_page_header, .flavor-header-title,
+            .flavor-page-hero, .flavor-archive-title,
+            .flavor-breadcrumbs { display: none !important; }
         </style>
+        <script>
+        (function() {
+            // Find and hide any page title/hero containing "Session Tracker"
+            var els = document.querySelectorAll('h1, h2, .page-title, .entry-title, [class*="title"], [class*="hero"], [class*="banner"], [class*="header"]');
+            for (var i = 0; i < els.length; i++) {
+                var el = els[i];
+                if (el.classList.contains('tf-tracker__greeting') || el.closest('.tf-tracker')) continue;
+                var text = (el.textContent || '').trim();
+                if (text === 'Session Tracker') {
+                    // Hide the element and its parent if the parent is a section/header wrapper
+                    el.style.display = 'none';
+                    var parent = el.parentElement;
+                    if (parent && parent !== document.body) {
+                        var tag = parent.tagName.toLowerCase();
+                        if (tag === 'section' || tag === 'header' || tag === 'div') {
+                            var cls = parent.className || '';
+                            if (/hero|title|header|banner|page-head/i.test(cls) || parent.children.length <= 2) {
+                                parent.style.display = 'none';
+                                // Also try grandparent (some themes wrap in 2 levels)
+                                var gp = parent.parentElement;
+                                if (gp && gp !== document.body && /hero|title|header|banner|page-head/i.test(gp.className || '')) {
+                                    gp.style.display = 'none';
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })();
+        </script>
         <div class="tf-tracker" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
             <div class="tf-tracker__header">
                 <p class="tf-tracker__greeting">Hi <?php echo esc_html( $session->client_name ); ?>! Here's the progress of your <strong><?php echo esc_html( $pkg_name ); ?></strong>.</p>

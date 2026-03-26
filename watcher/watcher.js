@@ -47,6 +47,7 @@ const editState = new Map();   // folderName -> { editedCount, greenCount, lastC
 const culledCopyState = new Map(); // folderName -> { copied: true, greenCount } — tracks green photos copied to FOR-IMAGEN
 const imagenImportState = new Map(); // FOR-IMAGEN folderName -> { editedCount, lastChanged, importedToLR }
 const createdSessions = new Set(); // tracking codes we already created folders for
+const cullingState = new Map(); // sessionCode -> { proofsUploaded, selectionsDownloaded }
 
 // ── Persistent state file ────────────────────────────
 const STATE_FILE = path.join(__dirname, '.watcher-state.json');
@@ -744,6 +745,309 @@ async function _doUpload(sessionCode, folderPath, galleryPassword) {
     return { uploaded, failed, total: photos.length, uploadedFiles: alreadyUploaded };
 }
 
+// ── Culling Portal Integration ─────────────────────────
+
+async function wpGetCullingFilenames(sessionCode) {
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/culling/${sessionCode}/filenames`;
+    try {
+        const res = await axios.get(url, {
+            headers: API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {},
+            params: API_KEY ? { api_key: API_KEY } : {},
+            timeout: 10000,
+        });
+        return new Set(res.data.filenames || []);
+    } catch (err) {
+        return new Set();
+    }
+}
+
+async function wpUploadProof(sessionCode, filePath, fileName, originalFilename) {
+    const FormData = (await import('form-data')).default;
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/culling/${sessionCode}/upload`;
+
+    const form = new FormData();
+    form.append('photo', fs.createReadStream(filePath), fileName);
+    form.append('original_filename', originalFilename);
+    if (API_KEY) form.append('api_key', API_KEY);
+
+    try {
+        const res = await axios.post(url, form, {
+            headers: {
+                ...form.getHeaders(),
+                'Authorization': API_KEY ? `Bearer ${API_KEY}` : '',
+            },
+            timeout: 60000,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+        return res.data;
+    } catch (err) {
+        const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
+        log(`Proof upload failed for ${fileName}: ${detail}`, 'error');
+        return null;
+    }
+}
+
+async function wpMarkCullingReady(sessionCode, password) {
+    const params = new URLSearchParams({ api_key: API_KEY || '' });
+    if (password) params.append('password', password);
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/culling/${sessionCode}/ready`;
+
+    try {
+        const FormData = (await import('form-data')).default;
+        const form = new FormData();
+        if (API_KEY) form.append('api_key', API_KEY);
+        if (password) form.append('password', password);
+
+        const res = await axios.post(url, form, {
+            headers: {
+                ...form.getHeaders(),
+                'Authorization': API_KEY ? `Bearer ${API_KEY}` : '',
+            },
+            timeout: 10000,
+        });
+        return res.data;
+    } catch (err) {
+        const detail = err.response ? JSON.stringify(err.response.data || {}).substring(0, 200) : err.message;
+        log(`Failed to mark culling ready: ${detail}`, 'error');
+        return null;
+    }
+}
+
+async function wpGetCullingSelections(sessionCode) {
+    const url = `${WP_URL}/wp-json/tweller-flow/v1/culling/${sessionCode}/selections`;
+    try {
+        const res = await axios.get(url, {
+            headers: API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {},
+            params: API_KEY ? { api_key: API_KEY } : {},
+            timeout: 10000,
+        });
+        return res.data;
+    } catch (err) {
+        return null;
+    }
+}
+
+/**
+ * Generate preview JPGs from RAW files using the Lightroom preset.
+ * Uses dcraw/exiftool to extract embedded preview from RAW + sips/convert for resize.
+ * Falls back to embedded JPEG preview in the RAW file.
+ */
+function extractRawPreview(rawPath, destPath) {
+    const { execSync } = require('child_process');
+
+    // Try exiftool to extract embedded preview (fastest, best quality)
+    try {
+        execSync(`exiftool -b -PreviewImage "${rawPath}" > "${destPath}"`, {
+            stdio: 'pipe',
+            timeout: 30000,
+        });
+        if (fs.existsSync(destPath) && fs.statSync(destPath).size > 1000) {
+            return true;
+        }
+    } catch (e) { /* fall through */ }
+
+    // Try extracting JpgFromRaw
+    try {
+        execSync(`exiftool -b -JpgFromRaw "${rawPath}" > "${destPath}"`, {
+            stdio: 'pipe',
+            timeout: 30000,
+        });
+        if (fs.existsSync(destPath) && fs.statSync(destPath).size > 1000) {
+            return true;
+        }
+    } catch (e) { /* fall through */ }
+
+    // Try dcraw (converts RAW to PPM then to JPEG)
+    try {
+        const ppmPath = destPath.replace(/\.[^.]+$/, '.ppm');
+        execSync(`dcraw -c -e "${rawPath}" > "${destPath}"`, {
+            stdio: 'pipe',
+            timeout: 60000,
+        });
+        if (fs.existsSync(destPath) && fs.statSync(destPath).size > 1000) {
+            return true;
+        }
+    } catch (e) { /* fall through */ }
+
+    return false;
+}
+
+async function uploadCullingProofs(session, folderPath) {
+    const code = session.tracking_code;
+    const state = cullingState.get(code) || {};
+
+    if (state.proofsUploaded) return;
+
+    // Get green-labeled RAW files
+    const RAW_EXT = new Set(['.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf']);
+    const greens = [];
+
+    function scanDir(dir) {
+        if (!fs.existsSync(dir)) return;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                scanDir(fullPath);
+            } else if (RAW_EXT.has(path.extname(entry.name).toLowerCase())) {
+                // Check for green label
+                const xmpPath1 = fullPath + '.xmp';
+                const xmpPath2 = fullPath.replace(/\.[^.]+$/, '.xmp');
+                const xmpPath = fs.existsSync(xmpPath1) ? xmpPath1 : (fs.existsSync(xmpPath2) ? xmpPath2 : null);
+                if (xmpPath) {
+                    try {
+                        const content = fs.readFileSync(xmpPath, 'utf-8');
+                        if (/xmp:Label="Green"|<xmp:Label>Green<\/xmp:Label>/i.test(content)) {
+                            greens.push({ name: entry.name, path: fullPath });
+                        }
+                    } catch (e) { /* skip */ }
+                }
+            }
+        }
+    }
+
+    scanDir(folderPath);
+
+    if (greens.length === 0) return;
+
+    // Check which proofs already uploaded
+    const existingProofs = await wpGetCullingFilenames(code);
+    const toUpload = greens.filter(g => {
+        const previewName = g.name.replace(/\.[^.]+$/, '.jpg');
+        return !existingProofs.has(previewName);
+    });
+
+    if (toUpload.length === 0 && existingProofs.size >= greens.length) {
+        // All proofs already uploaded, mark ready
+        log(`All ${existingProofs.size} culling proofs already uploaded for ${session.client_name}`);
+        const password = config.defaultGalleryPassword || '';
+        await wpMarkCullingReady(code, password);
+        cullingState.set(code, { ...state, proofsUploaded: true });
+        return;
+    }
+
+    if (toUpload.length === 0) return;
+
+    // Create temp dir for preview JPGs
+    const tmpDir = path.join(__dirname, '.culling-previews', code);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    log(`Generating ${toUpload.length} culling preview(s) for ${session.client_name}...`);
+
+    let uploaded = 0;
+    for (const raw of toUpload) {
+        const previewName = raw.name.replace(/\.[^.]+$/, '.jpg');
+        const previewPath = path.join(tmpDir, previewName);
+
+        // Extract preview from RAW
+        const ok = extractRawPreview(raw.path, previewPath);
+        if (!ok) {
+            log(`Could not extract preview from ${raw.name} — skipping`, 'error');
+            continue;
+        }
+
+        // Upload to culling portal
+        const result = await wpUploadProof(code, previewPath, previewName, raw.name);
+        if (result && result.ok) {
+            uploaded++;
+        }
+
+        // Throttle
+        await sleep(1000);
+    }
+
+    // Clean up temp previews
+    try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (e) { /* ok */ }
+
+    if (uploaded > 0) {
+        log(`Uploaded ${uploaded} culling proof(s) for ${session.client_name}`);
+    }
+
+    // Check if all done
+    const finalCount = await wpGetCullingFilenames(code);
+    if (finalCount.size >= greens.length) {
+        const password = config.defaultGalleryPassword || '';
+        await wpMarkCullingReady(code, password);
+        log(`Culling proofs ready for ${session.client_name} — email sent to client`);
+        cullingState.set(code, { ...state, proofsUploaded: true });
+    }
+}
+
+async function checkCullingSelections(session, folderPath) {
+    const code = session.tracking_code;
+    const state = cullingState.get(code) || {};
+
+    if (state.selectionsDownloaded) return;
+    if (!state.proofsUploaded) return;
+
+    const data = await wpGetCullingSelections(code);
+    if (!data || !data.submitted) return;
+
+    const filenames = data.filenames || [];
+    if (filenames.length === 0) return;
+
+    log(`Client ${session.client_name} selected ${filenames.length} photos — copying to FOR-IMAGEN...`);
+
+    // Copy selected RAW files + XMP to FOR-IMAGEN folder
+    const baseName = path.basename(folderPath);
+    const imagenFolder = path.join(CULLED_DIR, baseName + '-FOR-IMAGEN');
+    fs.mkdirSync(imagenFolder, { recursive: true });
+
+    const filenameSet = new Set(filenames.map(f => f.toLowerCase()));
+    let copied = 0;
+
+    function copySelected(dir) {
+        if (!fs.existsSync(dir)) return;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                copySelected(fullPath);
+            } else {
+                // Check if this file matches a selected filename (RAW or original_filename)
+                const lowerName = entry.name.toLowerCase();
+                if (filenameSet.has(lowerName)) {
+                    const dest = path.join(imagenFolder, entry.name);
+                    if (!fs.existsSync(dest)) {
+                        fs.copyFileSync(fullPath, dest);
+                        copied++;
+                    }
+                    // Also copy XMP sidecar
+                    const xmpPath1 = fullPath + '.xmp';
+                    const xmpPath2 = fullPath.replace(/\.[^.]+$/, '.xmp');
+                    const xmpSrc = fs.existsSync(xmpPath1) ? xmpPath1 : (fs.existsSync(xmpPath2) ? xmpPath2 : null);
+                    if (xmpSrc) {
+                        const xmpDest = path.join(imagenFolder, path.basename(xmpSrc));
+                        if (!fs.existsSync(xmpDest)) {
+                            fs.copyFileSync(xmpSrc, xmpDest);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    copySelected(folderPath);
+
+    if (copied > 0) {
+        log(`Copied ${copied} selected RAW(s) to CULLED folder -> "${baseName}-FOR-IMAGEN/"`);
+    }
+
+    if (data.upsell) {
+        log(`Upsell: +${data.upsell.tier || 'All'} photos ($${data.upsell.price}) for ${session.client_name}`);
+    }
+
+    cullingState.set(code, { ...state, selectionsDownloaded: true });
+
+    // Advance to culled stage if needed
+    if (['imported', 'culling'].includes(session.current_stage)) {
+        await wpAdvanceStage(code, 'culled', `Client selected ${filenames.length} photos via culling portal`, { photo_count: filenames.length });
+    }
+}
+
 // ── Main Loop ──────────────────────────────────────────
 
 async function scan() {
@@ -854,8 +1158,16 @@ async function scan() {
                     completed: true,
                 });
 
-                // Copy green-labeled photos to CULLED/{session}-FOR-IMAGEN folder
-                if (CULLED_DIR && !culledCopyState.has(folder)) {
+                // If culling portal is enabled, upload proofs for client selection
+                // Otherwise, copy green-labeled photos directly to FOR-IMAGEN
+                if (session.culling_enabled) {
+                    log(`Client culling enabled for "${folder}" → uploading proof previews to portal`);
+                    try {
+                        await uploadCullingProofs(session, folderPath);
+                    } catch (err) {
+                        log(`ERROR uploading culling proofs for "${folder}": ${err.message}`);
+                    }
+                } else if (CULLED_DIR && !culledCopyState.has(folder)) {
                     // Ensure CULLED_DIR exists
                     if (!fs.existsSync(CULLED_DIR)) {
                         fs.mkdirSync(CULLED_DIR, { recursive: true });
@@ -884,6 +1196,9 @@ async function scan() {
             const pastCulling = ['culled', 'editing', 'edited', 'exporting', 'exported', 'uploading', 'uploaded', 'delivered'];
             if (!pastCulling.includes(session.current_stage)) continue;
 
+            // Skip catch-up copy for culling-enabled sessions — they wait for client selections
+            if (session.culling_enabled && !session.culling_submitted) continue;
+
             const { greenCount } = countGreenLabeled(folderPath);
             if (greenCount === 0) continue;
 
@@ -905,9 +1220,45 @@ async function scan() {
         }
     }
 
+    // ── Client culling: check for selections and copy selected RAWs ──
+    // For sessions with culling_enabled, poll the portal for client selections.
+    // When selections arrive, copy the selected RAW+XMP files to FOR-IMAGEN folder.
+    for (const folder of folders) {
+        const folderPath = path.join(WATCH_DIR, folder);
+        const session = matchFolderToSession(folder, sessions);
+        if (!session) continue;
+        if (!session.culling_enabled) continue;
+        if (session.current_stage !== 'culled') continue;
+
+        const cState = cullingState.get(session.tracking_code) || {};
+
+        // If proofs haven't been uploaded yet (e.g. catch-up after restart), upload them
+        if (!cState.proofsUploaded) {
+            try {
+                await uploadCullingProofs(session, folderPath);
+            } catch (err) {
+                log(`ERROR uploading culling proofs for "${folder}": ${err.message}`);
+            }
+            continue; // Don't check selections on the same scan as upload
+        }
+
+        // If selections already downloaded, skip
+        if (cState.selectionsDownloaded) continue;
+
+        // Check if client has submitted selections
+        if (session.culling_submitted) {
+            log(`Client selections received for "${folder}" → ${session.client_name} — copying selected RAWs to FOR-IMAGEN`);
+            try {
+                await checkCullingSelections(session, folderPath);
+            } catch (err) {
+                log(`ERROR processing culling selections for "${folder}": ${err.message}`);
+            }
+        }
+    }
+
     // ── Auto-advance: culled → editing ──────────────────
     // After culling completes, auto-advance to 'editing' after a short delay.
-    // In the typical workflow, the photographer uploads to Imagen right after culling.
+    // For culling-enabled sessions, only advance after client selections are received and processed.
     for (const folder of folders) {
         const folderPath = path.join(WATCH_DIR, folder);
         const session = matchFolderToSession(folder, sessions);
@@ -916,6 +1267,12 @@ async function scan() {
 
         const prev = editState.get(folder);
         if (prev && prev.completed) continue;
+
+        // If culling is enabled, wait for selections to be downloaded before advancing
+        if (session.culling_enabled) {
+            const cState = cullingState.get(session.tracking_code) || {};
+            if (!cState.selectionsDownloaded) continue; // Still waiting for client
+        }
 
         // Auto-advance to 'editing' after 30s in 'culled' stage
         if (!prev) {

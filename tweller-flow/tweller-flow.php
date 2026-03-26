@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Flow
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client notifications, and folder watcher integration.
- * Version: 2.6.0
+ * Version: 2.7.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_VERSION', '2.6.0' );
+define( 'TWELLER_FLOW_VERSION', '2.7.0' );
 define( 'TWELLER_FLOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_TABLE_SESSIONS', 'tweller_sessions' );
@@ -30,6 +30,7 @@ require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-webhook-handler.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-photo-automation.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-gallery.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-client-activity.php';
+require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-culling.php';
 
 if ( is_admin() ) {
     require_once TWELLER_FLOW_PLUGIN_DIR . 'admin/class-admin.php';
@@ -43,7 +44,9 @@ function tweller_flow_activate() {
     TwellerFlow_Database::seed_defaults();
     TwellerFlow_Gallery::create_table();
     TwellerFlow_Client_Activity::create_table();
+    TwellerFlow_Culling::create_tables();
     tweller_flow_ensure_tracker_page();
+    tweller_flow_ensure_culling_page();
     flush_rewrite_rules();
 }
 
@@ -88,6 +91,45 @@ function tweller_flow_ensure_tracker_page() {
 register_activation_hook( __FILE__, 'tweller_flow_activate' );
 
 /**
+ * Create the culling portal page with [tweller_culling] shortcode.
+ */
+function tweller_flow_ensure_culling_page() {
+    $existing_url = get_option( 'tweller_flow_culling_page', '' );
+
+    if ( $existing_url ) {
+        $page_id = url_to_postid( $existing_url );
+        if ( $page_id && get_post_status( $page_id ) === 'publish' ) {
+            return;
+        }
+    }
+
+    $existing = get_posts( array(
+        'post_type'   => 'page',
+        'post_status' => 'publish',
+        's'           => '[tweller_culling]',
+        'numberposts' => 1,
+    ) );
+
+    if ( ! empty( $existing ) ) {
+        $page_url = get_permalink( $existing[0]->ID );
+        update_option( 'tweller_flow_culling_page', $page_url );
+        return;
+    }
+
+    $page_id = wp_insert_post( array(
+        'post_title'   => 'Choose Your Photos',
+        'post_name'    => 'culling-portal',
+        'post_content' => '[tweller_culling]',
+        'post_status'  => 'publish',
+        'post_type'    => 'page',
+    ) );
+
+    if ( $page_id && ! is_wp_error( $page_id ) ) {
+        update_option( 'tweller_flow_culling_page', get_permalink( $page_id ) );
+    }
+}
+
+/**
  * Plugin deactivation
  */
 function tweller_flow_deactivate() {
@@ -117,13 +159,15 @@ function tweller_flow_init() {
     TwellerFlow_Photo_Automation::init();
     TwellerFlow_Gallery::init();
     TwellerFlow_Client_Activity::init();
+    TwellerFlow_Culling::init();
 
     // Auto-upgrade: create tables if missing
     $db_version = get_option( 'tweller_flow_db_version', '2.1.2' );
-    if ( version_compare( $db_version, '2.6.0', '<' ) ) {
+    if ( version_compare( $db_version, '2.7.0', '<' ) ) {
         TwellerFlow_Gallery::create_table();
         TwellerFlow_Client_Activity::create_table();
-        update_option( 'tweller_flow_db_version', '2.6.0' );
+        TwellerFlow_Culling::create_tables();
+        update_option( 'tweller_flow_db_version', '2.7.0' );
     }
     add_action( 'wp_enqueue_scripts', 'tweller_flow_public_assets' );
 }
@@ -142,6 +186,20 @@ function tweller_flow_public_assets() {
     wp_register_script(
         'tweller-flow-tracker',
         TWELLER_FLOW_PLUGIN_URL . 'public/js/tracker.js',
+        array(),
+        TWELLER_FLOW_VERSION,
+        true
+    );
+
+    wp_register_style(
+        'tweller-flow-culling',
+        TWELLER_FLOW_PLUGIN_URL . 'public/css/culling.css',
+        array(),
+        TWELLER_FLOW_VERSION
+    );
+    wp_register_script(
+        'tweller-flow-culling',
+        TWELLER_FLOW_PLUGIN_URL . 'public/js/culling.js',
         array(),
         TWELLER_FLOW_VERSION,
         true

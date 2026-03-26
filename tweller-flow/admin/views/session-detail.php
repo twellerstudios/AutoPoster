@@ -288,6 +288,21 @@
                             <label class="tf-field__label">Notes</label>
                             <textarea name="notes"><?php echo esc_textarea( $session->notes ); ?></textarea>
                         </div>
+
+                        <hr class="tf-separator">
+                        <div class="tf-section-title">Client Culling</div>
+                        <?php $culling_enabled = TwellerFlow_Culling::is_culling_enabled( $session->id ); ?>
+                        <div class="tf-field">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                <input type="checkbox" name="culling_enabled" value="1" <?php checked( $culling_enabled ); ?> style="width:18px; height:18px; accent-color:#6366F1;">
+                                <span><strong>Enable Client Photo Selection</strong></span>
+                            </label>
+                        </div>
+                        <div class="tf-field">
+                            <label class="tf-field__label">Culling Portal Password</label>
+                            <input type="text" name="culling_password" placeholder="Leave blank to keep current">
+                        </div>
+
                         <button type="submit" class="tf-btn tf-btn--primary">Save Changes</button>
                     </form>
                 </div>
@@ -354,6 +369,57 @@
                     </div>
                 <?php endif; ?>
             </div>
+
+            <!-- Culling Status -->
+            <?php $culling = TwellerFlow_Culling::get_summary( $session->id ); ?>
+            <?php if ( $culling['enabled'] ) : ?>
+            <div class="tf-card tf-mb-6">
+                <h2>Client Culling</h2>
+                <div class="tf-client-info">
+                    <div class="tf-client-info__item">
+                        <span class="tf-client-info__label">Status</span>
+                        <span class="tf-client-info__value">
+                            <?php if ( $culling['submitted'] ) : ?>
+                                <span class="tf-badge tf-badge--paid" style="background:#D1FAE5; color:#065F46;">Selections Received</span>
+                            <?php elseif ( $culling['ready'] ) : ?>
+                                <span class="tf-badge" style="background:#DBEAFE; color:#1E40AF;">Awaiting Client Selection</span>
+                            <?php else : ?>
+                                <span class="tf-badge" style="background:#FEF3C7; color:#92400E;">Proofs Not Uploaded</span>
+                            <?php endif; ?>
+                        </span>
+                    </div>
+                    <div class="tf-client-info__item">
+                        <span class="tf-client-info__label">Proof Photos</span>
+                        <span class="tf-client-info__value"><?php echo $culling['proof_count']; ?></span>
+                    </div>
+                    <?php if ( $culling['submitted'] ) : ?>
+                        <div class="tf-client-info__item">
+                            <span class="tf-client-info__label">Selected</span>
+                            <span class="tf-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo $culling['selection_count']; ?> photos</span>
+                        </div>
+                        <div class="tf-client-info__item">
+                            <span class="tf-client-info__label">Submitted At</span>
+                            <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $culling['submitted'] ) ); ?></span>
+                        </div>
+                        <?php if ( $culling['upsell'] ) : ?>
+                            <div class="tf-client-info__item">
+                                <span class="tf-client-info__label">Upsell</span>
+                                <span class="tf-client-info__value" style="color:#6366F1; font-weight:600;">
+                                    +<?php echo $culling['upsell']['tier'] ?: 'All'; ?> photos — $<?php echo $culling['upsell']['price']; ?>
+                                </span>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <?php
+                    $culling_url = TwellerFlow_Culling::get_culling_page_url( $session->tracking_code );
+                    ?>
+                    <div class="tf-client-info__item">
+                        <span class="tf-client-info__label">Portal Link</span>
+                        <span class="tf-client-info__value"><a href="<?php echo esc_url( $culling_url ); ?>" target="_blank">View Portal</a></span>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Client Activity -->
             <?php $activity = TwellerFlow_Client_Activity::get_summary( $session->id ); ?>

@@ -133,6 +133,24 @@
             </div>
 
             <hr class="tf-separator">
+            <div class="tf-section-title">Client Culling</div>
+
+            <div class="tf-field">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                    <input type="checkbox" name="culling_enabled" value="1" style="width:18px; height:18px; accent-color:#6366F1;">
+                    <span>
+                        <strong>Enable Client Photo Selection</strong><br>
+                        <span style="font-size:12px; color:#6B7280;">Client will choose which photos to retouch from proof images. They'll receive an email with a link to the selection portal.</span>
+                    </span>
+                </label>
+            </div>
+
+            <div class="tf-field">
+                <label class="tf-field__label">Culling Portal Password (optional)</label>
+                <input type="text" name="culling_password" placeholder="Leave blank for no password">
+            </div>
+
+            <hr class="tf-separator">
             <div class="tf-section-title">Notes</div>
 
             <div class="tf-field">

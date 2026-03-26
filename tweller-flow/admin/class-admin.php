@@ -127,6 +127,11 @@ class TwellerFlow_Admin {
             check_admin_referer( 'tweller_flow_create_session' );
             $session_id = TwellerFlow_Session::create( $_POST );
             if ( $session_id ) {
+                // Enable culling if checkbox checked
+                if ( ! empty( $_POST['culling_enabled'] ) ) {
+                    $cull_pw = sanitize_text_field( $_POST['culling_password'] ?? '' );
+                    TwellerFlow_Culling::enable_culling( $session_id, $cull_pw );
+                }
                 wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $session_id . '&created=1' ) );
                 exit;
             }
@@ -154,6 +159,15 @@ class TwellerFlow_Admin {
                 'notes'          => sanitize_textarea_field( $_POST['notes'] ),
             );
             TwellerFlow_Session::update( $id, $update_data );
+
+            // Handle culling toggle
+            if ( ! empty( $_POST['culling_enabled'] ) ) {
+                $cull_pw = sanitize_text_field( $_POST['culling_password'] ?? '' );
+                TwellerFlow_Culling::enable_culling( $id, $cull_pw );
+            } else {
+                TwellerFlow_Culling::disable_culling( $id );
+            }
+
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&updated=1' ) );
             exit;
         }

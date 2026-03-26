@@ -1,0 +1,445 @@
+/* Tweller Flow — Client Culling Portal */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.tc-portal {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px 120px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header ───────────────────────────────────────── */
+
+.tc-portal__header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.tc-portal__title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: #6B7280;
+    margin: 0 0 4px;
+}
+
+.tc-portal__subtitle {
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 12px;
+}
+
+.tc-portal__greeting {
+    font-size: 15px;
+    color: #6B7280;
+    margin: 0 0 16px;
+    line-height: 1.6;
+}
+
+.tc-portal__meta {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.tc-portal__badge {
+    background: #6366F1;
+    color: #fff;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.tc-portal__included {
+    font-size: 13px;
+    color: #374151;
+    font-weight: 500;
+}
+
+/* ── Password ─────────────────────────────────────── */
+
+.tc-portal__password {
+    max-width: 400px;
+    margin: 40px auto;
+    text-align: center;
+    background: #F9FAFB;
+    padding: 40px;
+    border-radius: 12px;
+}
+
+.tc-portal__lock-icon {
+    color: #9CA3AF;
+    margin-bottom: 16px;
+}
+
+.tc-portal__password p {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 0 0 20px;
+}
+
+.tc-portal__pw-form {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.tc-portal__pw-form input {
+    padding: 10px 16px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    font-size: 14px;
+    width: 200px;
+    font-family: inherit;
+}
+
+.tc-portal__pw-error {
+    color: #DC2626;
+    font-size: 13px;
+    margin-top: 12px !important;
+}
+
+/* ── Messages ─────────────────────────────────────── */
+
+.tc-portal__message {
+    max-width: 500px;
+    margin: 40px auto;
+    text-align: center;
+    padding: 40px;
+    background: #F9FAFB;
+    border-radius: 12px;
+}
+
+.tc-portal__message h3 {
+    font-size: 20px;
+    color: #111827;
+    margin: 0 0 8px;
+}
+
+.tc-portal__message p {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 8px 0;
+    line-height: 1.6;
+}
+
+.tc-portal__message--success {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+}
+
+.tc-portal__message--success h3 {
+    color: #166534;
+}
+
+.tc-portal__message a {
+    color: #6366F1;
+    text-decoration: underline;
+}
+
+/* ── Loading ──────────────────────────────────────── */
+
+.tc-portal__loading {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.tc-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #E5E7EB;
+    border-top-color: #6366F1;
+    border-radius: 50%;
+    animation: tc-spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+}
+
+@keyframes tc-spin {
+    to { transform: rotate(360deg); }
+}
+
+.tc-portal__loading p {
+    font-size: 14px;
+    color: #6B7280;
+}
+
+/* ── Counter (sticky bar) ─────────────────────────── */
+
+.tc-counter {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid #E5E7EB;
+    padding: 12px 0;
+    margin: 0 -24px 20px;
+}
+
+.tc-counter__inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+.tc-counter__left {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.tc-counter__count {
+    font-size: 28px;
+    font-weight: 700;
+    color: #6366F1;
+    transition: color 0.2s;
+}
+
+.tc-counter__sep {
+    font-size: 20px;
+    color: #D1D5DB;
+    font-weight: 300;
+}
+
+.tc-counter__max {
+    font-size: 20px;
+    font-weight: 600;
+    color: #9CA3AF;
+}
+
+.tc-counter__label {
+    font-size: 13px;
+    color: #6B7280;
+    margin-left: 8px;
+}
+
+/* ── Buttons ──────────────────────────────────────── */
+
+.tc-btn {
+    display: inline-block;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tc-btn--primary {
+    background: #6366F1;
+    color: #fff;
+    border-color: #6366F1;
+}
+
+.tc-btn--primary:hover {
+    background: #4F46E5;
+}
+
+.tc-btn--primary:disabled {
+    background: #C7D2FE;
+    border-color: #C7D2FE;
+    cursor: default;
+}
+
+.tc-btn--secondary {
+    background: #fff;
+    color: #374151;
+    border-color: #D1D5DB;
+}
+
+.tc-btn--secondary:hover {
+    background: #F9FAFB;
+}
+
+.tc-btn--submit {
+    padding: 12px 28px;
+    font-size: 15px;
+}
+
+/* ── Photo Grid ───────────────────────────────────── */
+
+.tc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+}
+
+@media (min-width: 768px) {
+    .tc-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 10px;
+    }
+}
+
+.tc-grid__item {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    aspect-ratio: 3/2;
+    background: #F3F4F6;
+    border: 3px solid transparent;
+    transition: border-color 0.15s, transform 0.1s;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.tc-grid__item:hover {
+    transform: scale(1.01);
+}
+
+.tc-grid__item--selected {
+    border-color: #6366F1;
+}
+
+.tc-grid__item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    -webkit-user-drag: none;
+}
+
+/* Prevent saving images */
+.tc-grid__item img {
+    -webkit-touch-callout: none;
+}
+
+.tc-grid__check {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.8);
+    border: 2px solid #D1D5DB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    color: transparent;
+}
+
+.tc-grid__item--selected .tc-grid__check {
+    background: #6366F1;
+    border-color: #6366F1;
+    color: #fff;
+}
+
+.tc-grid__number {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    min-width: 24px;
+    height: 24px;
+    background: #6366F1;
+    color: #fff;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 24px;
+    text-align: center;
+    padding: 0 7px;
+    display: none;
+}
+
+.tc-grid__item--selected .tc-grid__number {
+    display: block;
+}
+
+/* ── Modals ───────────────────────────────────────── */
+
+.tc-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tc-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+}
+
+.tc-modal__content {
+    position: relative;
+    background: #fff;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.tc-modal__content h3 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 8px;
+}
+
+.tc-modal__content p {
+    font-size: 14px;
+    color: #4B5563;
+    margin: 8px 0;
+    line-height: 1.6;
+}
+
+.tc-modal__actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    justify-content: flex-end;
+}
+
+/* ── Upsell Tiers ─────────────────────────────────── */
+
+.tc-upsell__tier {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 14px 18px;
+    margin: 8px 0;
+    background: #F9FAFB;
+    border: 2px solid #E5E7EB;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+
+.tc-upsell__tier:hover {
+    border-color: #6366F1;
+    background: #EEF2FF;
+}
+
+.tc-upsell__tier-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.tc-upsell__tier-price {
+    font-size: 15px;
+    font-weight: 700;
+    color: #6366F1;
+}

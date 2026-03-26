@@ -107,7 +107,7 @@ class TwellerFlow_Photo_Automation {
             $sessions = $wpdb->get_results( $wpdb->prepare(
                 "SELECT id, tracking_code, client_name, client_email, client_phone,
                         package_type, session_date, session_time, location, members_count,
-                        current_stage, folder_name
+                        current_stage, folder_name, photo_count
                  FROM $table
                  WHERE session_date BETWEEN %s AND %s
                  ORDER BY session_date ASC, session_time ASC",
@@ -117,7 +117,7 @@ class TwellerFlow_Photo_Automation {
             $sessions = $wpdb->get_results( $wpdb->prepare(
                 "SELECT id, tracking_code, client_name, client_email, client_phone,
                         package_type, session_date, session_time, location, members_count,
-                        current_stage, folder_name
+                        current_stage, folder_name, photo_count
                  FROM $table
                  WHERE session_date = %s
                  ORDER BY session_time ASC",
@@ -128,12 +128,20 @@ class TwellerFlow_Photo_Automation {
             $sessions = $wpdb->get_results(
                 "SELECT id, tracking_code, client_name, client_email, client_phone,
                         package_type, session_date, session_time, location, members_count,
-                        current_stage, folder_name
+                        current_stage, folder_name, photo_count
                  FROM $table
                  WHERE current_stage != 'delivered'
                  ORDER BY session_date DESC
                  LIMIT 50"
             );
+        }
+
+        // Add culling_enabled flag to each session
+        if ( class_exists( 'TwellerFlow_Culling' ) ) {
+            foreach ( $sessions as &$s ) {
+                $s->culling_enabled = TwellerFlow_Culling::is_culling_enabled( $s->id );
+                $s->culling_submitted = (bool) get_option( 'tweller_culling_submitted_' . $s->id, false );
+            }
         }
 
         return rest_ensure_response( $sessions ?: array() );

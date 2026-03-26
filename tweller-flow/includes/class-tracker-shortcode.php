@@ -99,7 +99,6 @@ class TwellerFlow_Tracker_Shortcode {
         ?>
         <div class="tf-tracker" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
             <div class="tf-tracker__header">
-                <h2>Session Tracker</h2>
                 <p class="tf-tracker__greeting">Hi <?php echo esc_html( $session->client_name ); ?>! Here's the progress of your <strong><?php echo esc_html( $pkg_name ); ?></strong>.</p>
                 <div class="tf-tracker__meta">
                     <?php if ( $session->session_date ) : ?>
@@ -136,9 +135,11 @@ class TwellerFlow_Tracker_Shortcode {
                             <div class="tf-tracker__stage-info">
                                 <h3 class="tf-tracker__stage-name"><?php echo esc_html( $stage_name ); ?></h3>
                                 <?php if ( $is_current ) : ?>
-                                    <span class="tf-tracker__stage-badge">In Progress</span>
-                                <?php elseif ( $is_completed && $timestamp ) : ?>
-                                    <span class="tf-tracker__stage-time"><?php echo date( 'M j, g:i A', strtotime( $timestamp ) ); ?></span>
+                                    <div class="tf-tracker__progress" data-stage="<?php echo esc_attr( $stage_name ); ?>">
+                                        <div class="tf-tracker__progress-bar">
+                                            <div class="tf-tracker__progress-fill" data-progress="0"></div>
+                                        </div>
+                                    </div>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -183,6 +184,7 @@ class TwellerFlow_Tracker_Shortcode {
                         <div class="tf-gallery__toolbar-right">
                             <a id="tf-gallery-download-all" class="tf-gallery__toolbar-action" href="#" title="Download All">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                <span>Download All</span>
                             </a>
                         </div>
                     </div>
@@ -204,7 +206,7 @@ class TwellerFlow_Tracker_Shortcode {
                         </button>
                         <div class="tf-lightbox__bar">
                             <span class="tf-lightbox__counter" id="tf-lightbox-counter"></span>
-                            <a class="tf-lightbox__download" id="tf-lightbox-download" href="#" download>
+                            <a class="tf-lightbox__download" id="tf-lightbox-download" href="#" role="button">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 Download
                             </a>

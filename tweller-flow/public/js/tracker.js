@@ -1,5 +1,5 @@
 /**
- * Tweller Flow v2.6 — Client Tracker + Gallery + Activity Tracking
+ * Tweller Flow v2.8 — Client Tracker + Gallery + Activity Tracking
  */
 (function() {
     'use strict';
@@ -10,8 +10,42 @@
     var code = tracker.getAttribute('data-code');
     if (!code || typeof twellerFlowTracker === 'undefined') return;
 
+    // ── Progress bar sub-step mapping ────────────────
+    // Maps each client-facing stage to its backend sub-steps (in order)
+    var stageSubSteps = {
+        'Booked':                       ['booked'],
+        'Select Photos for Editing':    ['culling'],
+        'Editing':                      ['imported', 'culled', 'editing'],
+        'Done Editing':                 ['edited'],
+        'Exporting':                    ['exporting', 'exported'],
+        'Gallery Ready':                ['uploading', 'uploaded'],
+        'Delivered':                    ['delivered']
+    };
+
+    function computeProgress(clientStage, internalStage) {
+        var steps = stageSubSteps[clientStage];
+        if (!steps || steps.length <= 1) return 100;
+        var idx = steps.indexOf(internalStage);
+        if (idx < 0) return 0;
+        // Each sub-step is an equal fraction; being AT that step means it's in progress
+        return Math.round(((idx + 1) / steps.length) * 100);
+    }
+
+    function setProgressBars(internalStage) {
+        var bars = tracker.querySelectorAll('.tf-tracker__progress');
+        bars.forEach(function(el) {
+            var clientStage = el.getAttribute('data-stage');
+            var pct = computeProgress(clientStage, internalStage);
+            var fill = el.querySelector('.tf-tracker__progress-fill');
+            if (fill) {
+                fill.style.width = pct + '%';
+                fill.setAttribute('data-progress', pct);
+            }
+        });
+    }
+
     // ── Stage auto-refresh ─────────────────────────────
-    setInterval(function() {
+    function fetchAndUpdate() {
         fetch(twellerFlowTracker.apiUrl + code, {
             headers: { 'X-WP-Nonce': twellerFlowTracker.nonce }
         })
@@ -19,10 +53,19 @@
         .then(function(data) {
             if (data && data.stages) {
                 updateStages(data);
+                if (data.internal_stage) {
+                    setProgressBars(data.internal_stage);
+                }
             }
         })
         .catch(function() {});
-    }, 60000);
+    }
+
+    setInterval(fetchAndUpdate, 60000);
+
+    // Set initial progress from server-rendered data
+    // We need to fetch once to get internal_stage
+    fetchAndUpdate();
 
     function updateStages(data) {
         var stages = tracker.querySelectorAll('.tf-tracker__stage');
@@ -54,7 +97,7 @@
         }).catch(function() {}); // fire-and-forget
     }
 
-    // Track page view (gallery_viewed = loaded the tracker page when gallery is ready)
+    // Track page view
     var gallerySection = document.querySelector('.tf-gallery[data-code]');
     if (gallerySection) {
         trackActivity('gallery_viewed');
@@ -95,14 +138,12 @@
     var galleryRevealed = false;
     var galleryError = false;
 
-    // Pre-fetch gallery on page load to set up hero cover
     prefetchGallery();
 
     function prefetchGallery() {
         var url = galleryUrl + code;
         if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
 
-        // Show a subtle loading indicator on the hero
         if (heroCover) {
             heroCover.style.display = '';
             heroCover.classList.add('tf-hero-cover--loading');
@@ -140,7 +181,6 @@
                 return;
             }
 
-            // Set hero cover background to first photo
             if (photos.length && heroCover && heroCoverBg) {
                 heroCoverBg.style.backgroundImage = 'url(' + photos[0].url + ')';
                 heroCover.style.display = '';
@@ -155,7 +195,6 @@
     }
 
     function showGalleryMessage(msg) {
-        // Create or update a message element below the gallery section
         var msgEl = document.getElementById('tf-gallery-message');
         if (!msgEl) {
             msgEl = document.createElement('div');
@@ -165,15 +204,12 @@
         }
         msgEl.textContent = msg;
         msgEl.style.display = 'block';
-
-        // Hide the hero cover if we're showing an error/info message
         if (heroCover) heroCover.style.display = 'none';
     }
 
     // ── "VIEW GALLERY" button ───────────────────────────
     if (viewBtn) {
         viewBtn.addEventListener('click', function() {
-            // Track that client clicked to open gallery
             trackActivity('gallery_opened');
 
             if (needsPassword) {
@@ -230,27 +266,21 @@
         if (galleryRevealed) return;
         galleryRevealed = true;
 
-        // Hide any message
         var msgEl = document.getElementById('tf-gallery-message');
         if (msgEl) msgEl.style.display = 'none';
 
-        // Build the grid
         buildGrid();
 
-        // Show toolbar and grid
         toolbar.style.display = '';
         grid.style.display = '';
 
-        // Set download all link
         downloadAll.href = galleryUrl + code + '/download-all'
             + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
 
-        // Track download-all clicks
         downloadAll.addEventListener('click', function() {
             trackActivity('all_downloaded', photos.length + ' photos');
         });
 
-        // Smooth scroll so toolbar is at top
         setTimeout(function() {
             toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
@@ -321,6 +351,26 @@
         });
     }
 
+    // ── Force download helper ─────────────────────────
+    function forceDownload(url, filename) {
+        fetch(url)
+        .then(function(r) { return r.blob(); })
+        .then(function(blob) {
+            var a = document.createElement('a');
+            var blobUrl = URL.createObjectURL(blob);
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+        })
+        .catch(function() {
+            // Fallback: open in new tab
+            window.open(url, '_blank');
+        });
+    }
+
     // ── Lightbox ───────────────────────────────────────
     function openLightbox(idx) {
         currentIdx = idx;
@@ -339,8 +389,9 @@
         if (!photo) return;
         lbImg.src = photo.url;
         lbCounter.textContent = (currentIdx + 1) + ' / ' + photos.length;
-        lbDownload.href = photo.url;
-        lbDownload.download = photo.filename;
+        // Store data for download handler
+        lbDownload.setAttribute('data-url', photo.url);
+        lbDownload.setAttribute('data-filename', photo.filename);
     }
 
     function prevPhoto() {
@@ -357,12 +408,15 @@
     if (lbPrev)  lbPrev.addEventListener('click', prevPhoto);
     if (lbNext)  lbNext.addEventListener('click', nextPhoto);
 
-    // Track individual photo downloads
+    // Force download on lightbox download button
     if (lbDownload) {
-        lbDownload.addEventListener('click', function() {
-            var photo = photos[currentIdx];
-            if (photo) {
-                trackActivity('photo_downloaded', photo.filename);
+        lbDownload.addEventListener('click', function(e) {
+            e.preventDefault();
+            var url = lbDownload.getAttribute('data-url');
+            var filename = lbDownload.getAttribute('data-filename');
+            if (url && filename) {
+                forceDownload(url, filename);
+                trackActivity('photo_downloaded', filename);
             }
         });
     }
@@ -385,7 +439,7 @@
         }
     });
 
-    // Touch swipe support for lightbox
+    // Touch swipe support
     var touchStartX = 0;
     if (lightbox) {
         lightbox.addEventListener('touchstart', function(e) {

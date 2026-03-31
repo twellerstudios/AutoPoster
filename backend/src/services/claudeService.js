@@ -1,28 +1,52 @@
 /**
- * Claude AI service — generates blog posts with SEO metadata and image search terms.
+ * Claude AI service — generates blog posts with SEO metadata.
+ *
+ * Two modes:
+ * 1. API mode — uses Anthropic API key (paid)
+ * 2. Manual mode — generates the prompt for the user to paste into claude.ai (free with $20 sub)
  */
-const Anthropic = require('@anthropic-ai/sdk');
 const { config } = require('../config');
 
-const client = new Anthropic({ apiKey: config.anthropicApiKey });
+let client = null;
+
+function getClient() {
+  if (!config.anthropicApiKey) return null;
+  if (!client) {
+    const Anthropic = require('@anthropic-ai/sdk');
+    client = new Anthropic({ apiKey: config.anthropicApiKey });
+  }
+  return client;
+}
 
 /**
- * Generate a complete blog post for the given topic and business context.
- *
- * @param {object} params
- * @param {string} params.topic         - The blog post topic
- * @param {string} params.businessName  - e.g. "Journey To" — used to tailor tone/voice
- * @param {string} [params.tone]        - e.g. "adventurous", "professional", "casual"
- * @param {string} [params.wordCount]   - Target word count, default 1000
- * @param {string[]} [params.keywords]  - Optional seed keywords for SEO
- * @returns {Promise<BlogPost>}
+ * Build the prompt for blog post generation.
+ * Used by both API mode and manual mode.
  */
-async function generateBlogPost({ topic, businessName, tone = 'professional', wordCount = 1000, keywords = [] }) {
+function buildPrompt({ topic, businessName, tone = 'professional', wordCount = 1000, keywords = [], userImages = [] }) {
   const keywordsNote = keywords.length > 0
     ? `Naturally weave in these keywords: ${keywords.join(', ')}.`
     : '';
 
-  const prompt = `You are an expert content writer and SEO specialist for "${businessName}".
+  let userImagesNote = '';
+  if (userImages.length > 0) {
+    const imageList = userImages.map((img, i) => {
+      const caption = img.caption ? ` — "${img.caption}"` : '';
+      return `  ${i + 1}. ${img.originalName}${caption} (use src="${img.url}")`;
+    }).join('\n');
+
+    userImagesNote = `
+The user has uploaded ${userImages.length} image(s) to include in the blog post.
+Place them naturally within the content using <img> tags at relevant points in the article.
+Use descriptive alt text and wrap each in a <figure> with a <figcaption>.
+Style figures with: style="margin: 24px 0; text-align: center;"
+Style images with: style="max-width: 100%; height: auto; border-radius: 8px;"
+
+User images:
+${imageList}
+`;
+  }
+
+  return `You are an expert content writer and SEO specialist for "${businessName}".
 
 Write a complete, publication-ready blog post about: "${topic}"
 
@@ -33,6 +57,21 @@ Requirements:
 - Include a compelling introduction, well-structured body sections, and a clear conclusion
 - Write naturally — no keyword stuffing
 ${keywordsNote}
+${userImagesNote}
+Include 2-3 inline image placeholders placed naturally throughout the body of the post to break up text, enhance storytelling, and create a more engaging visual experience. Place them BETWEEN sections or after key paragraphs where a visual would reinforce the message. Use this exact HTML format for each:
+
+<figure style="margin: 24px 0; text-align: center;">
+  <img src="STOCK_IMAGE_PLACEHOLDER" alt="[descriptive alt text for the image]" style="max-width: 100%; height: auto; border-radius: 8px;" />
+  <figcaption style="font-size: 0.9em; color: #666; margin-top: 8px;">[A short, meaningful caption]</figcaption>
+</figure>
+
+Spread these images throughout the article — not clustered together. Think of them as visual storytelling beats that complement the written content.
+
+CRITICAL OUTPUT RULES:
+- Output ONLY the HTML blog post content followed by the <seo_data> block below
+- Do NOT include any commentary, suggestions, notes, explanations, or meta-discussion
+- Do NOT add text like "Here is your blog post" or "I hope this helps" or suggestions for improvement
+- Your entire response must be copy-paste ready — nothing but the post HTML and the SEO data block
 
 After the blog post HTML, output a JSON block wrapped in <seo_data> tags with this exact structure:
 <seo_data>
@@ -42,25 +81,89 @@ After the blog post HTML, output a JSON block wrapped in <seo_data> tags with th
   "focusKeyphrase": "primary target keyword phrase",
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
   "categories": ["Category Name"],
-  "imageSearchQuery": "specific descriptive search term for a relevant feature image",
+  "imageSearchQuery": "specific descriptive search term for the main featured image",
+  "additionalImageQueries": ["search query for inline image 1", "search query for inline image 2"],
   "slug": "url-friendly-slug"
 }
 </seo_data>
 
-Write the full HTML blog post now, then the <seo_data> block.`;
+Write the full HTML blog post now, then the <seo_data> block. Nothing else.`;
+}
 
-  const message = await client.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 4096,
-    messages: [{ role: 'user', content: prompt }],
-  });
+/**
+ * Check if API mode is available.
+ */
+function isApiModeAvailable() {
+  return Boolean(config.anthropicApiKey);
+}
+
+/**
+ * Generate a blog post using the Anthropic API.
+ * Throws a clear error if the API key is not set.
+ */
+async function generateBlogPost(params) {
+  const apiClient = getClient();
+
+  if (!apiClient) {
+    throw new Error(
+      'Anthropic API key is not configured. Either add your API key in Settings, or use "Manual AI" mode ' +
+      'which lets you generate content for free using your Claude subscription at claude.ai.'
+    );
+  }
+
+  const prompt = buildPrompt(params);
+
+  let message;
+  try {
+    message = await apiClient.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
+    });
+  } catch (err) {
+    // Provide helpful error messages for common API issues
+    if (err.status === 401) {
+      throw new Error(
+        'Your Anthropic API key is invalid or expired. Go to Settings to update it, ' +
+        'or use Manual AI mode (free with your Claude subscription).'
+      );
+    }
+    if (err.status === 429) {
+      throw new Error(
+        'You have hit the Anthropic API rate limit. Please wait a minute and try again, ' +
+        'or switch to Manual AI mode.'
+      );
+    }
+    if (err.status === 402 || err.status === 400) {
+      throw new Error(
+        'Anthropic API error: ' + (err.message || 'billing issue or invalid request') +
+        '. Check your API account at console.anthropic.com, or use Manual AI mode for free.'
+      );
+    }
+    throw new Error(`AI generation failed: ${err.message}`);
+  }
 
   const raw = message.content[0].text;
-  return parseGeneratedContent(raw, topic);
+  return parseGeneratedContent(raw, params.topic);
+}
+
+/**
+ * Generate the prompt text for manual mode.
+ * User copies this to claude.ai, gets the response, and pastes it back.
+ */
+function getManualPrompt(params) {
+  return buildPrompt(params);
+}
+
+/**
+ * Parse content that was pasted back from Claude (manual mode).
+ * Same parser as API mode.
+ */
+function parseManualContent(rawContent, topic) {
+  return parseGeneratedContent(rawContent, topic);
 }
 
 function parseGeneratedContent(raw, topic) {
-  // Split HTML content from SEO data block
   const seoMatch = raw.match(/<seo_data>([\s\S]*?)<\/seo_data>/);
 
   let seoData = {};
@@ -75,6 +178,12 @@ function parseGeneratedContent(raw, topic) {
     }
   }
 
+  // Clean up any markdown code fences that Claude sometimes wraps HTML in
+  htmlContent = htmlContent
+    .replace(/^```html?\s*\n?/i, '')
+    .replace(/\n?```\s*$/i, '')
+    .trim();
+
   return {
     htmlContent,
     title: seoData.title || topic,
@@ -83,6 +192,7 @@ function parseGeneratedContent(raw, topic) {
     tags: seoData.tags || [],
     categories: seoData.categories || ['Uncategorized'],
     imageSearchQuery: seoData.imageSearchQuery || topic,
+    additionalImageQueries: seoData.additionalImageQueries || [],
     slug: seoData.slug || slugify(topic),
   };
 }
@@ -96,4 +206,4 @@ function slugify(text) {
     .trim();
 }
 
-module.exports = { generateBlogPost };
+module.exports = { generateBlogPost, getManualPrompt, parseManualContent, isApiModeAvailable };

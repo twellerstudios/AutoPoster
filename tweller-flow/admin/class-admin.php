@@ -93,7 +93,8 @@ class TwellerFlow2_Admin {
      * Enqueue admin assets
      */
     public function enqueue_assets( $hook ) {
-        if ( strpos( $hook, 'tweller-flow-2' ) === false ) return;
+        $page = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
+        if ( strpos( $hook, 'tweller-flow-2' ) === false && strpos( $page, 'tweller-flow-2' ) === false ) return;
 
         wp_enqueue_style(
             'tweller-flow-2-admin',

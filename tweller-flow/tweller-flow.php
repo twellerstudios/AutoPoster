@@ -115,6 +115,16 @@ function tweller_flow_2_upgrade_check() {
         );
         $client_stages = array( 'Reserved', 'Booking Confirmed', 'Select Photos for Editing', 'Editing', 'Done Editing', 'Exporting', 'Gallery Ready', 'Delivered' );
         
+        // Add star_rating column to selections table if missing
+        global $wpdb;
+        $sel_table = $wpdb->prefix . 'tweller_culling_selections';
+        $col = $wpdb->get_results( $wpdb->prepare(
+            "SHOW COLUMNS FROM `$sel_table` LIKE %s", 'star_rating'
+        ));
+        if ( empty( $col ) ) {
+            $wpdb->query( "ALTER TABLE `$sel_table` ADD COLUMN `star_rating` tinyint(1) DEFAULT 1 AFTER `filename`" );
+        }
+
         update_option( 'tweller_flow_2_stages', $stages );
         update_option( 'tweller_flow_2_client_stages', $client_stages );
         update_option( 'tweller_flow_2_db_version', TWELLER_FLOW_2_VERSION );

@@ -542,14 +542,14 @@
                 </div>
 
                 <!-- Proof thumbnails -->
-                <div id="pm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:6px; margin-bottom:14px; <?php echo $proof_count === 0 ? 'display:none;' : ''; ?>">
+                <div id="pm-grid" style="<?php echo $proof_count === 0 ? 'display:none;' : 'display:grid;'; ?> grid-template-columns:repeat(auto-fill,minmax(80px,80px)); gap:6px; margin-bottom:14px;">
                     <?php
                     if ( $culling_enabled ) {
                         $proofs    = TwellerFlow2_Culling::get_proofs( $session->id );
                         $proof_url = TwellerFlow2_Culling::get_proof_url( $session->tracking_code );
                         foreach ( $proofs as $proof ) : ?>
-                            <div class="pm-proof" data-id="<?php echo $proof->id; ?>" style="position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6; border:2px solid transparent; group;">
-                                <img src="<?php echo esc_url( $proof_url . '/thumbs/' . $proof->filename ); ?>" alt="<?php echo esc_attr( $proof->filename ); ?>" style="width:100%; height:100%; object-fit:cover;">
+                            <div class="pm-proof" data-id="<?php echo $proof->id; ?>" style="position:relative; border-radius:6px; overflow:hidden; width:80px; height:80px; background:#F3F4F6; border:2px solid transparent; flex-shrink:0;">
+                                <img src="<?php echo esc_url( $proof_url . '/thumbs/' . $proof->filename ); ?>" alt="<?php echo esc_attr( $proof->filename ); ?>" style="width:80px; height:80px; object-fit:cover; display:block;">
                                 <button class="pm-delete-btn" data-id="<?php echo $proof->id; ?>" title="Delete proof" style="position:absolute; top:3px; right:3px; width:20px; height:20px; background:rgba(220,38,38,0.85); color:#fff; border:none; border-radius:50%; font-size:11px; cursor:pointer; line-height:20px; padding:0; text-align:center; display:none;">&times;</button>
                             </div>
                         <?php endforeach;
@@ -595,6 +595,49 @@
                         <?php echo $culling_summary['upsell']['extra_count']; ?> × $<?php echo $culling_summary['upsell']['price_each']; ?> TTD
                         = <strong style="color:#92400E;">$<?php echo $culling_summary['upsell']['total_price']; ?> TTD additional</strong>
                     </div>
+                <?php endif; ?>
+
+                <?php if ( $culling_submitted ) :
+                    $selections = TwellerFlow2_Culling::get_selections( $session->id );
+                    $pkg_inc    = $pkg_included;
+                    if ( ! empty( $selections ) ) : ?>
+                <div style="border-top:1px solid #F3F4F6; padding-top:14px; margin-top:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h3 style="margin:0; font-size:13px; font-weight:600; color:#374151;">Client Selections (<?php echo count($selections); ?> photos)</h3>
+                        <button id="pm-download-csv" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">&#11015; Download CSV</button>
+                    </div>
+                    <div style="border:1px solid #E5E7EB; border-radius:8px; overflow:hidden;">
+                        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                            <thead>
+                                <tr style="background:#F9FAFB;">
+                                    <th style="padding:7px 10px; text-align:left; color:#6B7280; font-weight:500; border-bottom:1px solid #E5E7EB;">#</th>
+                                    <th style="padding:7px 10px; text-align:left; color:#6B7280; font-weight:500; border-bottom:1px solid #E5E7EB;">Filename</th>
+                                    <th style="padding:7px 10px; text-align:center; color:#6B7280; font-weight:500; border-bottom:1px solid #E5E7EB;">Stars</th>
+                                    <th style="padding:7px 10px; text-align:left; color:#6B7280; font-weight:500; border-bottom:1px solid #E5E7EB;">Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php $idx = 0; foreach ( $selections as $sel ) : $idx++; $star = isset($sel->star_rating) ? (int)$sel->star_rating : ($idx <= $pkg_inc ? 1 : 2); ?>
+                                <tr style="<?php echo $idx % 2 === 0 ? 'background:#F9FAFB;' : ''; ?> border-bottom:1px solid #F3F4F6;">
+                                    <td style="padding:6px 10px; color:#9CA3AF;"><?php echo $idx; ?></td>
+                                    <td style="padding:6px 10px; color:#374151; font-family:monospace;"><?php echo esc_html($sel->filename); ?></td>
+                                    <td style="padding:6px 10px; text-align:center; color:<?php echo $star === 1 ? '#D97706' : '#6366F1'; ?>; font-size:14px;">
+                                        <?php echo str_repeat('★', $star); ?>
+                                    </td>
+                                    <td style="padding:6px 10px;">
+                                        <?php if ( $star === 1 ) : ?>
+                                            <span style="background:#DCFCE7; color:#166534; padding:2px 6px; border-radius:4px; font-size:11px;">Included</span>
+                                        <?php else : ?>
+                                            <span style="background:#EDE9FE; color:#5B21B6; padding:2px 6px; border-radius:4px; font-size:11px;">Extra</span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
 
@@ -728,11 +771,11 @@
                     var item = document.createElement('div');
                     item.className = 'pm-proof';
                     item.setAttribute('data-id', data.proof_id);
-                    item.style.cssText = 'position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6; border:2px solid transparent;';
+                    item.style.cssText = 'position:relative; border-radius:6px; overflow:hidden; width:80px; height:80px; background:#F3F4F6; border:2px solid transparent; flex-shrink:0;';
 
                     var img = document.createElement('img');
                     img.src = data.thumb_url;
-                    img.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+                    img.style.cssText = 'width:80px; height:80px; object-fit:cover; display:block;';
 
                     var delBtn = document.createElement('button');
                     delBtn.className = 'pm-delete-btn';
@@ -788,6 +831,35 @@
                         .catch(function() {
                             readyBtn.disabled = false;
                             readyBtn.textContent = 'Mark Ready & Notify Client';
+                        });
+                    });
+                }
+
+                // ── Download Selections CSV ────────────
+                var dlBtn = document.getElementById('pm-download-csv');
+                if (dlBtn) {
+                    dlBtn.addEventListener('click', function() {
+                        dlBtn.disabled = true;
+                        dlBtn.textContent = 'Downloading...';
+                        fetch(REST + '/download-selections', { headers: { 'X-WP-Nonce': NONCE } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            if (d.ok && d.csv) {
+                                var blob = new Blob([d.csv], { type: 'text/csv' });
+                                var url  = URL.createObjectURL(blob);
+                                var a    = document.createElement('a');
+                                a.href = url; a.download = d.filename; a.click();
+                                URL.revokeObjectURL(url);
+                            } else {
+                                alert('Could not download selections.');
+                            }
+                            dlBtn.disabled = false;
+                            dlBtn.textContent = '⬇ Download CSV';
+                        })
+                        .catch(function() {
+                            alert('Network error.');
+                            dlBtn.disabled = false;
+                            dlBtn.textContent = '⬇ Download CSV';
                         });
                     });
                 }

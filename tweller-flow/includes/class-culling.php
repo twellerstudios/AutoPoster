@@ -112,6 +112,13 @@ class TwellerFlow2_Culling {
             'callback'            => array( __CLASS__, 'rest_toggle_culling' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
+
+        // Download selections as CSV (admin)
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/download-selections', array(
+            'methods'             => 'GET',
+            'callback'            => array( __CLASS__, 'rest_download_selections' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
     }
 
     // ── Database ───────────────────────────────────────
@@ -141,6 +148,7 @@ class TwellerFlow2_Culling {
             session_code varchar(10) NOT NULL,
             proof_id bigint(20) unsigned NOT NULL,
             filename varchar(255) NOT NULL,
+            star_rating tinyint(1) DEFAULT 1,
             selected_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY session_id (session_id),
@@ -363,6 +371,7 @@ class TwellerFlow2_Culling {
         // Clear old selections
         $wpdb->delete( $sel_table, array( 'session_id' => $session->id ) );
 
+        $selection_index = 0;
         foreach ( $proof_ids as $pid ) {
             $pid = intval( $pid );
             $proof = $wpdb->get_row( $wpdb->prepare(
@@ -370,11 +379,16 @@ class TwellerFlow2_Culling {
             ));
             if ( ! $proof ) continue;
 
+            $selection_index++;
+            // First $included selections = 1 star (base package), extras = 2 stars
+            $star_rating = ( $selection_index <= $included ) ? 1 : 2;
+
             $wpdb->insert( $sel_table, array(
                 'session_id'   => $session->id,
                 'session_code' => $code,
                 'proof_id'     => $pid,
                 'filename'     => $proof->original_filename,
+                'star_rating'  => $star_rating,
                 'selected_at'  => current_time( 'mysql' ),
             ));
         }
@@ -720,7 +734,7 @@ class TwellerFlow2_Culling {
         global $wpdb;
         $table = $wpdb->prefix . self::TABLE_SELECTIONS;
         return $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM $table WHERE session_id = %d ORDER BY selected_at ASC", $session_id
+            "SELECT * FROM $table WHERE session_id = %d ORDER BY star_rating ASC, id ASC", $session_id
         ));
     }
 
@@ -965,6 +979,47 @@ class TwellerFlow2_Culling {
         }
 
         return rest_ensure_response( array( 'ok' => true, 'enabled' => $enable ) );
+    }
+
+    // ── Admin: Download Selections as CSV ─────────────
+
+    public static function rest_download_selections( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $selections = self::get_selections( $session->id );
+        if ( empty( $selections ) ) {
+            return new WP_Error( 'no_selections', 'No selections found', array( 'status' => 404 ) );
+        }
+
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $pkg      = $packages[ $session->package_type ] ?? array();
+        $included = ( $pkg['images'] ?? 15 ) + self::FREEBIES;
+
+        // Build CSV
+        $lines   = array();
+        $lines[] = 'Filename,Star Rating,Selection Order,Type';
+        $idx     = 0;
+        foreach ( $selections as $sel ) {
+            $idx++;
+            $star   = isset( $sel->star_rating ) ? (int) $sel->star_rating : ( $idx <= $included ? 1 : 2 );
+            $type   = $star === 1 ? 'Included' : 'Extra (+$' . self::UPSELL_PRICE_PER_PHOTO . ' TTD)';
+            $lines[] = '"' . str_replace( '"', '""', $sel->filename ) . '",' . $star . ',' . $idx . ',"' . $type . '"';
+        }
+
+        $csv = implode( "\n", $lines );
+        $filename = 'selections-' . $code . '.csv';
+
+        // Return as a data response the admin JS can download
+        return rest_ensure_response( array(
+            'ok'       => true,
+            'filename' => $filename,
+            'csv'      => $csv,
+            'count'    => count( $selections ),
+        ));
     }
 
     // ── Selection Confirmation Email ───────────────────

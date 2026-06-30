@@ -597,6 +597,18 @@
                     </div>
                 <?php endif; ?>
 
+                <!-- Visual proof grid with selection status -->
+                <div style="border-top:1px solid #F3F4F6; padding-top:14px; margin-top:14px; display:none;" id="pm-visual-grid-section">
+                    <h3 style="margin:0 0 10px; font-size:13px; font-weight:600; color:#374151;">All Proofs Overview</h3>
+                    <p style="margin:0 0 10px; font-size:11px; color:#9CA3AF;">
+                        <span style="display:inline-block; margin-right:12px;"><span style="display:inline-block; width:12px; height:12px; border:2px solid #16A34A; border-radius:4px; vertical-align:middle;"></span> Selected (Included)</span>
+                        <span style="display:inline-block;"><span style="display:inline-block; width:12px; height:12px; border:2px solid #6366F1; border-radius:4px; vertical-align:middle;"></span> Selected (Extra)</span>
+                    </p>
+                    <div id="pm-visual-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,80px)); gap:8px;">
+                        <!-- Loaded via JS -->
+                    </div>
+                </div>
+
                 <?php if ( $culling_submitted ) :
                     $selections = TwellerFlow2_Culling::get_selections( $session->id );
                     $pkg_inc    = $pkg_included;
@@ -604,7 +616,10 @@
                 <div style="border-top:1px solid #F3F4F6; padding-top:14px; margin-top:14px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                         <h3 style="margin:0; font-size:13px; font-weight:600; color:#374151;">Client Selections (<?php echo count($selections); ?> photos)</h3>
-                        <button id="pm-download-csv" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">&#11015; Download CSV</button>
+                        <div style="display:flex; gap:6px;">
+                            <button id="pm-download-xmp" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;" title="Download XMP sidecar files for Lightroom">⬇ XMP (Lightroom)</button>
+                            <button id="pm-download-csv" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">⬇ CSV</button>
+                        </div>
                     </div>
                     <div style="border:1px solid #E5E7EB; border-radius:8px; overflow:hidden;">
                         <table style="width:100%; border-collapse:collapse; font-size:12px;">
@@ -835,6 +850,78 @@
                     });
                 }
 
+                // ── Load and display proofs with selection status ────
+                var visualGridSection = document.getElementById('pm-visual-grid-section');
+                var visualGrid = document.getElementById('pm-visual-grid');
+                if (visualGrid && CODE) {
+                    fetch(REST + '/admin-proofs-status', { headers: { 'X-WP-Nonce': NONCE } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (!d.ok || !d.proofs) return;
+                        visualGrid.innerHTML = '';
+                        d.proofs.forEach(function(proof) {
+                            var item = document.createElement('div');
+                            item.style.cssText = 'position:relative; border-radius:6px; overflow:hidden; width:80px; height:80px; background:#F3F4F6; cursor:default;';
+
+                            var img = document.createElement('img');
+                            img.src = proof.thumb_url;
+                            img.style.cssText = 'width:80px; height:80px; object-fit:cover; display:block;';
+                            item.appendChild(img);
+
+                            if (proof.selected) {
+                                // Add border color based on type
+                                var borderColor = proof.is_extra ? '#6366F1' : '#16A34A'; // purple for extra, green for included
+                                item.style.border = '3px solid ' + borderColor;
+
+                                // Add star badge at bottom
+                                var badge = document.createElement('div');
+                                var star = proof.star_rating === 1 ? '★' : '★★';
+                                badge.textContent = star;
+                                badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:' + borderColor + '; color:#fff; font-size:11px; padding:2px 5px; border-radius:3px; font-weight:bold;';
+                                item.appendChild(badge);
+                            }
+                            visualGrid.appendChild(item);
+                        });
+                        if (d.proofs.length > 0) {
+                            visualGridSection.style.display = 'block';
+                        }
+                    })
+                    .catch(function(){});
+                }
+
+                // ── Download Selections as XMP ─────────
+                var dlXmpBtn = document.getElementById('pm-download-xmp');
+                if (dlXmpBtn) {
+                    dlXmpBtn.addEventListener('click', function() {
+                        dlXmpBtn.disabled = true;
+                        dlXmpBtn.textContent = 'Downloading...';
+                        fetch(REST + '/download-xmp', { headers: { 'X-WP-Nonce': NONCE } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            if (d.ok && d.zip_base64) {
+                                var binary = atob(d.zip_base64);
+                                var bytes = new Uint8Array(binary.length);
+                                for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                                var blob = new Blob([bytes], { type: 'application/zip' });
+                                var url  = URL.createObjectURL(blob);
+                                var a    = document.createElement('a');
+                                a.href = url; a.download = d.filename; a.click();
+                                URL.revokeObjectURL(url);
+                                alert(d.instruction);
+                            } else {
+                                alert('Could not download XMP files.');
+                            }
+                            dlXmpBtn.disabled = false;
+                            dlXmpBtn.textContent = '⬇ XMP (Lightroom)';
+                        })
+                        .catch(function() {
+                            alert('Network error.');
+                            dlXmpBtn.disabled = false;
+                            dlXmpBtn.textContent = '⬇ XMP (Lightroom)';
+                        });
+                    });
+                }
+
                 // ── Download Selections CSV ────────────
                 var dlBtn = document.getElementById('pm-download-csv');
                 if (dlBtn) {
@@ -854,12 +941,12 @@
                                 alert('Could not download selections.');
                             }
                             dlBtn.disabled = false;
-                            dlBtn.textContent = '⬇ Download CSV';
+                            dlBtn.textContent = '⬇ CSV';
                         })
                         .catch(function() {
                             alert('Network error.');
                             dlBtn.disabled = false;
-                            dlBtn.textContent = '⬇ Download CSV';
+                            dlBtn.textContent = '⬇ CSV';
                         });
                     });
                 }

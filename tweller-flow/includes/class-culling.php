@@ -119,6 +119,20 @@ class TwellerFlow2_Culling {
             'callback'            => array( __CLASS__, 'rest_download_selections' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
+
+        // Download selections as XMP metadata (admin) — for Lightroom import
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/download-xmp', array(
+            'methods'             => 'GET',
+            'callback'            => array( __CLASS__, 'rest_download_xmp' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+
+        // Get all proofs with selection status (admin)
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/admin-proofs-status', array(
+            'methods'             => 'GET',
+            'callback'            => array( __CLASS__, 'rest_get_proofs_with_status' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
     }
 
     // ── Database ───────────────────────────────────────
@@ -733,9 +747,36 @@ class TwellerFlow2_Culling {
     public static function get_selections( $session_id ) {
         global $wpdb;
         $table = $wpdb->prefix . self::TABLE_SELECTIONS;
-        return $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM $table WHERE session_id = %d ORDER BY star_rating ASC, id ASC", $session_id
+        $selections = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM $table WHERE session_id = %d ORDER BY id ASC", $session_id
         ));
+
+        // Ensure star ratings are set correctly
+        if ( ! empty( $selections ) ) {
+            $session = TwellerFlow2_Session::get( $session_id );
+            if ( $session ) {
+                $packages = get_option( 'tweller_flow_2_packages', array() );
+                $pkg      = $packages[ $session->package_type ] ?? array();
+                $included = ( $pkg['images'] ?? 15 ) + self::FREEBIES;
+
+                $idx = 0;
+                foreach ( $selections as $sel ) {
+                    $idx++;
+                    $correct_star = ( $idx <= $included ) ? 1 : 2;
+                    if ( intval( $sel->star_rating ) !== $correct_star ) {
+                        $wpdb->update( $table, array( 'star_rating' => $correct_star ), array( 'id' => $sel->id ) );
+                        $sel->star_rating = $correct_star;
+                    }
+                }
+            }
+        }
+
+        // Re-order by star rating for display
+        usort( $selections, function( $a, $b ) {
+            return intval( $a->star_rating ) <=> intval( $b->star_rating );
+        });
+
+        return $selections;
     }
 
     public static function get_proof_dir( $session_code ) {
@@ -905,6 +946,58 @@ class TwellerFlow2_Culling {
         ));
     }
 
+    // ── Admin: Get Proofs with Selection Status ────────
+
+    public static function rest_get_proofs_with_status( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $proofs     = self::get_proofs( $session->id );
+        $selections = self::get_selections( $session->id );
+        $proof_url  = self::get_proof_url( $code );
+
+        // Build map of selected proof IDs with their star ratings
+        $selected_map = array();
+        $idx = 0;
+        foreach ( $selections as $sel ) {
+            $idx++;
+            $selected_map[ $sel->proof_id ] = intval( $sel->star_rating );
+        }
+
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $pkg      = $packages[ $session->package_type ] ?? array();
+        $included = ( $pkg['images'] ?? 15 ) + self::FREEBIES;
+
+        $list = array();
+        foreach ( $proofs as $p ) {
+            $is_selected = isset( $selected_map[ $p->id ] );
+            $star_rating = $selected_map[ $p->id ] ?? null;
+
+            $list[] = array(
+                'id'            => $p->id,
+                'filename'      => $p->filename,
+                'thumb_url'     => $proof_url . '/thumbs/' . $p->filename,
+                'url'           => $proof_url . '/' . $p->filename,
+                'selected'      => $is_selected,
+                'star_rating'   => $star_rating,
+                'is_extra'      => $is_selected && $star_rating === 2,
+            );
+        }
+
+        return rest_ensure_response( array(
+            'ok'              => true,
+            'proofs'          => $list,
+            'total_proofs'    => count( $list ),
+            'total_selected'  => count( $selections ),
+            'included'        => $included,
+            'price_per_photo' => self::UPSELL_PRICE_PER_PHOTO,
+            'submitted'       => (bool) get_option( 'tweller_culling_submitted_' . $session->id, false ),
+        ));
+    }
+
     // ── Admin: Delete Proof ────────────────────────────
 
     public static function rest_delete_proof_admin( $request ) {
@@ -1020,6 +1113,85 @@ class TwellerFlow2_Culling {
             'csv'      => $csv,
             'count'    => count( $selections ),
         ));
+    }
+
+    // ── Admin: Download XMP Metadata (for Lightroom) ────
+
+    public static function rest_download_xmp( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $selections = self::get_selections( $session->id );
+        if ( empty( $selections ) ) {
+            return new WP_Error( 'no_selections', 'No selections found', array( 'status' => 404 ) );
+        }
+
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $pkg      = $packages[ $session->package_type ] ?? array();
+        $included = ( $pkg['images'] ?? 15 ) + self::FREEBIES;
+
+        // Create temporary zip file
+        $temp_zip = tempnam( sys_get_temp_dir(), 'xmp_' );
+        $zip      = new ZipArchive();
+        $zip->open( $temp_zip, ZipArchive::CREATE | ZipArchive::OVERWRITE );
+
+        $idx = 0;
+        foreach ( $selections as $sel ) {
+            $idx++;
+            $star = isset( $sel->star_rating ) ? (int) $sel->star_rating : ( $idx <= $included ? 1 : 2 );
+
+            // Generate XMP sidecar content
+            $xmp_content = self::generate_xmp( $sel->filename, $star );
+
+            // Add to zip with .xmp extension
+            $xmp_filename = pathinfo( $sel->filename, PATHINFO_FILENAME ) . '.xmp';
+            $zip->addFromString( $xmp_filename, $xmp_content );
+        }
+
+        $zip->close();
+
+        // Read zip and return as data response
+        if ( ! file_exists( $temp_zip ) ) {
+            return new WP_Error( 'zip_failed', 'Could not create zip file', array( 'status' => 500 ) );
+        }
+
+        $zip_data = file_get_contents( $temp_zip );
+        @unlink( $temp_zip );
+
+        return rest_ensure_response( array(
+            'ok'           => true,
+            'filename'     => 'selections-' . $code . '.zip',
+            'zip_base64'   => base64_encode( $zip_data ),
+            'count'        => count( $selections ),
+            'instruction'  => 'Download and extract XMP files into the same folder as your imported photos in Lightroom. Lightroom will read the star ratings.',
+        ));
+    }
+
+    private static function generate_xmp( $filename, $star_rating ) {
+        // Lightroom XMP format with rating and label
+        $label = ( $star_rating === 1 ) ? 'Included' : 'Extra';
+        $color = ( $star_rating === 1 ) ? '2' : '6'; // 2=blue (included), 6=purple (extra)
+
+        $xmp = '<?xml version="1.0" encoding="UTF-8"?>' . "\n" .
+            '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 5.6-c140 79.160451, 2017/12/02-11:08:38        ">' . "\n" .
+            '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' . "\n" .
+            '    <rdf:Description rdf:about=""' . "\n" .
+            '      xmlns:xmp="http://ns.adobe.com/xap/1.0/"' . "\n" .
+            '      xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"' . "\n" .
+            '      xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/"' . "\n" .
+            '      xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"' . "\n" .
+            '      xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmp/2008-02-29/"' . "\n" .
+            '      xmp:Rating="' . intval( $star_rating ) . '"' . "\n" .
+            '      xmp:Label="' . esc_xml( $label ) . '"' . "\n" .
+            '      Iptc4xmpCore:IntellectualGenre="' . esc_xml( $label . ' Selection' ) . '">' . "\n" .
+            '    </rdf:Description>' . "\n" .
+            '  </rdf:RDF>' . "\n" .
+            '</x:xmpmeta>' . "\n";
+
+        return $xmp;
     }
 
     // ── Selection Confirmation Email ───────────────────

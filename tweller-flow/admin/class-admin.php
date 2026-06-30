@@ -329,6 +329,8 @@ class TwellerFlow_Admin {
                 'from_email' => sanitize_email( $_POST['smtp_from_email'] ),
             ));
             update_option( 'tweller_flow_banking', sanitize_textarea_field( $_POST['banking_info'] ) );
+            update_option( 'tweller_flow_wipay_url', esc_url_raw( $_POST['wipay_url'] ?? '' ) );
+            update_option( 'tweller_flow_culling_price_per_photo', max( 1, intval( $_POST['culling_price_per_photo'] ?? 30 ) ) );
             update_option( 'tweller_flow_delivery_days', intval( $_POST['delivery_days'] ) );
             update_option( 'tweller_flow_tracker_page', esc_url_raw( $_POST['tracker_page_url'] ) );
             update_option( 'tweller_flow_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );

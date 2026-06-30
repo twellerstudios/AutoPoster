@@ -1,20 +1,20 @@
 <?php
 /**
- * Plugin Name: Tweller Flow
+ * Plugin Name: Tweller Flow 2
  * Plugin URI: https://twellerstudios.com
- * Description: Photography session workflow — booking, pipeline tracking, client notifications, and folder watcher integration.
- * Version: 3.3.3
+ * Description: Photography session workflow — booking, pipeline tracking, client proof uploads, photo selection portal, and WiPay payment integration.
+ * Version: 3.4.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
- * Text Domain: tweller-flow
+ * Text Domain: tweller-flow-2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_VERSION', '3.3.3' );
+define( 'TWELLER_FLOW_VERSION', '3.4.0' );
 define( 'TWELLER_FLOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_TABLE_SESSIONS', 'tweller_sessions' );

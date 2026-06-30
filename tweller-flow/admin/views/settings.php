@@ -110,14 +110,27 @@
                 </div>
             </div>
 
-            <!-- Banking -->
+            <!-- Banking & Payments -->
             <div class="tf-settings-section">
-                <h3>Banking Details</h3>
-                <p class="tf-description">Payment instructions included in booking confirmation emails.</p>
+                <h3>Banking &amp; Payment Details</h3>
+                <p class="tf-description">Payment instructions included in confirmation emails when clients owe an additional balance.</p>
 
                 <div class="tf-field" style="max-width:640px;">
-                    <label class="tf-field__label">Banking Info</label>
-                    <textarea name="banking_info" rows="5"><?php echo esc_textarea( $banking ); ?></textarea>
+                    <label class="tf-field__label">Bank Transfer Details</label>
+                    <textarea name="banking_info" rows="5" placeholder="Bank name, account name, account number, routing info..."><?php echo esc_textarea( $banking ); ?></textarea>
+                    <div class="tf-field__hint">Shown in selection confirmation emails when client selects extra photos.</div>
+                </div>
+
+                <div class="tf-field" style="max-width:640px;">
+                    <label class="tf-field__label">WiPay Payment URL</label>
+                    <input type="url" name="wipay_url" value="<?php echo esc_attr( get_option( 'tweller_flow_wipay_url', '' ) ); ?>" placeholder="https://wipay.tt/pay/...">
+                    <div class="tf-field__hint">Your WiPay payment link. Shown as a "Pay via WiPay" button in selection emails for credit/debit card payments.</div>
+                </div>
+
+                <div class="tf-field" style="max-width:200px;">
+                    <label class="tf-field__label">Price Per Extra Photo (TTD)</label>
+                    <input type="number" name="culling_price_per_photo" value="<?php echo esc_attr( get_option( 'tweller_flow_culling_price_per_photo', 30 ) ); ?>" min="1" step="1" placeholder="30">
+                    <div class="tf-field__hint">Charge per additional photo beyond the included package amount.</div>
                 </div>
             </div>
 

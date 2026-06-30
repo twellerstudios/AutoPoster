@@ -495,6 +495,305 @@
             </div>
             <?php endif; ?>
 
+            <!-- Proof Upload (Culling) -->
+            <?php
+            $culling_summary = TwellerFlow_Culling::get_summary( $session->id );
+            $proof_count     = $culling_summary['proof_count'];
+            $culling_ready   = $culling_summary['ready'];
+            $culling_submitted = $culling_summary['submitted'];
+            $culling_enabled = $culling_summary['enabled'];
+            $culling_rest    = rest_url( 'tweller-flow/v1/culling/' . $session->tracking_code );
+            $culling_nonce   = wp_create_nonce( 'wp_rest' );
+            $packages_opts   = get_option( 'tweller_flow_packages', array() );
+            $session_pkg     = $packages_opts[ $session->package_type ] ?? array();
+            $pkg_included    = ( $session_pkg['images'] ?? 15 );
+            $price_per_photo = get_option( 'tweller_flow_culling_price_per_photo', 30 );
+            ?>
+            <div class="tf-card tf-mb-6" id="tf-proof-manager">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                    <div>
+                        <h2 style="margin:0 0 2px;">Proof Upload</h2>
+                        <p style="margin:0; font-size:12px; color:#9CA3AF;">
+                            <?php if ( $culling_submitted ) : ?>
+                                <span style="color:#16A34A; font-weight:600;">&#10003; Client submitted <?php echo $culling_summary['selection_count']; ?> selections</span>
+                            <?php elseif ( $culling_ready ) : ?>
+                                <span style="color:#2563EB; font-weight:600;">&#9679; Awaiting client selection &mdash; <?php echo $proof_count; ?> proofs live</span>
+                            <?php elseif ( $culling_enabled ) : ?>
+                                <span style="color:#D97706; font-weight:600;">&#9711; <?php echo $proof_count; ?> proofs uploaded &mdash; not yet sent to client</span>
+                            <?php else : ?>
+                                <span style="color:#9CA3AF;">No proofs uploaded yet</span>
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <label class="tf-toggle" title="Enable / disable photo selection for this session">
+                            <input type="checkbox" id="pm-culling-toggle" <?php checked( $culling_enabled ); ?>>
+                            <span class="tf-toggle__switch"></span>
+                            <span class="tf-toggle__label" style="font-size:12px;">Culling On</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Package info bar -->
+                <div style="background:#F8FAFC; border:1px solid #E5E7EB; border-radius:8px; padding:10px 14px; display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:#6B7280;">
+                    <span><strong style="color:#374151;">Package:</strong> <?php echo esc_html( $session_pkg['name'] ?? ucfirst( $session->package_type ) ); ?></span>
+                    <span><strong style="color:#374151;">Included:</strong> <?php echo $pkg_included; ?> photos</span>
+                    <span><strong style="color:#374151;">Extra photo rate:</strong> $<?php echo $price_per_photo; ?> TTD each</span>
+                </div>
+
+                <!-- Proof thumbnails -->
+                <div id="pm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:6px; margin-bottom:14px; <?php echo $proof_count === 0 ? 'display:none;' : ''; ?>">
+                    <?php
+                    if ( $culling_enabled ) {
+                        $proofs    = TwellerFlow_Culling::get_proofs( $session->id );
+                        $proof_url = TwellerFlow_Culling::get_proof_url( $session->tracking_code );
+                        foreach ( $proofs as $proof ) : ?>
+                            <div class="pm-proof" data-id="<?php echo $proof->id; ?>" style="position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6; border:2px solid transparent; group;">
+                                <img src="<?php echo esc_url( $proof_url . '/thumbs/' . $proof->filename ); ?>" alt="<?php echo esc_attr( $proof->filename ); ?>" style="width:100%; height:100%; object-fit:cover;">
+                                <button class="pm-delete-btn" data-id="<?php echo $proof->id; ?>" title="Delete proof" style="position:absolute; top:3px; right:3px; width:20px; height:20px; background:rgba(220,38,38,0.85); color:#fff; border:none; border-radius:50%; font-size:11px; cursor:pointer; line-height:20px; padding:0; text-align:center; display:none;">&times;</button>
+                            </div>
+                        <?php endforeach;
+                    }
+                    ?>
+                </div>
+                <div id="pm-count-label" style="font-size:12px; color:#6B7280; margin-bottom:10px; <?php echo $proof_count === 0 ? 'display:none;' : ''; ?>">
+                    <span id="pm-count"><?php echo $proof_count; ?></span> proof<?php echo $proof_count !== 1 ? 's' : ''; ?> uploaded
+                    <button id="pm-edit-toggle" class="tf-btn tf-btn--secondary tf-btn--sm" style="margin-left:8px; font-size:11px;">Edit / Delete</button>
+                </div>
+
+                <!-- Drop zone -->
+                <?php if ( ! $culling_submitted ) : ?>
+                <div id="pm-drop-zone" style="border:2px dashed #D1D5DB; border-radius:8px; padding:22px 16px; text-align:center; cursor:pointer; background:#FAFAFA; margin-bottom:12px; transition:border-color .2s, background .2s;">
+                    <div style="font-size:24px; margin-bottom:6px;">&#128444;</div>
+                    <p style="margin:0 0 4px; font-size:13px; font-weight:600; color:#374151;">Drop proof photos here or <span style="color:#6366F1; text-decoration:underline;">browse</span></p>
+                    <p style="margin:0; font-size:11px; color:#9CA3AF;">JPEG, PNG or WebP — multiple files OK</p>
+                    <input type="file" id="pm-file-input" accept="image/jpeg,image/png,image/webp" multiple style="display:none;">
+                </div>
+                <div id="pm-progress" style="display:none; margin-bottom:10px;">
+                    <div style="height:4px; background:#E5E7EB; border-radius:2px; overflow:hidden; margin-bottom:4px;">
+                        <div id="pm-bar" style="height:100%; background:#6366F1; width:0%; transition:width .3s;"></div>
+                    </div>
+                    <p id="pm-progress-text" style="font-size:11px; color:#6B7280; margin:0;"></p>
+                </div>
+                <div id="pm-result" style="display:none; font-size:12px; margin-bottom:10px;"></div>
+                <?php endif; ?>
+
+                <!-- Mark Ready & Password -->
+                <?php if ( ! $culling_submitted ) : ?>
+                <div style="border-top:1px solid #F3F4F6; padding-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="pm-password" placeholder="Set / change portal password (optional)" style="padding:7px 10px; font-size:12px; border:1px solid #D1D5DB; border-radius:6px; width:220px; font-family:inherit;">
+                    <button id="pm-mark-ready" class="tf-btn tf-btn--primary tf-btn--sm" style="background:#16A34A; border-color:#16A34A; font-size:12px;" <?php echo $proof_count === 0 ? 'disabled' : ''; ?>>
+                        &#9993; <?php echo $culling_ready ? 'Re-send to Client' : 'Mark Ready &amp; Notify Client'; ?>
+                    </button>
+                    <?php if ( $culling_ready ) : ?>
+                        <a href="<?php echo esc_url( TwellerFlow_Culling::get_culling_page_url( $session->tracking_code ) ); ?>" target="_blank" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">View Portal</a>
+                    <?php endif; ?>
+                </div>
+                <?php elseif ( $culling_summary['upsell'] && $culling_summary['upsell']['extra_count'] > 0 ) : ?>
+                    <div style="background:#FEF9EC; border:1px solid #FCD34D; border-radius:8px; padding:12px 16px; font-size:13px;">
+                        <strong style="color:#92400E;">Extra photos:</strong>
+                        <?php echo $culling_summary['upsell']['extra_count']; ?> × $<?php echo $culling_summary['upsell']['price_each']; ?> TTD
+                        = <strong style="color:#92400E;">$<?php echo $culling_summary['upsell']['total_price']; ?> TTD additional</strong>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <script>
+            (function() {
+                var CODE     = '<?php echo esc_js( $session->tracking_code ); ?>';
+                var REST     = '<?php echo esc_js( $culling_rest ); ?>';
+                var NONCE    = '<?php echo esc_js( $culling_nonce ); ?>';
+                var REST_BASE = '<?php echo esc_js( rest_url( 'tweller-flow/v1/' ) ); ?>';
+
+                // ── Toggle culling on/off ──────────────
+                var toggleEl = document.getElementById('pm-culling-toggle');
+                if (toggleEl) {
+                    toggleEl.addEventListener('change', function() {
+                        fetch(REST + '/toggle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+                            body: JSON.stringify({ enabled: this.checked })
+                        }).catch(function(){});
+                    });
+                }
+
+                // ── Edit mode (show delete buttons) ────
+                var editMode = false;
+                var editBtn  = document.getElementById('pm-edit-toggle');
+                if (editBtn) {
+                    editBtn.addEventListener('click', function() {
+                        editMode = !editMode;
+                        var btns = document.querySelectorAll('.pm-delete-btn');
+                        btns.forEach(function(b) { b.style.display = editMode ? 'block' : 'none'; });
+                        editBtn.textContent = editMode ? 'Done Editing' : 'Edit / Delete';
+                    });
+                }
+
+                // ── Delete proof ───────────────────────
+                document.querySelectorAll('.pm-delete-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var id = this.getAttribute('data-id');
+                        if (!confirm('Delete this proof photo?')) return;
+                        var self = this;
+                        fetch(REST_BASE + 'culling/proof/' + id, {
+                            method: 'DELETE',
+                            headers: { 'X-WP-Nonce': NONCE }
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.ok) {
+                                var item = self.closest('.pm-proof');
+                                if (item) item.remove();
+                                var cnt = document.getElementById('pm-count');
+                                if (cnt) cnt.textContent = parseInt(cnt.textContent) - 1;
+                            }
+                        })
+                        .catch(function(){});
+                    });
+                });
+
+                // ── Upload ─────────────────────────────
+                var dz      = document.getElementById('pm-drop-zone');
+                var fi      = document.getElementById('pm-file-input');
+                var bar     = document.getElementById('pm-bar');
+                var barText = document.getElementById('pm-progress-text');
+                var result  = document.getElementById('pm-result');
+                var grid    = document.getElementById('pm-grid');
+                var cntEl   = document.getElementById('pm-count');
+                var cntBar  = document.getElementById('pm-count-label');
+                var readyBtn = document.getElementById('pm-mark-ready');
+
+                if (dz) {
+                    dz.addEventListener('click', function() { fi.click(); });
+                    fi.addEventListener('change', function() { uploadFiles(this.files); });
+                    dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.style.borderColor='#6366F1'; dz.style.background='#EEF2FF'; });
+                    dz.addEventListener('dragleave', function() { dz.style.borderColor='#D1D5DB'; dz.style.background='#FAFAFA'; });
+                    dz.addEventListener('drop', function(e) { e.preventDefault(); dz.style.borderColor='#D1D5DB'; dz.style.background='#FAFAFA'; uploadFiles(e.dataTransfer.files); });
+                }
+
+                function uploadFiles(fileList) {
+                    var files = Array.from(fileList);
+                    if (!files.length) return;
+                    var total = files.length, saved = 0, errors = [];
+
+                    document.getElementById('pm-progress').style.display = 'block';
+                    result.style.display = 'none';
+
+                    function next(i) {
+                        if (i >= total) {
+                            bar.style.width = '100%';
+                            var html = '';
+                            if (saved) html += '<span style="color:#16a34a;">&#10003; ' + saved + ' proof(s) uploaded.</span> ';
+                            if (errors.length) html += '<span style="color:#dc2626;">&#10007; ' + errors.join(', ') + '</span>';
+                            result.innerHTML = html;
+                            result.style.display = 'block';
+                            document.getElementById('pm-progress').style.display = 'none';
+                            if (readyBtn) readyBtn.removeAttribute('disabled');
+                            return;
+                        }
+
+                        var pct = Math.round((i / total) * 100);
+                        bar.style.width = pct + '%';
+                        barText.textContent = 'Uploading ' + (i+1) + ' of ' + total + ': ' + files[i].name;
+
+                        var fd = new FormData();
+                        fd.append('photo', files[i]);
+
+                        fetch(REST + '/upload-admin', {
+                            method: 'POST',
+                            headers: { 'X-WP-Nonce': NONCE },
+                            body: fd
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.ok) {
+                                saved++;
+                                addThumb(data);
+                                if (cntEl) cntEl.textContent = parseInt(cntEl.textContent || 0) + 1;
+                                if (cntBar) cntBar.style.display = '';
+                                if (grid) grid.style.display = '';
+                            } else {
+                                errors.push(files[i].name);
+                            }
+                            next(i+1);
+                        })
+                        .catch(function() { errors.push(files[i].name); next(i+1); });
+                    }
+                    next(0);
+                }
+
+                function addThumb(data) {
+                    if (!grid) return;
+                    var item = document.createElement('div');
+                    item.className = 'pm-proof';
+                    item.setAttribute('data-id', data.proof_id);
+                    item.style.cssText = 'position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6; border:2px solid transparent;';
+
+                    var img = document.createElement('img');
+                    img.src = data.thumb_url;
+                    img.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+
+                    var delBtn = document.createElement('button');
+                    delBtn.className = 'pm-delete-btn';
+                    delBtn.setAttribute('data-id', data.proof_id);
+                    delBtn.title = 'Delete proof';
+                    delBtn.style.cssText = 'position:absolute; top:3px; right:3px; width:20px; height:20px; background:rgba(220,38,38,0.85); color:#fff; border:none; border-radius:50%; font-size:11px; cursor:pointer; line-height:20px; padding:0; text-align:center; display:none;';
+                    delBtn.textContent = '×';
+                    delBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        if (!confirm('Delete this proof?')) return;
+                        var self = this;
+                        fetch(REST_BASE + 'culling/proof/' + data.proof_id, {
+                            method: 'DELETE', headers: { 'X-WP-Nonce': NONCE }
+                        }).then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            if (d.ok) {
+                                item.remove();
+                                if (cntEl) cntEl.textContent = Math.max(0, parseInt(cntEl.textContent) - 1);
+                            }
+                        }).catch(function(){});
+                    });
+
+                    item.appendChild(img);
+                    item.appendChild(delBtn);
+                    grid.style.display = '';
+                    grid.appendChild(item);
+                }
+
+                // ── Mark Ready ─────────────────────────
+                if (readyBtn) {
+                    readyBtn.addEventListener('click', function() {
+                        var pw = document.getElementById('pm-password') ? document.getElementById('pm-password').value.trim() : '';
+                        readyBtn.disabled = true;
+                        readyBtn.textContent = 'Sending...';
+
+                        fetch(REST + '/admin-ready', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+                            body: JSON.stringify({ password: pw })
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.ok) {
+                                readyBtn.textContent = '&#9993; Email Sent!';
+                                readyBtn.style.background = '#16A34A';
+                                setTimeout(function() { location.reload(); }, 1200);
+                            } else {
+                                readyBtn.disabled = false;
+                                readyBtn.textContent = 'Mark Ready & Notify Client';
+                                alert('Error: ' + (data.message || 'Could not send email.'));
+                            }
+                        })
+                        .catch(function() {
+                            readyBtn.disabled = false;
+                            readyBtn.textContent = 'Mark Ready & Notify Client';
+                        });
+                    });
+                }
+            })();
+            </script>
+
             <!-- Client Activity -->
             <?php $activity = TwellerFlow_Client_Activity::get_summary( $session->id ); ?>
             <div class="tf-card tf-mb-6">

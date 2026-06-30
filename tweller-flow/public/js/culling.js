@@ -18,8 +18,7 @@
     var maxFree = 0;
     var includedImages = 0;
     var freebies = 0;
-    var upsellTiers = {};
-    var chosenUpsell = null;
+    var upsellPricePerPhoto = 30;
     var submitted = false;
 
     // Elements
@@ -37,16 +36,13 @@
     var submitBtn   = document.getElementById('tc-submit-btn');
 
     // Modals
-    var upsellModal      = document.getElementById('tc-upsell-modal');
-    var upsellIncluded   = document.getElementById('tc-upsell-included');
-    var upsellSelected   = document.getElementById('tc-upsell-selected');
-    var upsellTiersEl    = document.getElementById('tc-upsell-tiers');
-    var upsellCancel     = document.getElementById('tc-upsell-cancel');
-    var confirmModal     = document.getElementById('tc-confirm-modal');
-    var confirmCount     = document.getElementById('tc-confirm-count');
-    var confirmUpsell    = document.getElementById('tc-confirm-upsell');
-    var confirmCancel    = document.getElementById('tc-confirm-cancel');
-    var confirmYes       = document.getElementById('tc-confirm-yes');
+    var confirmModal  = document.getElementById('tc-confirm-modal');
+    var confirmCount  = document.getElementById('tc-confirm-count');
+    var confirmUpsell = document.getElementById('tc-confirm-upsell');
+    var confirmCancel = document.getElementById('tc-confirm-cancel');
+    var confirmYes    = document.getElementById('tc-confirm-yes');
+    // Extra cost banner (shown inline when client exceeds package)
+    var extraBanner   = null;
 
     // Load data
     loadProofs();
@@ -88,9 +84,9 @@
             // Store data
             proofs = data.proofs || [];
             includedImages = data.included_images || 15;
-            freebies = data.freebies || 5;
+            freebies = data.freebies || 0;
             maxFree = data.max_free || (includedImages + freebies);
-            upsellTiers = data.upsell_tiers || {};
+            upsellPricePerPhoto = data.upsell_price_per_photo || 30;
 
             // Restore selections
             if (data.selected_ids) {
@@ -201,14 +197,10 @@
         } else {
             selectedIds.add(id);
             item.classList.add('tc-grid__item--selected');
-
-            // Check if over free limit
-            if (selectedIds.size > maxFree && !chosenUpsell) {
-                showUpsellModal();
-            }
         }
         updateCounter();
         updateSelectionNumbers();
+        updateExtraBanner();
     }
 
     function updateSelectionNumbers() {
@@ -229,99 +221,58 @@
 
     function updateCounter() {
         var count = selectedIds.size;
-        var max = chosenUpsell !== null ? getUpsellMax() : maxFree;
+        var extra = Math.max(0, count - maxFree);
 
         countEl.textContent = count;
-        maxEl.textContent = max === Infinity ? proofs.length : max;
+        maxEl.textContent = maxFree;
 
-        if (count > 0) {
-            submitBtn.disabled = false;
-            if (count > maxFree && !chosenUpsell) {
-                countEl.style.color = '#DC2626';
-            } else {
-                countEl.style.color = '';
-            }
+        submitBtn.disabled = count === 0;
+
+        if (extra > 0) {
+            countEl.style.color = '#D97706';
         } else {
-            submitBtn.disabled = true;
+            countEl.style.color = '';
         }
     }
 
-    function getUpsellMax() {
-        if (chosenUpsell === 0) return proofs.length; // all
-        return maxFree + (chosenUpsell || 0);
-    }
+    function updateExtraBanner() {
+        var extra = Math.max(0, selectedIds.size - maxFree);
+        var cost  = extra * upsellPricePerPhoto;
 
-    // ── Upsell Modal ───────────────────────────────────
-    function showUpsellModal() {
-        upsellIncluded.textContent = maxFree;
-        upsellSelected.textContent = selectedIds.size;
+        if (!extraBanner) {
+            extraBanner = document.createElement('div');
+            extraBanner.id = 'tc-extra-banner';
+            extraBanner.style.cssText = 'background:#FEF9EC; border:1px solid #FCD34D; border-radius:10px; padding:12px 18px; margin:12px 0; display:flex; align-items:center; gap:12px; font-size:14px;';
+            if (counter) counter.after(extraBanner);
+        }
 
-        upsellTiersEl.innerHTML = '';
-
-        // Sort tiers: 5, 10, 15, then 0 (all)
-        var tierKeys = Object.keys(upsellTiers).map(Number).sort(function(a, b) {
-            if (a === 0) return 1;
-            if (b === 0) return -1;
-            return a - b;
-        });
-
-        tierKeys.forEach(function(tier) {
-            var price = upsellTiers[tier];
-            var btn = document.createElement('button');
-            btn.className = 'tc-upsell__tier';
-
-            if (tier === 0) {
-                btn.innerHTML = '<span class="tc-upsell__tier-label">All remaining photos</span><span class="tc-upsell__tier-price">+$' + price + '</span>';
-            } else {
-                btn.innerHTML = '<span class="tc-upsell__tier-label">+' + tier + ' photos</span><span class="tc-upsell__tier-price">+$' + price + '</span>';
-            }
-
-            btn.addEventListener('click', function() {
-                chosenUpsell = tier;
-                upsellModal.style.display = 'none';
-                updateCounter();
-            });
-
-            upsellTiersEl.appendChild(btn);
-        });
-
-        upsellModal.style.display = 'flex';
-    }
-
-    if (upsellCancel) {
-        upsellCancel.addEventListener('click', function() {
-            // Remove the last selection that pushed over limit
-            var arr = Array.from(selectedIds);
-            while (selectedIds.size > maxFree) {
-                var last = arr.pop();
-                selectedIds.delete(last);
-                var el = grid.querySelector('[data-id="' + last + '"]');
-                if (el) el.classList.remove('tc-grid__item--selected');
-            }
-            chosenUpsell = null;
-            upsellModal.style.display = 'none';
-            updateCounter();
-            updateSelectionNumbers();
-        });
+        if (extra > 0) {
+            extraBanner.style.display = 'flex';
+            extraBanner.innerHTML =
+                '<span style="font-size:20px;">💡</span>' +
+                '<span>' +
+                  '<strong style="color:#92400E;">' + extra + ' extra photo' + (extra > 1 ? 's' : '') + ' selected</strong>' +
+                  ' &mdash; ' +
+                  extra + ' × $' + upsellPricePerPhoto + ' TTD = ' +
+                  '<strong style="color:#92400E;">$' + cost + ' TTD additional charge</strong>.' +
+                  ' <span style="color:#6B7280;">Payment details will be emailed to you after submitting.</span>' +
+                '</span>';
+        } else {
+            extraBanner.style.display = 'none';
+        }
     }
 
     // ── Submit ──────────────────────────────────────────
     if (submitBtn) {
         submitBtn.addEventListener('click', function() {
             var count = selectedIds.size;
+            var extra = Math.max(0, count - maxFree);
+            var cost  = extra * upsellPricePerPhoto;
 
-            // Check if over free and no upsell chosen
-            if (count > maxFree && !chosenUpsell && chosenUpsell !== 0) {
-                showUpsellModal();
-                return;
-            }
-
-            // Show confirm
             confirmCount.textContent = count;
-            if (chosenUpsell !== null && count > maxFree) {
-                var extra = count - maxFree;
-                var price = upsellTiers[chosenUpsell] || 0;
-                confirmUpsell.innerHTML = '<strong>' + extra + ' extra photos</strong> — additional charge of <strong>$' + price + '</strong> will apply.';
+            if (extra > 0) {
+                confirmUpsell.innerHTML =
+                    '<strong>' + extra + ' extra photo' + (extra > 1 ? 's' : '') + '</strong> &mdash; an additional charge of <strong>$' + cost + ' TTD</strong> will apply. Payment details will be emailed to you.';
                 confirmUpsell.style.display = 'block';
             } else {
                 confirmUpsell.style.display = 'none';
@@ -344,9 +295,6 @@
             var body = {
                 proof_ids: Array.from(selectedIds),
             };
-            if (chosenUpsell !== null) {
-                body.upsell_tier = String(chosenUpsell);
-            }
             if (token) body.token = token;
 
             fetch(apiUrl + code + '/select', {

@@ -1,10 +1,10 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Notifications {
+class TwellerFlow2_Notifications {
 
     public static function configure_smtp( $phpmailer ) {
-        $smtp = get_option( 'tweller_flow_smtp', array() );
+        $smtp = get_option( 'tweller_flow_2_smtp', array() );
         if ( empty( $smtp['username'] ) || empty( $smtp['password'] ) ) return;
 
         $phpmailer->isSMTP();
@@ -19,7 +19,7 @@ class TwellerFlow_Notifications {
     }
 
     public static function on_stage_change( $session_id, $stage ) {
-        $session = TwellerFlow_Session::get( $session_id );
+        $session = TwellerFlow2_Session::get( $session_id );
         if ( ! $session || empty( $session->client_email ) ) return;
 
         $template = self::get_email_template( $stage, $session );
@@ -42,7 +42,7 @@ class TwellerFlow_Notifications {
 
     private static function log_notification( $session_id, $recipient, $subject, $body, $status ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_NOTIFICATIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_NOTIFICATIONS;
         $wpdb->insert( $table, array(
             'session_id' => $session_id,
             'type'       => 'email',
@@ -55,12 +55,12 @@ class TwellerFlow_Notifications {
     }
 
     public static function get_email_template( $stage, $session ) {
-        $banking   = get_option( 'tweller_flow_banking', '' );
-        $packages  = get_option( 'tweller_flow_packages', array() );
+        $banking   = get_option( 'tweller_flow_2_banking', '' );
+        $packages  = get_option( 'tweller_flow_2_packages', array() );
         $pkg       = $packages[ $session->package_type ] ?? array();
         $pkg_name  = $pkg['name'] ?? ucfirst( $session->package_type );
         $tracker_url = self::get_tracker_url( $session->tracking_code );
-        $delivery_days = get_option( 'tweller_flow_delivery_days', 14 );
+        $delivery_days = get_option( 'tweller_flow_2_delivery_days', 14 );
 
         $templates = array(
             'booked' => array(
@@ -145,7 +145,7 @@ class TwellerFlow_Notifications {
     }
 
     public static function get_tracker_url( $tracking_code ) {
-        $tracker_page = get_option( 'tweller_flow_tracker_page', '' );
+        $tracker_page = get_option( 'tweller_flow_2_tracker_page', '' );
         if ( $tracker_page ) {
             return $tracker_page . '?code=' . $tracking_code;
         }
@@ -182,12 +182,12 @@ class TwellerFlow_Notifications {
     }
 
     public static function send_calendar_invite( $session, $status = 'TENTATIVE', $sequence = 0 ) {
-        $packages = get_option('tweller_flow_packages', array());
+        $packages = get_option('tweller_flow_2_packages', array());
         $pkg = $packages[$session->package_type] ?? array();
         $pkg_name = $pkg['name'] ?? ucfirst($session->package_type);
         $pkg_name_clean = trim( explode('—', $pkg_name)[0] );
 
-        $session_types = get_option('tweller_flow_session_types', array());
+        $session_types = get_option('tweller_flow_2_session_types', array());
         $type = $session_types[$session->session_type] ?? array();
         $type_name = $type['name'] ?? ucfirst($session->session_type);
 

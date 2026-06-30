@@ -4,30 +4,30 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Photo_Automation {
+class TwellerFlow2_Photo_Automation {
 
     public static function init() {
         add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
-        add_action( 'tweller_flow_session_created', array( __CLASS__, 'on_session_created' ), 10, 2 );
+        add_action( 'tweller_flow_2_session_created', array( __CLASS__, 'on_session_created' ), 10, 2 );
     }
 
     public static function register_rest_routes() {
         // Local agent advances a session's stage (allow GET+POST — some hosts block POST to REST API)
-        register_rest_route( 'tweller-flow/v1', '/automation/advance', array(
+        register_rest_route( 'tweller-flow-2/v1', '/automation/advance', array(
             'methods'  => array( 'GET', 'POST' ),
             'callback' => array( __CLASS__, 'rest_advance_stage' ),
             'permission_callback' => array( __CLASS__, 'verify_api_key' ),
         ));
 
         // Local agent queries sessions by date (for folder-to-session matching)
-        register_rest_route( 'tweller-flow/v1', '/automation/sessions', array(
+        register_rest_route( 'tweller-flow-2/v1', '/automation/sessions', array(
             'methods'  => 'GET',
             'callback' => array( __CLASS__, 'rest_sessions_by_date' ),
             'permission_callback' => array( __CLASS__, 'verify_api_key' ),
         ));
 
         // Get automation status for a session
-        register_rest_route( 'tweller-flow/v1', '/automation/status/(?P<code>[a-zA-Z0-9]+)', array(
+        register_rest_route( 'tweller-flow-2/v1', '/automation/status/(?P<code>[a-zA-Z0-9]+)', array(
             'methods'  => 'GET',
             'callback' => array( __CLASS__, 'rest_get_status' ),
             'permission_callback' => function() {
@@ -67,7 +67,7 @@ class TwellerFlow_Photo_Automation {
             return new WP_Error( 'missing_params', 'session_code and target_stage are required', array( 'status' => 400 ) );
         }
 
-        $session = TwellerFlow_Session::get_by_code( $session_code );
+        $session = TwellerFlow2_Session::get_by_code( $session_code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -76,10 +76,10 @@ class TwellerFlow_Photo_Automation {
         if ( $gallery_url ) $update_data['gallery_url'] = $gallery_url;
         if ( $photo_count )  $update_data['photo_count'] = $photo_count;
         if ( ! empty( $update_data ) ) {
-            TwellerFlow_Session::update( $session->id, $update_data );
+            TwellerFlow2_Session::update( $session->id, $update_data );
         }
 
-        $result = TwellerFlow_Session::set_stage( $session->id, $target_stage, '[Watcher] ' . $notes );
+        $result = TwellerFlow2_Session::set_stage( $session->id, $target_stage, '[Watcher] ' . $notes );
 
         if ( ! $result ) {
             return new WP_Error( 'advance_failed', 'Could not set stage to ' . $target_stage, array( 'status' => 400 ) );
@@ -96,7 +96,7 @@ class TwellerFlow_Photo_Automation {
 
     public static function rest_sessions_by_date( $request ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
         $date  = sanitize_text_field( $request->get_param( 'date' ) ?? '' );
         $range = sanitize_text_field( $request->get_param( 'range' ) ?? '' );
@@ -137,9 +137,9 @@ class TwellerFlow_Photo_Automation {
         }
 
         // Add culling_enabled flag to each session
-        if ( class_exists( 'TwellerFlow_Culling' ) ) {
+        if ( class_exists( 'TwellerFlow2_Culling' ) ) {
             foreach ( $sessions as &$s ) {
-                $s->culling_enabled = TwellerFlow_Culling::is_culling_enabled( $s->id );
+                $s->culling_enabled = TwellerFlow2_Culling::is_culling_enabled( $s->id );
                 $s->culling_submitted = (bool) get_option( 'tweller_culling_submitted_' . $s->id, false );
             }
         }
@@ -149,7 +149,7 @@ class TwellerFlow_Photo_Automation {
 
     public static function rest_get_status( $request ) {
         $code = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
 
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
@@ -174,7 +174,7 @@ class TwellerFlow_Photo_Automation {
     // ── Settings ─────────────────────────────────────────
 
     public static function get_settings() {
-        return get_option( 'tweller_flow_automation', array(
+        return get_option( 'tweller_flow_2_automation', array(
             'enabled'          => false,
             'backend_url'      => 'http://localhost:3001',
             'api_key'          => '',
@@ -191,14 +191,14 @@ class TwellerFlow_Photo_Automation {
             'watch_dir'         => sanitize_text_field( $data['automation_watch_dir'] ?? '' ),
             'gallery_base_url'  => esc_url_raw( $data['automation_gallery_base_url'] ?? '' ),
         );
-        update_option( 'tweller_flow_automation', $settings );
+        update_option( 'tweller_flow_2_automation', $settings );
         return $settings;
     }
 
     // ── Activity log ─────────────────────────────────────
 
     public static function log_activity( $session_id, $stage, $message ) {
-        $log = get_option( 'tweller_flow_automation_log', array() );
+        $log = get_option( 'tweller_flow_2_automation_log', array() );
 
         array_unshift( $log, array(
             'session_id' => $session_id,
@@ -208,11 +208,11 @@ class TwellerFlow_Photo_Automation {
         ));
 
         $log = array_slice( $log, 0, 200 );
-        update_option( 'tweller_flow_automation_log', $log );
+        update_option( 'tweller_flow_2_automation_log', $log );
     }
 
     public static function get_activity_log( $session_id = null, $limit = 50 ) {
-        $log = get_option( 'tweller_flow_automation_log', array() );
+        $log = get_option( 'tweller_flow_2_automation_log', array() );
 
         if ( $session_id ) {
             $log = array_filter( $log, function( $entry ) use ( $session_id ) {

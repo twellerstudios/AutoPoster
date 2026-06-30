@@ -1,26 +1,26 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Booking_API {
+class TwellerFlow2_Booking_API {
 
     public static function init() {
         add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
     }
 
     public static function register_routes() {
-        register_rest_route( 'tweller-flow/v1', '/availability', array(
+        register_rest_route( 'tweller-flow-2/v1', '/availability', array(
             'methods'  => 'GET',
             'callback' => array( __CLASS__, 'rest_get_availability' ),
             'permission_callback' => '__return_true',
         ));
 
-        register_rest_route( 'tweller-flow/v1', '/book', array(
+        register_rest_route( 'tweller-flow-2/v1', '/book', array(
             'methods'  => 'POST',
             'callback' => array( __CLASS__, 'rest_create_booking' ),
             'permission_callback' => '__return_true',
         ));
 
-        register_rest_route( 'tweller-flow/v1', '/upload-receipt', array(
+        register_rest_route( 'tweller-flow-2/v1', '/upload-receipt', array(
             'methods'  => 'POST',
             'callback' => array( __CLASS__, 'rest_upload_receipt' ),
             'permission_callback' => '__return_true',
@@ -31,7 +31,7 @@ class TwellerFlow_Booking_API {
      * Parse iCal file to get busy events for a specific date
      */
     private static function get_ical_busy_events( $target_date ) {
-        $ical_url = get_option( 'tweller_flow_booking_ical_url', '' );
+        $ical_url = get_option( 'tweller_flow_2_booking_ical_url', '' );
         if ( empty( $ical_url ) ) return array();
 
         $response = wp_remote_get( $ical_url, array( 'timeout' => 10 ) );
@@ -124,13 +124,13 @@ class TwellerFlow_Booking_API {
 
         // Check booked sessions from DB
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         $booked_sessions = $wpdb->get_results( $wpdb->prepare(
             "SELECT session_time, package_type FROM $table WHERE session_date = %s AND session_time IS NOT NULL AND current_stage != 'cancelled'",
             $date
         ));
 
-        $packages = get_option('tweller_flow_packages', array());
+        $packages = get_option('tweller_flow_2_packages', array());
 
         $busy_blocks = array();
 
@@ -189,7 +189,7 @@ class TwellerFlow_Booking_API {
             return new WP_Error( 'missing_fields', 'Please fill in all required fields.', array( 'status' => 400 ) );
         }
 
-        $packages = get_option('tweller_flow_packages', array());
+        $packages = get_option('tweller_flow_2_packages', array());
         $package = $packages[ $data['package_type'] ] ?? null;
 
         if ( ! $package ) {
@@ -211,16 +211,16 @@ class TwellerFlow_Booking_API {
             'members_count' => $package['members']
         );
 
-        $session_id = TwellerFlow_Session::create( $session_data );
+        $session_id = TwellerFlow2_Session::create( $session_data );
 
         if ( ! $session_id ) {
             return new WP_Error( 'create_failed', 'Could not create booking.', array( 'status' => 500 ) );
         }
 
-        $session = TwellerFlow_Session::get( $session_id );
+        $session = TwellerFlow2_Session::get( $session_id );
 
         // Send explicit 'Reserved' notification
-        $tracker_url = get_option( 'tweller_flow_tracker_page', '' ) . '?code=' . $session->tracking_code;
+        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
         $reserved_subj = "Action Required: Your Session is Reserved! - Tweller Studios";
         $reserved_body = "Hi {$session->client_name},\n\n" .
                          "Thank you for choosing Tweller Studios! Your desired date and time has been successfully reserved.\n\n" .
@@ -251,7 +251,7 @@ class TwellerFlow_Booking_API {
             return new WP_Error( 'missing_code', 'Tracking code is required', array( 'status' => 400 ) );
         }
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -282,21 +282,21 @@ class TwellerFlow_Booking_API {
             ));
 
             // Set to verifying
-            TwellerFlow_Session::update( $session->id, array(
+            TwellerFlow2_Session::update( $session->id, array(
                 'payment_status' => 'verifying'
             ));
 
-            TwellerFlow_Session::record_stage_history( $session->id, $session->current_stage, $session->current_stage_index, 'Client uploaded bank transfer receipt for verification.' );
+            TwellerFlow2_Session::record_stage_history( $session->id, $session->current_stage, $session->current_stage_index, 'Client uploaded bank transfer receipt for verification.' );
 
             // Send Emails
             $admin_email = get_option( 'admin_email' );
-            $tracker_url = get_option( 'tweller_flow_tracker_page', '' ) . '?code=' . $session->tracking_code;
+            $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
             
             // To Admin
             $admin_subj = "Receipt Uploaded: {$session->client_name}";
             $admin_body = "Client {$session->client_name} uploaded their bank transfer receipt.\n\n" . 
                           "Please review it in your Tweller Flow dashboard.\n" .
-                          admin_url('admin.php?page=tweller-flow-session&id=' . $session->id);
+                          admin_url('admin.php?page=tweller-flow-2-session&id=' . $session->id);
             wp_mail( $admin_email, $admin_subj, $admin_body );
 
             // To Client

@@ -4,7 +4,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Gallery {
+class TwellerFlow2_Gallery {
 
     /** Gallery uploads directory under wp-content/uploads/ */
     const UPLOAD_SUBDIR = 'tweller-gallery';
@@ -19,70 +19,70 @@ class TwellerFlow_Gallery {
         // Upload photo (from watcher / LR plugin / admin drag-drop)
         // Route is /photo-upload (not under /gallery/) to avoid conflicting
         // with the /gallery/{code} regex route when auth fails.
-        register_rest_route( 'tweller-flow/v1', '/photo-upload', array(
+        register_rest_route( 'tweller-flow-2/v1', '/photo-upload', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_upload_photo' ),
-            'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Get gallery photos (public — used by client tracker)
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_gallery' ),
             'permission_callback' => '__return_true',
         ));
 
         // Verify gallery password
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/verify', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/verify', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_verify_password' ),
             'permission_callback' => '__return_true',
         ));
 
         // Download single photo (proxied for password-protected galleries)
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/download', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/download', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_download_photo' ),
             'permission_callback' => '__return_true',
         ));
 
         // Download all photos as zip
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/download-all', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/download-all', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_download_all' ),
             'permission_callback' => '__return_true',
         ));
 
         // Admin: delete gallery photo
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/photo/(?P<photo_id>\d+)', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/photo/(?P<photo_id>\d+)', array(
             'methods'             => 'DELETE',
             'callback'            => array( __CLASS__, 'rest_delete_photo' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Check existing photo filenames (used by watcher to avoid re-uploads)
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/filenames', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/filenames', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_filenames' ),
-            'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Admin: batch delete photos
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/batch-delete', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/batch-delete', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_batch_delete' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Admin: reorder photos
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/reorder', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/reorder', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_reorder' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Admin: set gallery password
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/password', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/password', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_set_password' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
@@ -144,10 +144,10 @@ class TwellerFlow_Gallery {
         $photo_id = self::insert_photo( $session->id, $session_code, $filename );
 
         // Update gallery URL on the session
-        $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
+        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' );
         if ( $tracker_url ) {
             $gallery_url = $tracker_url . ( strpos( $tracker_url, '?' ) !== false ? '&' : '?' ) . 'code=' . $session_code . '#gallery';
-            TwellerFlow_Session::update( $session->id, array( 'gallery_url' => $gallery_url ) );
+            TwellerFlow2_Session::update( $session->id, array( 'gallery_url' => $gallery_url ) );
         }
 
         return array(
@@ -165,7 +165,7 @@ class TwellerFlow_Gallery {
             return new WP_Error( 'missing_code', 'session_code is required', array( 'status' => 400 ) );
         }
 
-        $session = TwellerFlow_Session::get_by_code( $session_code );
+        $session = TwellerFlow2_Session::get_by_code( $session_code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -195,7 +195,7 @@ class TwellerFlow_Gallery {
         $code     = sanitize_text_field( $request['code'] );
         $token    = sanitize_text_field( $request->get_param( 'token' ) );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Gallery not found', array( 'status' => 404 ) );
         }
@@ -271,7 +271,7 @@ class TwellerFlow_Gallery {
         $code     = sanitize_text_field( $request['code'] );
         $password = sanitize_text_field( $request->get_param( 'password' ) );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Gallery not found', array( 'status' => 404 ) );
         }
@@ -298,7 +298,7 @@ class TwellerFlow_Gallery {
         $code     = sanitize_text_field( $request['code'] );
         $filename = sanitize_file_name( $request->get_param( 'file' ) );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
             return new WP_Error( 'not_found', 'Not found', array( 'status' => 404 ) );
         }
@@ -309,8 +309,8 @@ class TwellerFlow_Gallery {
         }
 
         // Track download
-        if ( class_exists( 'TwellerFlow_Client_Activity' ) ) {
-            TwellerFlow_Client_Activity::log( $session->id, $code, 'photo_downloaded', $filename );
+        if ( class_exists( 'TwellerFlow2_Client_Activity' ) ) {
+            TwellerFlow2_Client_Activity::log( $session->id, $code, 'photo_downloaded', $filename );
         }
 
         header( 'Content-Type: image/jpeg' );
@@ -323,7 +323,7 @@ class TwellerFlow_Gallery {
     public static function rest_download_all( $request ) {
         $code = sanitize_text_field( $request['code'] );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session || ! in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
             return new WP_Error( 'not_found', 'Not found', array( 'status' => 404 ) );
         }
@@ -335,8 +335,8 @@ class TwellerFlow_Gallery {
         }
 
         // Track download
-        if ( class_exists( 'TwellerFlow_Client_Activity' ) ) {
-            TwellerFlow_Client_Activity::log( $session->id, $code, 'all_downloaded', count( $photos ) . ' photos' );
+        if ( class_exists( 'TwellerFlow2_Client_Activity' ) ) {
+            TwellerFlow2_Client_Activity::log( $session->id, $code, 'all_downloaded', count( $photos ) . ' photos' );
         }
 
         $zip_name = sanitize_file_name( $session->client_name ) . '-photos.zip';
@@ -449,7 +449,7 @@ class TwellerFlow_Gallery {
         $code     = sanitize_text_field( $request['code'] );
         $password = sanitize_text_field( $request->get_param( 'password' ) );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -467,7 +467,7 @@ class TwellerFlow_Gallery {
 
     public static function rest_get_filenames( $request ) {
         $code = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }

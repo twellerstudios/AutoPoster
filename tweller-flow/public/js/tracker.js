@@ -4,17 +4,17 @@
 (function() {
     'use strict';
 
-    var tracker = document.querySelector('.tf-tracker[data-code]');
+    var tracker = document.querySelector('.tf2-tracker[data-code]');
     if (!tracker) return;
 
     var code = tracker.getAttribute('data-code');
-    if (!code || typeof twellerFlowTracker === 'undefined') return;
+    if (!code || typeof twellerFlow2Tracker === 'undefined') return;
 
     // Handle post-upload scroll restoration smoothly
     if (sessionStorage.getItem('tf_receipt_uploaded')) {
         sessionStorage.removeItem('tf_receipt_uploaded');
         setTimeout(function() {
-            var box = document.querySelector('.tf-tracker__receipt--verifying');
+            var box = document.querySelector('.tf2-tracker__receipt--verifying');
             if (box) window.scrollTo({ top: box.offsetTop - 100, behavior: 'smooth' });
         }, 200);
     }
@@ -41,11 +41,11 @@
     }
 
     function setProgressBars(internalStage) {
-        var bars = tracker.querySelectorAll('.tf-tracker__progress');
+        var bars = tracker.querySelectorAll('.tf2-tracker__progress');
         bars.forEach(function(el) {
             var clientStage = el.getAttribute('data-stage');
             var pct = computeProgress(clientStage, internalStage);
-            var fill = el.querySelector('.tf-tracker__progress-fill');
+            var fill = el.querySelector('.tf2-tracker__progress-fill');
             if (fill) {
                 fill.style.width = pct + '%';
                 fill.setAttribute('data-progress', pct);
@@ -55,8 +55,8 @@
 
     // ── Stage auto-refresh ─────────────────────────────
     function fetchAndUpdate() {
-        fetch(twellerFlowTracker.apiUrl + code, {
-            headers: { 'X-WP-Nonce': twellerFlowTracker.nonce }
+        fetch(twellerFlow2Tracker.apiUrl + code, {
+            headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce }
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -77,22 +77,22 @@
     fetchAndUpdate();
 
     function updateStages(data) {
-        var stages = tracker.querySelectorAll('.tf-tracker__stage');
+        var stages = tracker.querySelectorAll('.tf2-tracker__stage');
         stages.forEach(function(el, idx) {
-            el.className = 'tf-tracker__stage';
+            el.className = 'tf2-tracker__stage';
             if (idx < data.current_stage_index) {
-                el.classList.add('tf-tracker__stage--completed');
+                el.classList.add('tf2-tracker__stage--completed');
             } else if (idx === data.current_stage_index) {
-                el.classList.add('tf-tracker__stage--current');
+                el.classList.add('tf2-tracker__stage--current');
             } else {
-                el.classList.add('tf-tracker__stage--upcoming');
+                el.classList.add('tf2-tracker__stage--upcoming');
             }
         });
     }
 
     // ── Activity Tracking ──────────────────────────────
     function trackActivity(eventType, detail) {
-        var url = twellerFlowTracker.galleryUrl + code + '/activity';
+        var url = twellerFlow2Tracker.galleryUrl + code + '/activity';
         var body = { event: eventType };
         if (detail) body.detail = detail;
 
@@ -100,23 +100,23 @@
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-WP-Nonce': twellerFlowTracker.nonce
+                'X-WP-Nonce': twellerFlow2Tracker.nonce
             },
             body: JSON.stringify(body)
         }).catch(function() {}); // fire-and-forget
     }
 
     // Track page view
-    var gallerySection = document.querySelector('.tf-gallery[data-code]');
+    var gallerySection = document.querySelector('.tf2-gallery[data-code]');
     if (gallerySection) {
         trackActivity('gallery_viewed');
     }
 
     // ── Receipt Upload ────────────────────────────────────────
-    var receiptForm = document.getElementById('tf-receipt-form');
+    var receiptForm = document.getElementById('tf2-receipt-form');
     if (receiptForm) {
-        var bankSelect = document.getElementById('tf-receipt-bank');
-        var bankOther = document.getElementById('tf-receipt-bank-other');
+        var bankSelect = document.getElementById('tf2-receipt-bank');
+        var bankOther = document.getElementById('tf2-receipt-bank-other');
         if (bankSelect && bankOther) {
             bankSelect.addEventListener('change', function() {
                 bankOther.style.display = this.value === 'Other' ? 'block' : 'none';
@@ -131,12 +131,12 @@
         receiptForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            var btn = document.getElementById('tf-receipt-btn');
-            var btnText = document.getElementById('tf-receipt-btn-text');
-            var spinner = document.getElementById('tf-receipt-spinner');
-            var fileInput = document.getElementById('tf-receipt-file');
-            var statusDiv = document.getElementById('tf-receipt-status');
-            var codeInput = document.getElementById('tf-receipt-code');
+            var btn = document.getElementById('tf2-receipt-btn');
+            var btnText = document.getElementById('tf2-receipt-btn-text');
+            var spinner = document.getElementById('tf2-receipt-spinner');
+            var fileInput = document.getElementById('tf2-receipt-file');
+            var statusDiv = document.getElementById('tf2-receipt-status');
+            var codeInput = document.getElementById('tf2-receipt-code');
 
             if (!fileInput.files || fileInput.files.length === 0) return;
             var file = fileInput.files[0];
@@ -229,13 +229,13 @@
             formData.append('bank_name', sendingBank);
 
             // Standard fetch upload since it isn't hitting /track, its hitting /upload-receipt
-            var uploadUrl = twellerFlowTracker.apiUrl.replace('/track/', '/upload-receipt');
+            var uploadUrl = twellerFlow2Tracker.apiUrl.replace('/track/', '/upload-receipt');
             
             try {
                 var res = await fetch(uploadUrl, {
                     method: 'POST',
                     body: formData,
-                    headers: { 'X-WP-Nonce': twellerFlowTracker.nonce }
+                    headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce }
                 });
                 var data = await res.json();
                 
@@ -259,10 +259,10 @@
     }
 
     // ── Gallery ────────────────────────────────────────
-    var gallery = document.querySelector('.tf-gallery[data-code]');
+    var gallery = document.querySelector('.tf2-gallery[data-code]');
     if (!gallery) return;
 
-    var galleryUrl = twellerFlowTracker.galleryUrl;
+    var galleryUrl = twellerFlow2Tracker.galleryUrl;
     if (!galleryUrl) return;
 
     var galleryToken = sessionStorage.getItem('tf_gallery_token_' + code) || '';
@@ -270,23 +270,23 @@
     var currentIdx = 0;
 
     // Elements
-    var heroCover   = document.getElementById('tf-hero-cover');
-    var heroCoverBg = document.getElementById('tf-hero-cover-bg');
-    var viewBtn     = document.getElementById('tf-gallery-view-btn');
-    var pwSection   = document.getElementById('tf-gallery-password');
-    var pwForm      = document.getElementById('tf-gallery-pw-form');
-    var pwInput     = document.getElementById('tf-gallery-pw-input');
-    var pwError     = document.getElementById('tf-gallery-pw-error');
-    var toolbar     = document.getElementById('tf-gallery-toolbar');
-    var grid        = document.getElementById('tf-gallery-grid');
-    var downloadAll = document.getElementById('tf-gallery-download-all');
-    var lightbox    = document.getElementById('tf-lightbox');
-    var lbImg       = document.getElementById('tf-lightbox-img');
-    var lbClose     = document.getElementById('tf-lightbox-close');
-    var lbPrev      = document.getElementById('tf-lightbox-prev');
-    var lbNext      = document.getElementById('tf-lightbox-next');
-    var lbCounter   = document.getElementById('tf-lightbox-counter');
-    var lbDownload  = document.getElementById('tf-lightbox-download');
+    var heroCover   = document.getElementById('tf2-hero-cover');
+    var heroCoverBg = document.getElementById('tf2-hero-cover-bg');
+    var viewBtn     = document.getElementById('tf2-gallery-view-btn');
+    var pwSection   = document.getElementById('tf2-gallery-password');
+    var pwForm      = document.getElementById('tf2-gallery-pw-form');
+    var pwInput     = document.getElementById('tf2-gallery-pw-input');
+    var pwError     = document.getElementById('tf2-gallery-pw-error');
+    var toolbar     = document.getElementById('tf2-gallery-toolbar');
+    var grid        = document.getElementById('tf2-gallery-grid');
+    var downloadAll = document.getElementById('tf2-gallery-download-all');
+    var lightbox    = document.getElementById('tf2-lightbox');
+    var lbImg       = document.getElementById('tf2-lightbox-img');
+    var lbClose     = document.getElementById('tf2-lightbox-close');
+    var lbPrev      = document.getElementById('tf2-lightbox-prev');
+    var lbNext      = document.getElementById('tf2-lightbox-next');
+    var lbCounter   = document.getElementById('tf2-lightbox-counter');
+    var lbDownload  = document.getElementById('tf2-lightbox-download');
 
     var galleryLoaded = false;
     var needsPassword = false;
@@ -301,16 +301,16 @@
 
         if (heroCover) {
             heroCover.style.display = '';
-            heroCover.classList.add('tf-hero-cover--loading');
+            heroCover.classList.add('tf2-hero-cover--loading');
         }
 
-        fetch(url, { headers: { 'X-WP-Nonce': twellerFlowTracker.nonce } })
+        fetch(url, { headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce } })
         .then(function(r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
         })
         .then(function(data) {
-            if (heroCover) heroCover.classList.remove('tf-hero-cover--loading');
+            if (heroCover) heroCover.classList.remove('tf2-hero-cover--loading');
 
             if (!data.ok) {
                 showGalleryMessage('Gallery is being prepared. Please check back soon.');
@@ -343,18 +343,18 @@
         })
         .catch(function(err) {
             galleryError = true;
-            if (heroCover) heroCover.classList.remove('tf-hero-cover--loading');
+            if (heroCover) heroCover.classList.remove('tf2-hero-cover--loading');
             showGalleryMessage('Unable to load gallery. Please try refreshing the page.');
             console.error('[Tweller Gallery]', err.message || err);
         });
     }
 
     function showGalleryMessage(msg) {
-        var msgEl = document.getElementById('tf-gallery-message');
+        var msgEl = document.getElementById('tf2-gallery-message');
         if (!msgEl) {
             msgEl = document.createElement('div');
-            msgEl.id = 'tf-gallery-message';
-            msgEl.className = 'tf-gallery__message';
+            msgEl.id = 'tf2-gallery-message';
+            msgEl.className = 'tf2-gallery__message';
             gallery.appendChild(msgEl);
         }
         msgEl.textContent = msg;
@@ -385,7 +385,7 @@
         var url = galleryUrl + code;
         if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
 
-        fetch(url, { headers: { 'X-WP-Nonce': twellerFlowTracker.nonce } })
+        fetch(url, { headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce } })
         .then(function(r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
@@ -421,7 +421,7 @@
         if (galleryRevealed) return;
         galleryRevealed = true;
 
-        var msgEl = document.getElementById('tf-gallery-message');
+        var msgEl = document.getElementById('tf2-gallery-message');
         if (msgEl) msgEl.style.display = 'none';
 
         buildGrid();
@@ -454,7 +454,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-WP-Nonce': twellerFlowTracker.nonce
+                    'X-WP-Nonce': twellerFlow2Tracker.nonce
                 },
                 body: JSON.stringify({ password: pw })
             })
@@ -486,7 +486,7 @@
 
         photos.forEach(function(photo, idx) {
             var item = document.createElement('div');
-            item.className = 'tf-gallery__item';
+            item.className = 'tf2-gallery__item';
 
             var img = document.createElement('img');
             img.className = 'loading';
@@ -496,7 +496,7 @@
             img.onload = function() { img.classList.remove('loading'); };
             img.onerror = function() {
                 img.classList.remove('loading');
-                img.classList.add('tf-gallery__img-error');
+                img.classList.add('tf2-gallery__img-error');
                 img.alt = 'Could not load image';
             };
 
@@ -579,7 +579,7 @@
     // Click backdrop to close
     if (lightbox) {
         lightbox.addEventListener('click', function(e) {
-            if (e.target === lightbox || e.target.classList.contains('tf-lightbox__content')) {
+            if (e.target === lightbox || e.target.classList.contains('tf2-lightbox__content')) {
                 closeLightbox();
             }
         });

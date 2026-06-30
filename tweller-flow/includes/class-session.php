@@ -1,12 +1,12 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Session {
+class TwellerFlow2_Session {
 
     public static function generate_tracking_code() {
         $code = strtoupper( substr( md5( uniqid( mt_rand(), true ) ), 0, 6 ) );
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         $exists = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE tracking_code = %s", $code ) );
         if ( $exists > 0 ) {
             return self::generate_tracking_code();
@@ -16,10 +16,10 @@ class TwellerFlow_Session {
 
     public static function create( $data ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
         $tracking_code = self::generate_tracking_code();
-        $delivery_days = get_option( 'tweller_flow_delivery_days', 14 );
+        $delivery_days = get_option( 'tweller_flow_2_delivery_days', 14 );
 
         $session_date = ! empty( $data['session_date'] ) ? $data['session_date'] : null;
         $estimated_delivery = null;
@@ -58,13 +58,13 @@ class TwellerFlow_Session {
 
         if ( $session_id ) {
             self::record_stage_history( $session_id, 'booked', 0, 'Session created' );
-            TwellerFlow_Notifications::on_stage_change( $session_id, 'booked' );
-            do_action( 'tweller_flow_session_created', $session_id, $data );
+            TwellerFlow2_Notifications::on_stage_change( $session_id, 'booked' );
+            do_action( 'tweller_flow_2_session_created', $session_id, $data );
             
             // Send tentative calendar hold if date is set
             $session = self::get( $session_id );
             if ( $session && !empty($session->session_date) ) {
-                TwellerFlow_Notifications::send_calendar_invite( $session, 'TENTATIVE', 0 );
+                TwellerFlow2_Notifications::send_calendar_invite( $session, 'TENTATIVE', 0 );
             }
         }
 
@@ -73,19 +73,19 @@ class TwellerFlow_Session {
 
     public static function get( $id ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $id ) );
     }
 
     public static function get_by_code( $code ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE tracking_code = %s", $code ) );
     }
 
     public static function get_all( $args = array() ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
         $where   = '1=1';
         $values  = array();
@@ -133,7 +133,7 @@ class TwellerFlow_Session {
 
     public static function count( $args = array() ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
         $where  = '1=1';
         $values = array();
@@ -153,16 +153,16 @@ class TwellerFlow_Session {
 
     public static function update( $id, $data ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         $data['updated_at'] = current_time( 'mysql' );
         return $wpdb->update( $table, $data, array( 'id' => $id ) );
     }
 
     public static function delete( $id ) {
         global $wpdb;
-        $sessions_table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
-        $history_table  = $wpdb->prefix . TWELLER_FLOW_TABLE_STAGE_HISTORY;
-        $notif_table    = $wpdb->prefix . TWELLER_FLOW_TABLE_NOTIFICATIONS;
+        $sessions_table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        $history_table  = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
+        $notif_table    = $wpdb->prefix . TWELLER_FLOW_2_TABLE_NOTIFICATIONS;
 
         $wpdb->delete( $history_table, array( 'session_id' => $id ) );
         $wpdb->delete( $notif_table, array( 'session_id' => $id ) );
@@ -173,7 +173,7 @@ class TwellerFlow_Session {
         $session = self::get( $id );
         if ( ! $session ) return false;
 
-        $stage_keys   = TwellerFlow_Database::get_stage_keys();
+        $stage_keys   = TwellerFlow2_Database::get_stage_keys();
         $current_idx  = $session->current_stage_index;
         $next_idx     = $current_idx + 1;
 
@@ -190,16 +190,16 @@ class TwellerFlow_Session {
 
         self::record_stage_history( $id, $next_stage, $next_idx, $notes );
 
-        $stages = TwellerFlow_Database::get_stages();
+        $stages = TwellerFlow2_Database::get_stages();
         if ( $notify && ! empty( $stages[ $next_stage ]['notify'] ) ) {
-            TwellerFlow_Notifications::on_stage_change( $id, $next_stage );
+            TwellerFlow2_Notifications::on_stage_change( $id, $next_stage );
         }
 
         return $next_stage;
     }
 
     public static function set_stage( $id, $stage, $notes = '', $notify = true ) {
-        $stage_keys = TwellerFlow_Database::get_stage_keys();
+        $stage_keys = TwellerFlow2_Database::get_stage_keys();
         $idx = array_search( $stage, $stage_keys );
         if ( $idx === false ) return false;
 
@@ -210,9 +210,9 @@ class TwellerFlow_Session {
 
         self::record_stage_history( $id, $stage, $idx, $notes );
 
-        $stages = TwellerFlow_Database::get_stages();
+        $stages = TwellerFlow2_Database::get_stages();
         if ( $notify && ! empty( $stages[ $stage ]['notify'] ) ) {
-            TwellerFlow_Notifications::on_stage_change( $id, $stage );
+            TwellerFlow2_Notifications::on_stage_change( $id, $stage );
         }
 
         return $stage;
@@ -220,7 +220,7 @@ class TwellerFlow_Session {
 
     public static function record_stage_history( $id, $stage, $stage_index, $notes = '' ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_STAGE_HISTORY;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
         $wpdb->insert( $table, array(
             'session_id'  => $id,
             'stage'       => $stage,
@@ -233,7 +233,7 @@ class TwellerFlow_Session {
 
     public static function get_history( $id ) {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_STAGE_HISTORY;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
         return $wpdb->get_results( $wpdb->prepare(
             "SELECT * FROM $table WHERE session_id = %d ORDER BY timestamp ASC",
             $id
@@ -248,15 +248,15 @@ class TwellerFlow_Session {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
 
-        $client_stages   = TwellerFlow_Database::get_client_stages();
-        $client_stage    = TwellerFlow_Database::get_client_stage( $session->current_stage );
-        $client_stage_idx = TwellerFlow_Database::get_client_stage_index( $session->current_stage );
+        $client_stages   = TwellerFlow2_Database::get_client_stages();
+        $client_stage    = TwellerFlow2_Database::get_client_stage( $session->current_stage );
+        $client_stage_idx = TwellerFlow2_Database::get_client_stage_index( $session->current_stage );
 
         $history = self::get_history( $session->id );
         $client_history = array();
         $seen = array();
         foreach ( $history as $entry ) {
-            $cl = TwellerFlow_Database::get_client_stage( $entry->stage );
+            $cl = TwellerFlow2_Database::get_client_stage( $entry->stage );
             if ( ! in_array( $cl, $seen ) ) {
                 $seen[] = $cl;
                 $client_history[] = array(
@@ -303,13 +303,13 @@ class TwellerFlow_Session {
 
     public static function count_active() {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         return (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE current_stage != 'delivered'" );
     }
 
     public static function get_stage_counts() {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         $results = $wpdb->get_results( "SELECT current_stage, COUNT(*) as count FROM $table GROUP BY current_stage" );
         $counts = array();
         foreach ( $results as $row ) {
@@ -320,7 +320,7 @@ class TwellerFlow_Session {
 
     public static function get_revenue_stats() {
         global $wpdb;
-        $table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
         $this_month = date( 'Y-m-01' );
         $total = $wpdb->get_var( "SELECT SUM(total_amount) FROM $table" );

@@ -1,14 +1,14 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Webhook_Handler {
+class TwellerFlow2_Webhook_Handler {
 
     public static function init() {
         add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
     }
 
     public static function register_routes() {
-        register_rest_route( 'tweller-flow/v1', '/webhook/surecart', array(
+        register_rest_route( 'tweller-flow-2/v1', '/webhook/surecart', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'handle_surecart' ),
             'permission_callback' => '__return_true',
@@ -26,7 +26,7 @@ class TwellerFlow_Webhook_Handler {
         }
 
         // Verify webhook secret if configured
-        $secret = get_option( 'tweller_flow_webhook_secret', '' );
+        $secret = get_option( 'tweller_flow_2_webhook_secret', '' );
         if ( $secret ) {
             $signature = $request->get_header( 'X-SureCart-Signature' );
             if ( ! $signature || ! self::verify_signature( $request->get_body(), $signature, $secret ) ) {
@@ -68,7 +68,7 @@ class TwellerFlow_Webhook_Handler {
         }
 
         // Create session
-        $session_id = TwellerFlow_Session::create( array(
+        $session_id = TwellerFlow2_Session::create( array(
             'client_name'       => sanitize_text_field( $customer['name'] ?? $customer['first_name'] . ' ' . ( $customer['last_name'] ?? '' ) ),
             'client_email'      => sanitize_email( $customer['email'] ?? '' ),
             'client_phone'      => sanitize_text_field( $customer['phone'] ?? '' ),
@@ -83,7 +83,7 @@ class TwellerFlow_Webhook_Handler {
         error_log( '[TwellerFlow Webhook] Session create result: ' . var_export( $session_id, true ) );
 
         if ( $session_id ) {
-            $session = TwellerFlow_Session::get( $session_id );
+            $session = TwellerFlow2_Session::get( $session_id );
             return rest_ensure_response( array(
                 'status'        => 'created',
                 'session_id'    => $session_id,

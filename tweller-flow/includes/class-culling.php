@@ -7,7 +7,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Culling {
+class TwellerFlow2_Culling {
 
     const TABLE_PROOFS     = 'tweller_culling_proofs';
     const TABLE_SELECTIONS = 'tweller_culling_selections';
@@ -26,13 +26,13 @@ class TwellerFlow_Culling {
     // ── REST Routes ─────────────────────────────────────
 
     public static function register_rest_routes() {
-        $ns = 'tweller-flow/v1';
+        $ns = 'tweller-flow-2/v1';
 
         // Upload proof photo (from watcher, auth required)
         register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/upload', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_upload_proof' ),
-            'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Get proofs for client (public, password-protected)
@@ -53,7 +53,7 @@ class TwellerFlow_Culling {
         register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/selections', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_selections' ),
-            'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Verify culling password
@@ -67,14 +67,14 @@ class TwellerFlow_Culling {
         register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/ready', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_mark_ready' ),
-            'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Get existing proof filenames (dedup for watcher)
         register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/filenames', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_filenames' ),
-            'permission_callback' => array( 'TwellerFlow_Photo_Automation', 'verify_api_key' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // ── Admin-authenticated routes ─────────────────
@@ -157,7 +157,7 @@ class TwellerFlow_Culling {
     public static function rest_upload_proof( $request ) {
         $code = sanitize_text_field( $request['code'] );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -242,7 +242,7 @@ class TwellerFlow_Culling {
         $code  = sanitize_text_field( $request['code'] );
         $token = sanitize_text_field( $request->get_param( 'token' ) );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -260,7 +260,7 @@ class TwellerFlow_Culling {
         $is_unlocked = false;
 
         if ( $has_password && $token ) {
-            $is_unlocked = TwellerFlow_Gallery::verify_token( $session->id, $token );
+            $is_unlocked = TwellerFlow2_Gallery::verify_token( $session->id, $token );
         } elseif ( ! $has_password ) {
             $is_unlocked = true;
         }
@@ -281,7 +281,7 @@ class TwellerFlow_Culling {
         $submitted = get_option( 'tweller_culling_submitted_' . $session->id, false );
 
         // Get package info
-        $packages = get_option( 'tweller_flow_packages', array() );
+        $packages = get_option( 'tweller_flow_2_packages', array() );
         $pkg = $packages[ $session->package_type ] ?? array();
         $included_images = $pkg['images'] ?? 15;
 
@@ -331,7 +331,7 @@ class TwellerFlow_Culling {
         $proof_ids = $request->get_param( 'proof_ids' );
         $upsell    = sanitize_text_field( $request->get_param( 'upsell_tier' ) );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -346,7 +346,7 @@ class TwellerFlow_Culling {
         }
 
         // Validate selection count against package
-        $packages = get_option( 'tweller_flow_packages', array() );
+        $packages = get_option( 'tweller_flow_2_packages', array() );
         $pkg = $packages[ $session->package_type ] ?? array();
         $included = ( $pkg['images'] ?? 15 ) + self::FREEBIES;
 
@@ -391,8 +391,8 @@ class TwellerFlow_Culling {
         ));
 
         // Track activity
-        if ( class_exists( 'TwellerFlow_Client_Activity' ) ) {
-            TwellerFlow_Client_Activity::log(
+        if ( class_exists( 'TwellerFlow2_Client_Activity' ) ) {
+            TwellerFlow2_Client_Activity::log(
                 $session->id, $code, 'culling_submitted',
                 $total_selected . ' photos selected' . ( $extra_count > 0 ? ' (+' . $extra_count . ' extra = $' . $extra_cost_ttd . ' TTD)' : '' )
             );
@@ -413,7 +413,7 @@ class TwellerFlow_Culling {
 
     public static function rest_get_selections( $request ) {
         $code = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -451,14 +451,14 @@ class TwellerFlow_Culling {
         $code     = sanitize_text_field( $request['code'] );
         $password = sanitize_text_field( $request->get_param( 'password' ) );
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Not found', array( 'status' => 404 ) );
         }
 
         $password_hash = get_option( 'tweller_culling_pw_' . $session->id, '' );
         if ( empty( $password_hash ) ) {
-            $token = TwellerFlow_Gallery::generate_token( $session->id );
+            $token = TwellerFlow2_Gallery::generate_token( $session->id );
             return rest_ensure_response( array( 'ok' => true, 'token' => $token ) );
         }
 
@@ -466,7 +466,7 @@ class TwellerFlow_Culling {
             return new WP_Error( 'wrong_password', 'Incorrect password', array( 'status' => 403 ) );
         }
 
-        $token = TwellerFlow_Gallery::generate_token( $session->id );
+        $token = TwellerFlow2_Gallery::generate_token( $session->id );
         return rest_ensure_response( array( 'ok' => true, 'token' => $token ) );
     }
 
@@ -474,7 +474,7 @@ class TwellerFlow_Culling {
 
     public static function rest_mark_ready( $request ) {
         $code = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -508,7 +508,7 @@ class TwellerFlow_Culling {
 
     public static function rest_get_filenames( $request ) {
         $code = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -529,11 +529,11 @@ class TwellerFlow_Culling {
     // ── Shortcode ──────────────────────────────────────
 
     public static function render_shortcode( $atts ) {
-        wp_enqueue_style( 'tweller-flow-culling' );
-        wp_enqueue_script( 'tweller-flow-culling' );
+        wp_enqueue_style( 'tweller-flow-2-culling' );
+        wp_enqueue_script( 'tweller-flow-2-culling' );
 
-        wp_localize_script( 'tweller-flow-culling', 'twellerCulling', array(
-            'apiUrl' => rest_url( 'tweller-flow/v1/culling/' ),
+        wp_localize_script( 'tweller-flow-2-culling', 'twellerCulling', array(
+            'apiUrl' => rest_url( 'tweller-flow-2/v1/culling/' ),
             'nonce'  => wp_create_nonce( 'wp_rest' ),
         ));
 
@@ -544,7 +544,7 @@ class TwellerFlow_Culling {
         if ( empty( $code ) ) {
             echo '<div class="tc-portal tc-portal--empty"><p>No session code provided.</p></div>';
         } else {
-            $session = TwellerFlow_Session::get_by_code( $code );
+            $session = TwellerFlow2_Session::get_by_code( $code );
             if ( ! $session ) {
                 echo '<div class="tc-portal tc-portal--error"><p>Session not found.</p></div>';
             } else {
@@ -556,7 +556,7 @@ class TwellerFlow_Culling {
     }
 
     private static function render_portal( $session ) {
-        $packages = get_option( 'tweller_flow_packages', array() );
+        $packages = get_option( 'tweller_flow_2_packages', array() );
         $pkg = $packages[ $session->package_type ] ?? array();
         $pkg_name = $pkg['name'] ?? ucfirst( $session->package_type );
         $included = $pkg['images'] ?? 15;
@@ -602,7 +602,7 @@ class TwellerFlow_Culling {
             <div class="tc-portal__message tc-portal__message--success" id="tc-submitted" style="display:none;">
                 <h3>Selections Received!</h3>
                 <p>Thank you! We've received your photo selections and will begin retouching them shortly.</p>
-                <p>Track your session progress: <a href="<?php echo esc_url( TwellerFlow_Notifications::get_tracker_url( $session->tracking_code ) ); ?>">View Tracker</a></p>
+                <p>Track your session progress: <a href="<?php echo esc_url( TwellerFlow2_Notifications::get_tracker_url( $session->tracking_code ) ); ?>">View Tracker</a></p>
             </div>
 
             <!-- Selection counter (sticky) -->
@@ -648,7 +648,7 @@ class TwellerFlow_Culling {
         if ( empty( $session->client_email ) ) return;
 
         $culling_url = self::get_culling_page_url( $session->tracking_code );
-        $packages = get_option( 'tweller_flow_packages', array() );
+        $packages = get_option( 'tweller_flow_2_packages', array() );
         $pkg = $packages[ $session->package_type ] ?? array();
         $pkg_name = $pkg['name'] ?? ucfirst( $session->package_type );
         $included = $pkg['images'] ?? 15;
@@ -675,7 +675,7 @@ class TwellerFlow_Culling {
             </div>
         ";
 
-        TwellerFlow_Notifications::send_email( $session, $subject, $body );
+        TwellerFlow2_Notifications::send_email( $session, $subject, $body );
     }
 
     // ── Helpers ────────────────────────────────────────
@@ -735,7 +735,7 @@ class TwellerFlow_Culling {
     }
 
     public static function get_culling_page_url( $code ) {
-        $page_url = get_option( 'tweller_flow_culling_page', '' );
+        $page_url = get_option( 'tweller_flow_2_culling_page', '' );
         if ( $page_url ) {
             return $page_url . ( strpos( $page_url, '?' ) !== false ? '&' : '?' ) . 'code=' . $code;
         }
@@ -776,7 +776,7 @@ class TwellerFlow_Culling {
 
     public static function rest_upload_admin( $request ) {
         $code = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -857,7 +857,7 @@ class TwellerFlow_Culling {
 
     public static function rest_get_admin_proofs( $request ) {
         $code    = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -875,7 +875,7 @@ class TwellerFlow_Culling {
             );
         }
 
-        $packages  = get_option( 'tweller_flow_packages', array() );
+        $packages  = get_option( 'tweller_flow_2_packages', array() );
         $pkg       = $packages[ $session->package_type ] ?? array();
         $included  = ( $pkg['images'] ?? 15 ) + self::FREEBIES;
 
@@ -919,7 +919,7 @@ class TwellerFlow_Culling {
 
     public static function rest_mark_ready_admin( $request ) {
         $code    = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -952,7 +952,7 @@ class TwellerFlow_Culling {
 
     public static function rest_toggle_culling( $request ) {
         $code    = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -972,12 +972,12 @@ class TwellerFlow_Culling {
     public static function send_selection_email( $session, $total_selected, $included, $extra_count, $extra_cost_ttd ) {
         if ( empty( $session->client_email ) ) return;
 
-        $banking    = get_option( 'tweller_flow_banking', '' );
-        $wipay_url  = get_option( 'tweller_flow_wipay_url', '' );
-        $packages   = get_option( 'tweller_flow_packages', array() );
+        $banking    = get_option( 'tweller_flow_2_banking', '' );
+        $wipay_url  = get_option( 'tweller_flow_2_wipay_url', '' );
+        $packages   = get_option( 'tweller_flow_2_packages', array() );
         $pkg        = $packages[ $session->package_type ] ?? array();
         $pkg_name   = $pkg['name'] ?? ucfirst( $session->package_type );
-        $tracker_url = TwellerFlow_Notifications::get_tracker_url( $session->tracking_code );
+        $tracker_url = TwellerFlow2_Notifications::get_tracker_url( $session->tracking_code );
 
         $subject = "We've Received Your Photo Selections! 📸";
 
@@ -1066,6 +1066,6 @@ class TwellerFlow_Culling {
             <p style='font-size:13px; color:#9CA3AF; text-align:center; margin-top:24px;'>Questions? Reply to this email — we're happy to help! 😊</p>
         ";
 
-        TwellerFlow_Notifications::send_email( $session, $subject, $body );
+        TwellerFlow2_Notifications::send_email( $session, $subject, $body );
     }
 }

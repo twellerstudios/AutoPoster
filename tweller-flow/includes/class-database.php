@@ -1,15 +1,15 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Database {
+class TwellerFlow2_Database {
 
     public static function create_tables() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
 
-        $sessions_table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
-        $history_table  = $wpdb->prefix . TWELLER_FLOW_TABLE_STAGE_HISTORY;
-        $notif_table    = $wpdb->prefix . TWELLER_FLOW_TABLE_NOTIFICATIONS;
+        $sessions_table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        $history_table  = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
+        $notif_table    = $wpdb->prefix . TWELLER_FLOW_2_TABLE_NOTIFICATIONS;
 
         $sql_sessions = "CREATE TABLE $sessions_table (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -75,7 +75,7 @@ class TwellerFlow_Database {
 
     public static function seed_defaults() {
         $defaults = array(
-            'tweller_flow_stages' => array(
+            'tweller_flow_2_stages' => array(
                 'booked'     => array( 'label' => 'Reserved',     'client_label' => 'Reserved',        'icon' => 'calendar',     'notify' => true ),
                 'confirmed'  => array( 'label' => 'Booking Confirmed', 'client_label' => 'Booking Confirmed', 'icon' => 'check-square', 'notify' => true ),
                 'imported'   => array( 'label' => 'Imported',   'client_label' => 'Editing',       'icon' => 'download',     'notify' => false ),
@@ -89,10 +89,10 @@ class TwellerFlow_Database {
                 'uploaded'   => array( 'label' => 'Uploaded',   'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
                 'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',     'icon' => 'check-circle', 'notify' => true ),
             ),
-            'tweller_flow_client_stages' => array(
+            'tweller_flow_2_client_stages' => array(
                 'Reserved', 'Booking Confirmed', 'Select Photos for Editing', 'Editing', 'Gallery Ready', 'Delivered'
             ),
-            'tweller_flow_session_types' => array(
+            'tweller_flow_2_session_types' => array(
                 'mommy_and_me'    => array( 'name' => 'Mommy & Me', 'description' => 'Just mom and baby/kid.', 'allowed_packages' => array('mini', 'full', 'extended') ),
                 'mommy_and_us'    => array( 'name' => 'Mommy & Us', 'description' => 'Mom and her entire family.', 'allowed_packages' => array('mini', 'full', 'extended') ),
                 'one_year'        => array( 'name' => '1 Year Photos', 'description' => 'Capture the first milestone.', 'allowed_packages' => array('mini', 'full', 'extended') ),
@@ -104,7 +104,7 @@ class TwellerFlow_Database {
                 'events'          => array( 'name' => 'Events', 'description' => 'Birthdays, Showers, Graduations.', 'allowed_packages' => array('event_1hr', 'event_2hr', 'event_3hr', 'event_4hr') ),
                 'weddings'        => array( 'name' => 'Weddings', 'description' => 'Send us an inquiry for your big day!', 'allowed_packages' => array() ),
             ),
-            'tweller_flow_packages' => array(
+            'tweller_flow_2_packages' => array(
                 'mini' => array(
                     'name'     => 'Mini Session',
                     'duration' => 30, // in minutes
@@ -169,8 +169,8 @@ class TwellerFlow_Database {
                     'features' => array('Unlimited edited images', 'Non-stop documentation', 'Best for major events')
                 ),
             ),
-            'tweller_flow_banking' => "Account Number: 2430006\nName: Tweller Studios\nBank: FCB\nBusiness savings\n\nPlease send a picture of the transaction to confirm.",
-            'tweller_flow_smtp' => array(
+            'tweller_flow_2_banking' => "Account Number: 2430006\nName: Tweller Studios\nBank: FCB\nBusiness savings\n\nPlease send a picture of the transaction to confirm.",
+            'tweller_flow_2_smtp' => array(
                 'host'       => 'smtp.zoho.com',
                 'port'       => 465,
                 'encryption' => 'ssl',
@@ -179,11 +179,11 @@ class TwellerFlow_Database {
                 'from_name'  => 'Tweller Studios',
                 'from_email' => '',
             ),
-            'tweller_flow_delivery_days' => 14,
+            'tweller_flow_2_delivery_days' => 14,
         );
 
         foreach ( $defaults as $key => $value ) {
-            if ( $key === 'tweller_flow_stages' || $key === 'tweller_flow_client_stages' || $key === 'tweller_flow_packages' || $key === 'tweller_flow_session_types' ) {
+            if ( $key === 'tweller_flow_2_stages' || $key === 'tweller_flow_2_client_stages' || $key === 'tweller_flow_2_packages' || $key === 'tweller_flow_2_session_types' ) {
                 update_option( $key, $value );
             } elseif ( get_option( $key ) === false ) {
                 add_option( $key, $value );
@@ -192,7 +192,7 @@ class TwellerFlow_Database {
     }
 
     public static function get_stages() {
-        return get_option( 'tweller_flow_stages', array() );
+        return get_option( 'tweller_flow_2_stages', array() );
     }
 
     public static function get_stage_keys() {
@@ -200,7 +200,7 @@ class TwellerFlow_Database {
     }
 
     public static function get_client_stages() {
-        return get_option( 'tweller_flow_client_stages', array() );
+        return get_option( 'tweller_flow_2_client_stages', array() );
     }
 
     public static function get_client_stage( $internal_stage ) {

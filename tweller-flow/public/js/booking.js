@@ -1,4 +1,4 @@
-// tweller-flow/public/js/booking.js
+// tweller-flow-2/public/js/booking.js
 
 const tfBooking = {
     step: 1,
@@ -14,14 +14,14 @@ const tfBooking = {
         if (!window.twellerBooking) return;
         this.renderSessionTypes();
         
-        document.getElementById('tf-booking-date').addEventListener('change', (e) => {
+        document.getElementById('tf2-booking-date').addEventListener('change', (e) => {
             this.selectedDate = e.target.value;
             this.fetchAvailability();
         });
     },
 
     renderSessionTypes() {
-        const container = document.getElementById('tf-sessions-container');
+        const container = document.getElementById('tf2-sessions-container');
         if (!container) return;
         
         container.innerHTML = '';
@@ -29,18 +29,18 @@ const tfBooking = {
 
         for (const [key, type] of Object.entries(types)) {
             const el = document.createElement('div');
-            el.className = 'tf-package-card tf-session-card';
+            el.className = 'tf2-package-card tf2-session-card';
             if (key === 'weddings') {
                 el.innerHTML = `
-                    <div class="tf-pkg-title">${type.name}</div>
-                    <div class="tf-pkg-detail" style="margin-bottom:15px; color:var(--tf-text);">${type.description}</div>
-                    <a href="mailto:hello@twellerstudios.com?subject=Wedding Inquiry" class="tf-btn-inquiry" onclick="event.stopPropagation()">Inquire Now</a>
+                    <div class="tf2-pkg-title">${type.name}</div>
+                    <div class="tf2-pkg-detail" style="margin-bottom:15px; color:var(--tf2-text);">${type.description}</div>
+                    <a href="mailto:hello@twellerstudios.com?subject=Wedding Inquiry" class="tf2-btn-inquiry" onclick="event.stopPropagation()">Inquire Now</a>
                 `;
                 el.onclick = () => { window.location.href = 'mailto:hello@twellerstudios.com?subject=Wedding Inquiry'; };
             } else {
                 el.innerHTML = `
-                    <div class="tf-pkg-title">${type.name}</div>
-                    <div class="tf-pkg-detail" style="color:var(--tf-text);">${type.description}</div>
+                    <div class="tf2-pkg-title">${type.name}</div>
+                    <div class="tf2-pkg-detail" style="color:var(--tf2-text);">${type.description}</div>
                 `;
                 el.onclick = () => this.selectSessionType(key, type);
             }
@@ -57,7 +57,7 @@ const tfBooking = {
     },
 
     renderPackages() {
-        const container = document.getElementById('tf-packages-container');
+        const container = document.getElementById('tf2-packages-container');
         if (!container) return;
         
         container.innerHTML = '';
@@ -68,32 +68,32 @@ const tfBooking = {
             if (!allowed.includes(key) && allowed.length > 0) continue; // Show all if allowed empty/not set (fallback), else filter
 
             const el = document.createElement('div');
-            el.className = 'tf-package-card';
+            el.className = 'tf2-package-card';
             
-            let topBooked = key === 'mini' ? '<div class="tf-top-booked">Top Booked</div>' : '';
+            let topBooked = key === 'mini' ? '<div class="tf2-top-booked">Top Booked</div>' : '';
             
             let html = `
                 ${topBooked}
-                <div class="tf-pkg-title">${pkg.name}</div>
+                <div class="tf2-pkg-title">${pkg.name}</div>
             `;
             
             if (pkg.old_price) {
-                html += `<div class="tf-pkg-price" style="display:flex; align-items:center; gap:8px;"><span style="text-decoration:line-through; font-size:16px; color:#A3A3A3; font-weight:500;">TTD ${pkg.old_price}</span> <span>TTD ${pkg.price}</span></div>`;
+                html += `<div class="tf2-pkg-price" style="display:flex; align-items:center; gap:8px;"><span style="text-decoration:line-through; font-size:16px; color:#A3A3A3; font-weight:500;">TTD ${pkg.old_price}</span> <span>TTD ${pkg.price}</span></div>`;
             } else {
-                html += `<div class="tf-pkg-price">TTD ${pkg.price}</div>`;
+                html += `<div class="tf2-pkg-price">TTD ${pkg.price}</div>`;
             }
             
             if (pkg.features && Array.isArray(pkg.features)) {
-                html += `<ul class="tf-pkg-features">`;
+                html += `<ul class="tf2-pkg-features">`;
                 pkg.features.forEach(f => {
-                    html += `<li><span class="tf-checkmark"></span> ${f}</li>`;
+                    html += `<li><span class="tf2-checkmark"></span> ${f}</li>`;
                 });
                 html += `</ul>`;
             } else {
                 html += `
-                    <div class="tf-pkg-detail">🕒 ${pkg.duration} Minutes</div>
-                    <div class="tf-pkg-detail">📸 ${pkg.images} Edited Images</div>
-                    <div class="tf-pkg-detail">👥 Up to ${pkg.members} People</div>
+                    <div class="tf2-pkg-detail">🕒 ${pkg.duration} Minutes</div>
+                    <div class="tf2-pkg-detail">📸 ${pkg.images} Edited Images</div>
+                    <div class="tf2-pkg-detail">👥 Up to ${pkg.members} People</div>
                 `;
             }
             
@@ -117,8 +117,8 @@ const tfBooking = {
     async fetchAvailability() {
         if (!this.selectedDate || !this.selectedPackageData) return;
 
-        const slotsContainer = document.getElementById('tf-slots-container');
-        slotsContainer.innerHTML = '<p class="tf-slots-empty">Checking availability...</p>';
+        const slotsContainer = document.getElementById('tf2-slots-container');
+        slotsContainer.innerHTML = '<p class="tf2-slots-empty">Checking availability...</p>';
 
         try {
             const res = await fetch(`${window.twellerBooking.restUrl}availability?date=${this.selectedDate}&duration=${this.selectedPackageData.duration}`);
@@ -128,16 +128,16 @@ const tfBooking = {
                 slotsContainer.innerHTML = '';
                 data.available_slots.forEach(slot => {
                     const btn = document.createElement('div');
-                    btn.className = 'tf-slot-btn';
+                    btn.className = 'tf2-slot-btn';
                     btn.innerText = slot.display;
                     btn.onclick = () => this.selectTime(slot.time, slot.display);
                     slotsContainer.appendChild(btn);
                 });
             } else {
-                slotsContainer.innerHTML = '<p class="tf-slots-empty">No slots available for this date. Please try another date.</p>';
+                slotsContainer.innerHTML = '<p class="tf2-slots-empty">No slots available for this date. Please try another date.</p>';
             }
         } catch (err) {
-            slotsContainer.innerHTML = '<p class="tf-slots-empty" style="color:red">Failed to load availability.</p>';
+            slotsContainer.innerHTML = '<p class="tf2-slots-empty" style="color:red">Failed to load availability.</p>';
         }
     },
 
@@ -149,31 +149,31 @@ const tfBooking = {
     },
 
     renderSummary() {
-        const summary = document.getElementById('tf-summary-card');
+        const summary = document.getElementById('tf2-summary-card');
         const d = new Date(this.selectedDate + 'T' + this.selectedTimeStr);
         const options = { weekday:'long', year:'numeric', month:'long', day:'numeric' };
         
         summary.innerHTML = `
             <h4>${this.selectedPackageData.name}</h4>
-            <div class="tf-summary-detail">${d.toLocaleDateString(undefined, options)} at ${this.selectedTimeDisplay}</div>
+            <div class="tf2-summary-detail">${d.toLocaleDateString(undefined, options)} at ${this.selectedTimeDisplay}</div>
             <div style="margin-top: 10px; opacity: 0.9;">Total: TTD ${this.selectedPackageData.price}</div>
         `;
     },
 
     goToStep(num) {
-        document.getElementById(`tf-step-${this.step}`).style.display = 'none';
-        document.querySelector(`.tf-step[data-step="${this.step}"]`).classList.remove('active');
-        document.querySelector(`.tf-step[data-step="${this.step}"]`).classList.add('completed');
+        document.getElementById(`tf2-step-${this.step}`).style.display = 'none';
+        document.querySelector(`.tf2-step[data-step="${this.step}"]`).classList.remove('active');
+        document.querySelector(`.tf2-step[data-step="${this.step}"]`).classList.add('completed');
         
         this.step = num;
         
-        document.getElementById(`tf-step-${this.step}`).style.display = 'block';
-        document.querySelector(`.tf-step[data-step="${this.step}"]`).classList.add('active');
-        document.querySelector(`.tf-step[data-step="${this.step}"]`).classList.remove('completed');
+        document.getElementById(`tf2-step-${this.step}`).style.display = 'block';
+        document.querySelector(`.tf2-step[data-step="${this.step}"]`).classList.add('active');
+        document.querySelector(`.tf2-step[data-step="${this.step}"]`).classList.remove('completed');
 
         // Reset later steps
         for(let i = this.step + 1; i <= 4; i++) {
-            let el = document.querySelector(`.tf-step[data-step="${i}"]`);
+            let el = document.querySelector(`.tf2-step[data-step="${i}"]`);
             if(el) {
                 el.classList.remove('active');
                 el.classList.remove('completed');
@@ -190,7 +190,7 @@ const tfBooking = {
     buildInquiryMessage() {
         const type = this.selectedSessionData ? this.selectedSessionData.name : '';
         const pkg = this.selectedPackageData ? this.selectedPackageData.name.split('—')[0].trim() : '';
-        const loc = document.getElementById('tf-client-notes').value || 'Not specified';
+        const loc = document.getElementById('tf2-client-notes').value || 'Not specified';
         
         let dateStr = this.selectedDate;
         if (this.selectedDate) {
@@ -214,10 +214,10 @@ const tfBooking = {
     },
 
     async submitBooking() {
-        const name = document.getElementById('tf-client-name').value;
-        const email = document.getElementById('tf-client-email').value;
-        const phone = document.getElementById('tf-client-phone').value;
-        const notes = document.getElementById('tf-client-notes').value;
+        const name = document.getElementById('tf2-client-name').value;
+        const email = document.getElementById('tf2-client-email').value;
+        const phone = document.getElementById('tf2-client-phone').value;
+        const notes = document.getElementById('tf2-client-notes').value;
         
         const payload = {
             client_name: name,
@@ -231,8 +231,8 @@ const tfBooking = {
             session_time: this.selectedTimeStr
         };
 
-        const loading = document.getElementById('tf-booking-loading');
-        const errorMsg = document.getElementById('tf-booking-error');
+        const loading = document.getElementById('tf2-booking-loading');
+        const errorMsg = document.getElementById('tf2-booking-error');
         
         loading.style.display = 'flex';
         errorMsg.style.display = 'none';

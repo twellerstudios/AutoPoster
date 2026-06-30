@@ -1,41 +1,41 @@
 <?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
-<div class="wrap tf-wrap">
-    <div class="tf-page-header">
+<div class="wrap tf2-wrap">
+    <div class="tf2-page-header">
         <h1>Sessions</h1>
-        <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-new' ); ?>" class="tf-btn tf-btn--primary">+ New Session</a>
+        <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-new' ); ?>" class="tf2-btn tf2-btn--primary">+ New Session</a>
     </div>
 
     <!-- Filters -->
-    <form method="get" class="tf-filters">
-        <input type="hidden" name="page" value="tweller-flow-sessions">
-        <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search clients..." class="tf-filters__search">
-        <select name="stage" class="tf-filters__select" onchange="this.form.submit()">
+    <form method="get" class="tf2-filters">
+        <input type="hidden" name="page" value="tweller-flow-2-sessions">
+        <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search clients..." class="tf2-filters__search">
+        <select name="stage" class="tf2-filters__select" onchange="this.form.submit()">
             <option value="">All Stages</option>
             <?php foreach ( $stages as $key => $s ) : ?>
                 <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $stage, $key ); ?>><?php echo esc_html( $s['label'] ); ?></option>
             <?php endforeach; ?>
         </select>
-        <button type="submit" class="tf-btn tf-btn--secondary">Search</button>
+        <button type="submit" class="tf2-btn tf2-btn--secondary">Search</button>
         <?php if ( $search || $stage ) : ?>
-            <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-sessions' ); ?>" class="tf-btn tf-btn--ghost">Clear</a>
+            <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-sessions' ); ?>" class="tf2-btn tf2-btn--ghost">Clear</a>
         <?php endif; ?>
     </form>
 
     <?php if ( isset( $_GET['deleted'] ) ) : ?>
-        <div class="tf-alert tf-alert--success">Session deleted.</div>
+        <div class="tf2-alert tf2-alert--success">Session deleted.</div>
     <?php endif; ?>
 
     <!-- Sessions Table -->
-    <div class="tf-card tf-card--flush">
+    <div class="tf2-card tf2-card--flush">
         <?php if ( empty( $sessions ) ) : ?>
-            <div class="tf-empty">
-                <div class="tf-empty__text"><?php echo $search || $stage ? 'No sessions match your filters.' : 'No sessions yet.'; ?></div>
+            <div class="tf2-empty">
+                <div class="tf2-empty__text"><?php echo $search || $stage ? 'No sessions match your filters.' : 'No sessions yet.'; ?></div>
                 <?php if ( ! $search && ! $stage ) : ?>
-                    <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-new' ); ?>" class="tf-btn tf-btn--primary">Create First Session</a>
+                    <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-new' ); ?>" class="tf2-btn tf2-btn--primary">Create First Session</a>
                 <?php endif; ?>
             </div>
         <?php else : ?>
-            <table class="tf-table">
+            <table class="tf2-table">
                 <thead>
                     <tr>
                         <th>Client</th>
@@ -48,7 +48,7 @@
                 </thead>
                 <tbody>
                     <?php
-                    $packages_opt = get_option( 'tweller_flow_packages', array() );
+                    $packages_opt = get_option( 'tweller_flow_2_packages', array() );
                     foreach ( $sessions as $s ) :
                         $stage_info = $stages[ $s->current_stage ] ?? array( 'label' => $s->current_stage );
                         $pkg = $packages_opt[ $s->package_type ] ?? array();
@@ -56,30 +56,30 @@
                     ?>
                         <tr>
                             <td>
-                                <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-session&id=' . $s->id ); ?>">
-                                    <span class="tf-client-name"><?php echo esc_html( $s->client_name ); ?></span>
+                                <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $s->id ); ?>">
+                                    <span class="tf2-client-name"><?php echo esc_html( $s->client_name ); ?></span>
                                 </a>
-                                <div class="tf-muted tf-text-sm"><?php echo esc_html( $s->tracking_code ); ?></div>
+                                <div class="tf2-muted tf2-text-sm"><?php echo esc_html( $s->tracking_code ); ?></div>
                             </td>
                             <td><?php echo esc_html( $pkg_name ); ?></td>
                             <td>
                                 <?php if ( $s->session_date ) : ?>
                                     <?php echo date( 'M j, Y', strtotime( $s->session_date ) ); ?>
                                     <?php if ( $s->session_time ) : ?>
-                                        <div class="tf-muted tf-text-sm"><?php echo date( 'g:i A', strtotime( $s->session_time ) ); ?></div>
+                                        <div class="tf2-muted tf2-text-sm"><?php echo date( 'g:i A', strtotime( $s->session_time ) ); ?></div>
                                     <?php endif; ?>
                                 <?php else : ?>
-                                    <span class="tf-muted">Not set</span>
+                                    <span class="tf2-muted">Not set</span>
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <span class="tf-badge tf-badge--<?php echo esc_attr( $s->current_stage ); ?>"><?php echo esc_html( $stage_info['label'] ); ?></span>
+                                <span class="tf2-badge tf2-badge--<?php echo esc_attr( $s->current_stage ); ?>"><?php echo esc_html( $stage_info['label'] ); ?></span>
                             </td>
                             <td>
-                                <span class="tf-badge tf-badge--<?php echo esc_attr( $s->payment_status ); ?>"><?php echo esc_html( ucfirst( $s->payment_status ) ); ?></span>
+                                <span class="tf2-badge tf2-badge--<?php echo esc_attr( $s->payment_status ); ?>"><?php echo esc_html( ucfirst( $s->payment_status ) ); ?></span>
                             </td>
-                            <td class="tf-text-right">
-                                <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-session&id=' . $s->id ); ?>" class="tf-btn tf-btn--ghost tf-btn--sm">View</a>
+                            <td class="tf2-text-right">
+                                <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $s->id ); ?>" class="tf2-btn tf2-btn--ghost tf2-btn--sm">View</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -89,9 +89,9 @@
             <?php
             $total_pages = ceil( $total / $per_page );
             if ( $total_pages > 1 ) : ?>
-                <div class="tf-pagination" style="padding: 16px;">
+                <div class="tf2-pagination" style="padding: 16px;">
                     <?php for ( $i = 1; $i <= $total_pages; $i++ ) :
-                        $url = add_query_arg( array( 'paged' => $i, 's' => $search, 'stage' => $stage ), admin_url( 'admin.php?page=tweller-flow-sessions' ) );
+                        $url = add_query_arg( array( 'paged' => $i, 's' => $search, 'stage' => $stage ), admin_url( 'admin.php?page=tweller-flow-2-sessions' ) );
                     ?>
                         <?php if ( $i === $paged ) : ?>
                             <span class="current"><?php echo $i; ?></span>

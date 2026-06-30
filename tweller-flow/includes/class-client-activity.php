@@ -6,7 +6,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Client_Activity {
+class TwellerFlow2_Client_Activity {
 
     const TABLE = 'tweller_client_activity';
 
@@ -16,14 +16,14 @@ class TwellerFlow_Client_Activity {
 
     public static function register_rest_routes() {
         // Log a client activity event (public — called from tracker JS)
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/activity', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/activity', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_log_activity' ),
             'permission_callback' => '__return_true',
         ));
 
         // Get activity for a session (admin only)
-        register_rest_route( 'tweller-flow/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/activity', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/activity', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_activity' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
@@ -68,7 +68,7 @@ class TwellerFlow_Client_Activity {
             return new WP_Error( 'invalid_event', 'Invalid event type', array( 'status' => 400 ) );
         }
 
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
@@ -112,7 +112,7 @@ class TwellerFlow_Client_Activity {
 
     public static function rest_get_activity( $request ) {
         $code = sanitize_text_field( $request['code'] );
-        $session = TwellerFlow_Session::get_by_code( $code );
+        $session = TwellerFlow2_Session::get_by_code( $code );
         if ( ! $session ) {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }

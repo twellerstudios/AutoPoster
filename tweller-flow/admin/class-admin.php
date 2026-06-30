@@ -1,13 +1,13 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class TwellerFlow_Admin {
+class TwellerFlow2_Admin {
 
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_menus' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_init', array( $this, 'handle_actions' ) );
-        add_action( 'wp_ajax_tweller_flow_admin_upload', array( $this, 'ajax_admin_upload' ) );
+        add_action( 'wp_ajax_tweller_flow_2_admin_upload', array( $this, 'ajax_admin_upload' ) );
     }
 
     /**
@@ -18,63 +18,63 @@ class TwellerFlow_Admin {
             'Tweller Flow',
             'Tweller Flow',
             'manage_options',
-            'tweller-flow',
+            'tweller-flow-2',
             array( $this, 'page_dashboard' ),
             'dashicons-camera',
             30
         );
 
         add_submenu_page(
-            'tweller-flow',
+            'tweller-flow-2',
             'Dashboard',
             'Dashboard',
             'manage_options',
-            'tweller-flow',
+            'tweller-flow-2',
             array( $this, 'page_dashboard' )
         );
 
         add_submenu_page(
-            'tweller-flow',
+            'tweller-flow-2',
             'Sessions',
             'Sessions',
             'manage_options',
-            'tweller-flow-sessions',
+            'tweller-flow-2-sessions',
             array( $this, 'page_sessions' )
         );
 
         add_submenu_page(
-            'tweller-flow',
+            'tweller-flow-2',
             'New Session',
             'New Session',
             'manage_options',
-            'tweller-flow-new',
+            'tweller-flow-2-new',
             array( $this, 'page_new_session' )
         );
 
         add_submenu_page(
-            'tweller-flow',
+            'tweller-flow-2',
             'Notifications',
             'Notifications',
             'manage_options',
-            'tweller-flow-notifications',
+            'tweller-flow-2-notifications',
             array( $this, 'page_notifications' )
         );
 
         add_submenu_page(
-            'tweller-flow',
+            'tweller-flow-2',
             'Galleries',
             'Galleries',
             'manage_options',
-            'tweller-flow-galleries',
+            'tweller-flow-2-galleries',
             array( $this, 'page_galleries' )
         );
 
         add_submenu_page(
-            'tweller-flow',
+            'tweller-flow-2',
             'Settings',
             'Settings',
             'manage_options',
-            'tweller-flow-settings',
+            'tweller-flow-2-settings',
             array( $this, 'page_settings' )
         );
 
@@ -84,7 +84,7 @@ class TwellerFlow_Admin {
             'Session Detail',
             'Session Detail',
             'manage_options',
-            'tweller-flow-session',
+            'tweller-flow-2-session',
             array( $this, 'page_session_detail' )
         );
     }
@@ -93,25 +93,25 @@ class TwellerFlow_Admin {
      * Enqueue admin assets
      */
     public function enqueue_assets( $hook ) {
-        if ( strpos( $hook, 'tweller-flow' ) === false ) return;
+        if ( strpos( $hook, 'tweller-flow-2' ) === false ) return;
 
         wp_enqueue_style(
-            'tweller-flow-admin',
-            TWELLER_FLOW_PLUGIN_URL . 'admin/css/admin.css',
+            'tweller-flow-2-admin',
+            TWELLER_FLOW_2_PLUGIN_URL . 'admin/css/admin.css',
             array(),
-            TWELLER_FLOW_VERSION
+            TWELLER_FLOW_2_VERSION
         );
         wp_enqueue_script(
-            'tweller-flow-admin',
-            TWELLER_FLOW_PLUGIN_URL . 'admin/js/admin.js',
+            'tweller-flow-2-admin',
+            TWELLER_FLOW_2_PLUGIN_URL . 'admin/js/admin.js',
             array( 'jquery' ),
-            TWELLER_FLOW_VERSION,
+            TWELLER_FLOW_2_VERSION,
             true
         );
-        wp_localize_script( 'tweller-flow-admin', 'twellerFlow', array(
+        wp_localize_script( 'tweller-flow-2-admin', 'twellerFlow2', array(
             'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-            'nonce'   => wp_create_nonce( 'tweller_flow_nonce' ),
-            'restUrl' => rest_url( 'tweller-flow/v1/' ),
+            'nonce'   => wp_create_nonce( 'tweller_flow_2_nonce' ),
+            'restUrl' => rest_url( 'tweller-flow-2/v1/' ),
             'restNonce' => wp_create_nonce( 'wp_rest' ),
         ));
     }
@@ -123,23 +123,23 @@ class TwellerFlow_Admin {
         if ( ! current_user_can( 'manage_options' ) ) return;
 
         // Create session
-        if ( isset( $_POST['tweller_flow_create_session'] ) ) {
-            check_admin_referer( 'tweller_flow_create_session' );
-            $session_id = TwellerFlow_Session::create( $_POST );
+        if ( isset( $_POST['tweller_flow_2_create_session'] ) ) {
+            check_admin_referer( 'tweller_flow_2_create_session' );
+            $session_id = TwellerFlow2_Session::create( $_POST );
             if ( $session_id ) {
                 // Enable culling if checkbox checked
                 if ( ! empty( $_POST['culling_enabled'] ) ) {
                     $cull_pw = sanitize_text_field( $_POST['culling_password'] ?? '' );
-                    TwellerFlow_Culling::enable_culling( $session_id, $cull_pw );
+                    TwellerFlow2_Culling::enable_culling( $session_id, $cull_pw );
                 }
-                wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $session_id . '&created=1' ) );
+                wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $session_id . '&created=1' ) );
                 exit;
             }
         }
 
         // Update session
-        if ( isset( $_POST['tweller_flow_update_session'] ) ) {
-            check_admin_referer( 'tweller_flow_update_session' );
+        if ( isset( $_POST['tweller_flow_2_update_session'] ) ) {
+            check_admin_referer( 'tweller_flow_2_update_session' );
             $id = intval( $_POST['session_id'] );
             $update_data = array(
                 'client_name'    => sanitize_text_field( $_POST['client_name'] ),
@@ -158,47 +158,47 @@ class TwellerFlow_Admin {
                 'estimated_delivery' => sanitize_text_field( $_POST['estimated_delivery'] ?? '' ),
                 'notes'          => sanitize_textarea_field( $_POST['notes'] ),
             );
-            TwellerFlow_Session::update( $id, $update_data );
+            TwellerFlow2_Session::update( $id, $update_data );
 
             // Handle culling toggle
             if ( ! empty( $_POST['culling_enabled'] ) ) {
                 $cull_pw = sanitize_text_field( $_POST['culling_password'] ?? '' );
-                TwellerFlow_Culling::enable_culling( $id, $cull_pw );
+                TwellerFlow2_Culling::enable_culling( $id, $cull_pw );
             } else {
-                TwellerFlow_Culling::disable_culling( $id );
+                TwellerFlow2_Culling::disable_culling( $id );
             }
 
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&updated=1' ) );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&updated=1' ) );
             exit;
         }
 
         // Advance stage
         if ( isset( $_GET['action'] ) && $_GET['action'] === 'advance' && isset( $_GET['session_id'] ) ) {
-            check_admin_referer( 'tweller_flow_advance_' . $_GET['session_id'] );
+            check_admin_referer( 'tweller_flow_2_advance_' . $_GET['session_id'] );
             $id = intval( $_GET['session_id'] );
             $notes = sanitize_text_field( $_GET['notes'] ?? '' );
-            TwellerFlow_Session::advance_stage( $id, $notes );
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&advanced=1' ) );
+            TwellerFlow2_Session::advance_stage( $id, $notes );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&advanced=1' ) );
             exit;
         }
 
         // Set specific stage
-        if ( isset( $_POST['tweller_flow_set_stage'] ) ) {
-            check_admin_referer( 'tweller_flow_set_stage' );
+        if ( isset( $_POST['tweller_flow_2_set_stage'] ) ) {
+            check_admin_referer( 'tweller_flow_2_set_stage' );
             $id = intval( $_POST['session_id'] );
             $stage = sanitize_text_field( $_POST['stage'] );
             $notes = sanitize_text_field( $_POST['stage_notes'] ?? '' );
-            TwellerFlow_Session::set_stage( $id, $stage, $notes );
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&stage_set=1' ) );
+            TwellerFlow2_Session::set_stage( $id, $stage, $notes );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&stage_set=1' ) );
             exit;
         }
 
         // Verify Receipt
-        if ( isset( $_POST['tweller_flow_verify_receipt'] ) ) {
-            check_admin_referer( 'tweller_flow_verify_receipt' );
+        if ( isset( $_POST['tweller_flow_2_verify_receipt'] ) ) {
+            check_admin_referer( 'tweller_flow_2_verify_receipt' );
             $id = intval( $_POST['session_id'] );
             $action = sanitize_text_field( $_POST['verify_action'] );
-            $session = TwellerFlow_Session::get( $id );
+            $session = TwellerFlow2_Session::get( $id );
             
             if ( $session ) {
                 if ( $action === 'approve' || $action === 'approve_paid' || $action === 'approve_deposit' ) {
@@ -211,78 +211,78 @@ class TwellerFlow_Admin {
                         'deposit_amount' => $amt
                     );
                     
-                    TwellerFlow_Session::update( $id, $update_data );
+                    TwellerFlow2_Session::update( $id, $update_data );
                     
                     // Physically lock them into the Confirmed stage!
                     // Note: We won't trigger the generic notification email since we want the highly custom one
-                    TwellerFlow_Session::set_stage( $id, 'confirmed', 'Payment verified and booking confirmed.', false );
+                    TwellerFlow2_Session::set_stage( $id, 'confirmed', 'Payment verified and booking confirmed.', false );
                     delete_option( 'tf_receipt_' . $id );
                     
                     // Fire the updated Sequence 1 calendar invite
                     if ( !empty($session->session_date) ) {
-                        TwellerFlow_Notifications::send_calendar_invite( $session, 'CONFIRMED', 1 );
+                        TwellerFlow2_Notifications::send_calendar_invite( $session, 'CONFIRMED', 1 );
                     }
                     
                     if ( !empty($session->client_email) ) {
-                        $tracker_url = get_option( 'tweller_flow_tracker_page', '' ) . '?code=' . $session->tracking_code;
+                        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
                         $confirmed_subj = "Booking Confirmed! 🎉 - Tweller Studios";
                         $confirmed_body = "Hi {$session->client_name},\n\nWe have successfully verified your payment receipt and your booking is now officially CONFIRMED! We are thrilled to work with you.\n\nYou can always check the live status of your photo session here:\n$tracker_url\n\nThanks,\nTweller Studios";
                         wp_mail( $session->client_email, $confirmed_subj, $confirmed_body );
                     }
                 } elseif ( $action === 'reject' ) {
-                    TwellerFlow_Session::update( $id, array( 'payment_status' => 'pending' ) );
+                    TwellerFlow2_Session::update( $id, array( 'payment_status' => 'pending' ) );
                     delete_option( 'tf_receipt_' . $id );
                     
                     if ( !empty($session->client_email) ) {
-                        $tracker_url = get_option( 'tweller_flow_tracker_page', '' ) . '?code=' . $session->tracking_code;
+                        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
                         wp_mail( $session->client_email, "Action Required: Payment Verification Failed", "Hi {$session->client_name},\n\nWe had a problem verifying the bank transfer receipt you recently uploaded (it may have been the wrong image or the amount was incorrect).\n\nPlease click your tracker link to re-upload your correct receipt: $tracker_url\n\nThanks,\nTweller Studios" );
                     }
                 }
             }
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&receipt_processed=1' ) );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&receipt_processed=1' ) );
             exit;
         }
 
         // Gallery password
-        if ( isset( $_POST['tweller_flow_gallery_password'] ) ) {
-            check_admin_referer( 'tweller_flow_gallery_password' );
+        if ( isset( $_POST['tweller_flow_2_gallery_password'] ) ) {
+            check_admin_referer( 'tweller_flow_2_gallery_password' );
             $id = intval( $_POST['session_id'] );
             $pw = sanitize_text_field( $_POST['gallery_pw'] ?? '' );
             if ( ! empty( $pw ) ) {
-                TwellerFlow_Gallery::set_password( $id, $pw );
+                TwellerFlow2_Gallery::set_password( $id, $pw );
             } else {
                 delete_option( 'tweller_gallery_pw_' . $id );
             }
             $redirect = sanitize_text_field( $_POST['redirect_to'] ?? '' );
             if ( $redirect === 'galleries' ) {
-                wp_redirect( admin_url( 'admin.php?page=tweller-flow-galleries&saved=1' ) );
+                wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-galleries&saved=1' ) );
             } else {
-                wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&updated=1' ) );
+                wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&updated=1' ) );
             }
             exit;
         }
 
         // Send delivery email and advance to delivered
         if ( isset( $_GET['action'] ) && $_GET['action'] === 'send_delivery' && isset( $_GET['session_id'] ) ) {
-            check_admin_referer( 'tweller_flow_deliver_' . $_GET['session_id'] );
+            check_admin_referer( 'tweller_flow_2_deliver_' . $_GET['session_id'] );
             $id = intval( $_GET['session_id'] );
-            $session = TwellerFlow_Session::get( $id );
+            $session = TwellerFlow2_Session::get( $id );
             if ( $session && in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
                 // Send the delivery email
-                $template = TwellerFlow_Notifications::get_email_template( 'delivered', $session );
+                $template = TwellerFlow2_Notifications::get_email_template( 'delivered', $session );
                 if ( $template && ! empty( $session->client_email ) ) {
-                    $sent = TwellerFlow_Notifications::send_email( $session, $template['subject'], $template['body'] );
+                    $sent = TwellerFlow2_Notifications::send_email( $session, $template['subject'], $template['body'] );
                     if ( $sent ) {
                         // Advance to delivered if not already
                         if ( $session->current_stage !== 'delivered' ) {
-                            TwellerFlow_Session::set_stage( $id, 'delivered', 'Gallery delivery email sent to ' . $session->client_email );
+                            TwellerFlow2_Session::set_stage( $id, 'delivered', 'Gallery delivery email sent to ' . $session->client_email );
                         }
-                        wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&delivered=1' ) );
+                        wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&delivered=1' ) );
                     } else {
-                        wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&email_failed=1' ) );
+                        wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&email_failed=1' ) );
                     }
                 } else {
-                    wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&no_email=1' ) );
+                    wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&no_email=1' ) );
                 }
                 exit;
             }
@@ -290,12 +290,12 @@ class TwellerFlow_Admin {
 
         // Gallery: delete all photos for a session
         if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete_gallery' && isset( $_GET['session_id'] ) ) {
-            check_admin_referer( 'tweller_flow_delete_gallery_' . $_GET['session_id'] );
+            check_admin_referer( 'tweller_flow_2_delete_gallery_' . $_GET['session_id'] );
             $session_id = intval( $_GET['session_id'] );
-            $session = TwellerFlow_Session::get( $session_id );
+            $session = TwellerFlow2_Session::get( $session_id );
             if ( $session ) {
-                $photos = TwellerFlow_Gallery::get_photos( $session_id );
-                $gallery_dir = TwellerFlow_Gallery::get_gallery_dir( $session->tracking_code );
+                $photos = TwellerFlow2_Gallery::get_photos( $session_id );
+                $gallery_dir = TwellerFlow2_Gallery::get_gallery_dir( $session->tracking_code );
                 foreach ( $photos as $photo ) {
                     @unlink( $gallery_dir . '/' . $photo->filename );
                     @unlink( $gallery_dir . '/thumbs/' . $photo->filename );
@@ -304,22 +304,22 @@ class TwellerFlow_Admin {
                 $wpdb->delete( $wpdb->prefix . 'tweller_gallery_photos', array( 'session_id' => $session_id ) );
                 delete_option( 'tweller_gallery_pw_' . $session_id );
             }
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-galleries&deleted=1' ) );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-galleries&deleted=1' ) );
             exit;
         }
 
         // Delete session
         if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['session_id'] ) ) {
-            check_admin_referer( 'tweller_flow_delete_' . $_GET['session_id'] );
-            TwellerFlow_Session::delete( intval( $_GET['session_id'] ) );
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-sessions&deleted=1' ) );
+            check_admin_referer( 'tweller_flow_2_delete_' . $_GET['session_id'] );
+            TwellerFlow2_Session::delete( intval( $_GET['session_id'] ) );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-sessions&deleted=1' ) );
             exit;
         }
 
         // Save settings
-        if ( isset( $_POST['tweller_flow_save_settings'] ) ) {
-            check_admin_referer( 'tweller_flow_save_settings' );
-            update_option( 'tweller_flow_smtp', array(
+        if ( isset( $_POST['tweller_flow_2_save_settings'] ) ) {
+            check_admin_referer( 'tweller_flow_2_save_settings' );
+            update_option( 'tweller_flow_2_smtp', array(
                 'host'       => sanitize_text_field( $_POST['smtp_host'] ),
                 'port'       => intval( $_POST['smtp_port'] ),
                 'encryption' => sanitize_text_field( $_POST['smtp_encryption'] ),
@@ -328,48 +328,48 @@ class TwellerFlow_Admin {
                 'from_name'  => sanitize_text_field( $_POST['smtp_from_name'] ),
                 'from_email' => sanitize_email( $_POST['smtp_from_email'] ),
             ));
-            update_option( 'tweller_flow_banking', sanitize_textarea_field( $_POST['banking_info'] ) );
-            update_option( 'tweller_flow_wipay_url', esc_url_raw( $_POST['wipay_url'] ?? '' ) );
-            update_option( 'tweller_flow_culling_price_per_photo', max( 1, intval( $_POST['culling_price_per_photo'] ?? 30 ) ) );
-            update_option( 'tweller_flow_delivery_days', intval( $_POST['delivery_days'] ) );
-            update_option( 'tweller_flow_tracker_page', esc_url_raw( $_POST['tracker_page_url'] ) );
-            update_option( 'tweller_flow_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );
-            update_option( 'tweller_flow_booking_ical_url', esc_url_raw( $_POST['booking_ical_url'] ?? '' ) );
+            update_option( 'tweller_flow_2_banking', sanitize_textarea_field( $_POST['banking_info'] ) );
+            update_option( 'tweller_flow_2_wipay_url', esc_url_raw( $_POST['wipay_url'] ?? '' ) );
+            update_option( 'tweller_flow_2_culling_price_per_photo', max( 1, intval( $_POST['culling_price_per_photo'] ?? 30 ) ) );
+            update_option( 'tweller_flow_2_delivery_days', intval( $_POST['delivery_days'] ) );
+            update_option( 'tweller_flow_2_tracker_page', esc_url_raw( $_POST['tracker_page_url'] ) );
+            update_option( 'tweller_flow_2_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );
+            update_option( 'tweller_flow_2_booking_ical_url', esc_url_raw( $_POST['booking_ical_url'] ?? '' ) );
 
             if ( ! empty( $_POST['session_types_json'] ) ) {
                 $st_json = stripslashes( $_POST['session_types_json'] );
                 $st_arr = json_decode( $st_json, true );
                 if ( json_last_error() === JSON_ERROR_NONE ) {
-                    update_option( 'tweller_flow_session_types', $st_arr );
+                    update_option( 'tweller_flow_2_session_types', $st_arr );
                 }
             }
             if ( ! empty( $_POST['packages_json'] ) ) {
                 $pkg_json = stripslashes( $_POST['packages_json'] );
                 $pkg_arr = json_decode( $pkg_json, true );
                 if ( json_last_error() === JSON_ERROR_NONE ) {
-                    update_option( 'tweller_flow_packages', $pkg_arr );
+                    update_option( 'tweller_flow_2_packages', $pkg_arr );
                 }
             }
 
             // Save automation settings
             if ( isset( $_POST['automation_backend_url'] ) ) {
-                TwellerFlow_Photo_Automation::save_settings( $_POST );
+                TwellerFlow2_Photo_Automation::save_settings( $_POST );
             }
 
-            wp_redirect( admin_url( 'admin.php?page=tweller-flow-settings&saved=1' ) );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-settings&saved=1' ) );
             exit;
         }
 
         // Send manual notification
-        if ( isset( $_POST['tweller_flow_send_notification'] ) ) {
-            check_admin_referer( 'tweller_flow_send_notification' );
+        if ( isset( $_POST['tweller_flow_2_send_notification'] ) ) {
+            check_admin_referer( 'tweller_flow_2_send_notification' );
             $id = intval( $_POST['session_id'] );
-            $session = TwellerFlow_Session::get( $id );
+            $session = TwellerFlow2_Session::get( $id );
             if ( $session ) {
                 $subject = sanitize_text_field( $_POST['notif_subject'] );
                 $body = wp_kses_post( $_POST['notif_body'] );
-                TwellerFlow_Notifications::send_email( $session, $subject, $body );
-                wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&notified=1' ) );
+                TwellerFlow2_Notifications::send_email( $session, $subject, $body );
+                wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&notified=1' ) );
                 exit;
             }
         }
@@ -379,14 +379,14 @@ class TwellerFlow_Admin {
      * Dashboard page
      */
     public function page_dashboard() {
-        $active_count  = TwellerFlow_Session::count_active();
-        $total_count   = TwellerFlow_Session::count();
-        $stage_counts  = TwellerFlow_Session::get_stage_counts();
-        $revenue       = TwellerFlow_Session::get_revenue_stats();
-        $recent        = TwellerFlow_Session::get_all( array( 'per_page' => 5, 'orderby' => 'updated_at', 'order' => 'DESC' ) );
-        $stages        = TwellerFlow_Database::get_stages();
+        $active_count  = TwellerFlow2_Session::count_active();
+        $total_count   = TwellerFlow2_Session::count();
+        $stage_counts  = TwellerFlow2_Session::get_stage_counts();
+        $revenue       = TwellerFlow2_Session::get_revenue_stats();
+        $recent        = TwellerFlow2_Session::get_all( array( 'per_page' => 5, 'orderby' => 'updated_at', 'order' => 'DESC' ) );
+        $stages        = TwellerFlow2_Database::get_stages();
 
-        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/dashboard.php';
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/dashboard.php';
     }
 
     /**
@@ -398,7 +398,7 @@ class TwellerFlow_Admin {
         $paged   = isset( $_GET['paged'] ) ? max( 1, intval( $_GET['paged'] ) ) : 1;
         $per_page = 20;
 
-        $sessions = TwellerFlow_Session::get_all( array(
+        $sessions = TwellerFlow2_Session::get_all( array(
             'search'   => $search,
             'stage'    => $stage,
             'per_page' => $per_page,
@@ -407,18 +407,18 @@ class TwellerFlow_Admin {
             'order'    => 'DESC',
         ));
 
-        $total = TwellerFlow_Session::count( array( 'stage' => $stage ) );
-        $stages = TwellerFlow_Database::get_stages();
+        $total = TwellerFlow2_Session::count( array( 'stage' => $stage ) );
+        $stages = TwellerFlow2_Database::get_stages();
 
-        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/sessions.php';
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/sessions.php';
     }
 
     /**
      * New session page
      */
     public function page_new_session() {
-        $packages = get_option( 'tweller_flow_packages', array() );
-        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/new-session.php';
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/new-session.php';
     }
 
     /**
@@ -426,22 +426,22 @@ class TwellerFlow_Admin {
      */
     public function page_session_detail() {
         $id = isset( $_GET['id'] ) ? intval( $_GET['id'] ) : 0;
-        $session = TwellerFlow_Session::get( $id );
+        $session = TwellerFlow2_Session::get( $id );
 
         if ( ! $session ) {
             echo '<div class="wrap"><div class="notice notice-error"><p>Session not found.</p></div></div>';
             return;
         }
 
-        $history  = TwellerFlow_Session::get_history( $id );
-        $stages   = TwellerFlow_Database::get_stages();
-        $stage_keys = TwellerFlow_Database::get_stage_keys();
-        $packages = get_option( 'tweller_flow_packages', array() );
-        $tracker_url = TwellerFlow_Notifications::get_tracker_url( $session->tracking_code );
+        $history  = TwellerFlow2_Session::get_history( $id );
+        $stages   = TwellerFlow2_Database::get_stages();
+        $stage_keys = TwellerFlow2_Database::get_stage_keys();
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $tracker_url = TwellerFlow2_Notifications::get_tracker_url( $session->tracking_code );
 
         // Get notifications for this session
         global $wpdb;
-        $notif_table = $wpdb->prefix . TWELLER_FLOW_TABLE_NOTIFICATIONS;
+        $notif_table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_NOTIFICATIONS;
         $notifications = $wpdb->get_results( $wpdb->prepare(
             "SELECT * FROM $notif_table WHERE session_id = %d ORDER BY sent_at DESC",
             $id
@@ -449,9 +449,9 @@ class TwellerFlow_Admin {
 
         // WhatsApp link
         $wa_message = "Hi {$session->client_name}! Here's an update on your photo session with Tweller Studios. Track your progress here: {$tracker_url}";
-        $wa_link = TwellerFlow_Notifications::get_whatsapp_link( $session->client_phone, $wa_message );
+        $wa_link = TwellerFlow2_Notifications::get_whatsapp_link( $session->client_phone, $wa_message );
 
-        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/session-detail.php';
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/session-detail.php';
     }
 
     /**
@@ -459,8 +459,8 @@ class TwellerFlow_Admin {
      */
     public function page_notifications() {
         global $wpdb;
-        $notif_table = $wpdb->prefix . TWELLER_FLOW_TABLE_NOTIFICATIONS;
-        $sessions_table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $notif_table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_NOTIFICATIONS;
+        $sessions_table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
         $notifications = $wpdb->get_results(
             "SELECT n.*, s.client_name, s.tracking_code
@@ -470,28 +470,28 @@ class TwellerFlow_Admin {
              LIMIT 50"
         );
 
-        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/notifications.php';
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/notifications.php';
     }
 
     /**
      * Settings page
      */
     public function page_settings() {
-        $smtp      = get_option( 'tweller_flow_smtp', array() );
-        $banking   = get_option( 'tweller_flow_banking', '' );
-        $delivery  = get_option( 'tweller_flow_delivery_days', 14 );
-        $tracker   = get_option( 'tweller_flow_tracker_page', '' );
-        $secret    = get_option( 'tweller_flow_webhook_secret', '' );
-        $packages  = get_option( 'tweller_flow_packages', array() );
-        $automation = TwellerFlow_Photo_Automation::get_settings();
-        $booking_ical = get_option( 'tweller_flow_booking_ical_url', '' );
+        $smtp      = get_option( 'tweller_flow_2_smtp', array() );
+        $banking   = get_option( 'tweller_flow_2_banking', '' );
+        $delivery  = get_option( 'tweller_flow_2_delivery_days', 14 );
+        $tracker   = get_option( 'tweller_flow_2_tracker_page', '' );
+        $secret    = get_option( 'tweller_flow_2_webhook_secret', '' );
+        $packages  = get_option( 'tweller_flow_2_packages', array() );
+        $automation = TwellerFlow2_Photo_Automation::get_settings();
+        $booking_ical = get_option( 'tweller_flow_2_booking_ical_url', '' );
 
-        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/settings.php';
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/settings.php';
     }
 
     public function page_galleries() {
         global $wpdb;
-        $sessions_table = $wpdb->prefix . TWELLER_FLOW_TABLE_SESSIONS;
+        $sessions_table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
         $gallery_table  = $wpdb->prefix . 'tweller_gallery_photos';
 
         // Sessions that already have gallery photos or are in a late stage
@@ -513,16 +513,16 @@ class TwellerFlow_Admin {
              LIMIT 200"
         );
 
-        $tracker_url = get_option( 'tweller_flow_tracker_page', '' );
+        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' );
 
-        include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/galleries.php';
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/galleries.php';
     }
 
     /**
      * AJAX: upload one or more photos to a gallery from the admin backend.
      */
     public function ajax_admin_upload() {
-        check_ajax_referer( 'tweller_flow_nonce', 'nonce' );
+        check_ajax_referer( 'tweller_flow_2_nonce', 'nonce' );
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_send_json_error( 'Unauthorized' );
         }
@@ -532,7 +532,7 @@ class TwellerFlow_Admin {
             wp_send_json_error( 'session_code is required' );
         }
 
-        $session = TwellerFlow_Session::get_by_code( $session_code );
+        $session = TwellerFlow2_Session::get_by_code( $session_code );
         if ( ! $session ) {
             wp_send_json_error( 'Session not found: ' . $session_code );
         }
@@ -556,7 +556,7 @@ class TwellerFlow_Admin {
                 'size'     => $files['size'][ $i ],
             ) : $files;
 
-            $result = TwellerFlow_Gallery::save_photo_file( $session, $file );
+            $result = TwellerFlow2_Gallery::save_photo_file( $session, $file );
             if ( is_wp_error( $result ) ) {
                 $errors[] = $file['name'] . ': ' . $result->get_error_message();
             } else {
@@ -572,4 +572,4 @@ class TwellerFlow_Admin {
     }
 }
 
-new TwellerFlow_Admin();
+new TwellerFlow2_Admin();

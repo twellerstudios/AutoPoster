@@ -1,42 +1,42 @@
 <?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
-<div class="wrap tf-wrap">
+<div class="wrap tf2-wrap">
 
     <?php if ( isset( $_GET['created'] ) ) : ?>
-        <div class="tf-alert tf-alert--success">Session created! Tracking code: <strong><?php echo esc_html( $session->tracking_code ); ?></strong></div>
+        <div class="tf2-alert tf2-alert--success">Session created! Tracking code: <strong><?php echo esc_html( $session->tracking_code ); ?></strong></div>
     <?php elseif ( isset( $_GET['updated'] ) ) : ?>
-        <div class="tf-alert tf-alert--success">Session updated.</div>
+        <div class="tf2-alert tf2-alert--success">Session updated.</div>
     <?php elseif ( isset( $_GET['advanced'] ) ) : ?>
-        <div class="tf-alert tf-alert--success">Stage advanced.</div>
+        <div class="tf2-alert tf2-alert--success">Stage advanced.</div>
     <?php elseif ( isset( $_GET['stage_set'] ) ) : ?>
-        <div class="tf-alert tf-alert--success">Stage updated.</div>
+        <div class="tf2-alert tf2-alert--success">Stage updated.</div>
     <?php elseif ( isset( $_GET['notified'] ) ) : ?>
-        <div class="tf-alert tf-alert--success">Notification sent.</div>
+        <div class="tf2-alert tf2-alert--success">Notification sent.</div>
     <?php elseif ( isset( $_GET['receipt_processed'] ) ) : ?>
-        <div class="tf-alert tf-alert--success">Receipt processed successfully.</div>
+        <div class="tf2-alert tf2-alert--success">Receipt processed successfully.</div>
     <?php endif; ?>
 
     <!-- Header -->
-    <div class="tf-detail-header">
-        <div class="tf-detail-header__left">
-            <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-sessions' ); ?>" class="tf-btn tf-btn--ghost tf-btn--sm" style="margin-bottom:8px;">&larr; Back to Sessions</a>
+    <div class="tf2-detail-header">
+        <div class="tf2-detail-header__left">
+            <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-sessions' ); ?>" class="tf2-btn tf2-btn--ghost tf2-btn--sm" style="margin-bottom:8px;">&larr; Back to Sessions</a>
             <h1><?php echo esc_html( $session->client_name ); ?></h1>
-            <div class="tf-detail-header__code">
+            <div class="tf2-detail-header__code">
                 Tracking Code: <span><?php echo esc_html( $session->tracking_code ); ?></span>
-                <button class="tf-copy-btn" onclick="navigator.clipboard.writeText('<?php echo esc_attr( $session->tracking_code ); ?>'); this.textContent='Copied!';">Copy</button>
+                <button class="tf2-copy-btn" onclick="navigator.clipboard.writeText('<?php echo esc_attr( $session->tracking_code ); ?>'); this.textContent='Copied!';">Copy</button>
             </div>
         </div>
-        <div class="tf-btn-group">
+        <div class="tf2-btn-group">
             <?php if ( $wa_link ) : ?>
-                <a href="<?php echo esc_url( $wa_link ); ?>" target="_blank" class="tf-btn tf-btn--whatsapp tf-btn--sm">WhatsApp</a>
+                <a href="<?php echo esc_url( $wa_link ); ?>" target="_blank" class="tf2-btn tf2-btn--whatsapp tf2-btn--sm">WhatsApp</a>
             <?php endif; ?>
-            <a href="<?php echo esc_url( $tracker_url ); ?>" target="_blank" class="tf-btn tf-btn--secondary tf-btn--sm">Client View</a>
+            <a href="<?php echo esc_url( $tracker_url ); ?>" target="_blank" class="tf2-btn tf2-btn--secondary tf2-btn--sm">Client View</a>
         </div>
     </div>
 
     <!-- Pipeline Progress -->
-    <div class="tf-card tf-mb-6">
+    <div class="tf2-card tf2-mb-6">
         <h2>Pipeline</h2>
-        <div class="tf-pipeline">
+        <div class="tf2-pipeline">
             <?php
             $current_idx = (int) $session->current_stage_index;
             foreach ( $stage_keys as $idx => $key ) :
@@ -62,30 +62,30 @@
                     );
                     $icon_char = $icon_map[ $stage_info['icon'] ?? '' ] ?? '';
                 ?>
-                <div class="tf-pipeline__step">
-                    <div class="tf-pipeline__node">
-                        <div class="tf-pipeline__dot tf-pipeline__dot--<?php echo $dot_class; ?>">
+                <div class="tf2-pipeline__step">
+                    <div class="tf2-pipeline__node">
+                        <div class="tf2-pipeline__dot tf2-pipeline__dot--<?php echo $dot_class; ?>">
                             <?php if ( $is_completed ) : ?>&#10003;<?php elseif ( $icon_char ) : echo $icon_char; endif; ?>
                         </div>
-                        <div class="tf-pipeline__name"><?php echo esc_html( $stage_info['label'] ); ?></div>
+                        <div class="tf2-pipeline__name"><?php echo esc_html( $stage_info['label'] ); ?></div>
                     </div>
                     <?php if ( $idx < count( $stage_keys ) - 1 ) : ?>
-                        <div class="tf-pipeline__line tf-pipeline__line--<?php echo $line_class; ?>"></div>
+                        <div class="tf2-pipeline__line tf2-pipeline__line--<?php echo $line_class; ?>"></div>
                     <?php endif; ?>
                 </div>
             <?php endforeach; ?>
         </div>
 
         <!-- Stage Controls -->
-        <div class="tf-pipeline-controls">
-            <div class="tf-pipeline-controls__title">Stage Controls</div>
-            <div class="tf-pipeline-controls__actions">
+        <div class="tf2-pipeline-controls">
+            <div class="tf2-pipeline-controls__title">Stage Controls</div>
+            <div class="tf2-pipeline-controls__actions">
                 <!-- Advance to Next -->
                 <?php if ( $current_idx < count( $stage_keys ) - 1 ) :
                     $next_stage = $stages[ $stage_keys[ $current_idx + 1 ] ]['label'];
                 ?>
-                    <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-session&action=advance&session_id=' . $session->id ), 'tweller_flow_advance_' . $session->id ); ?>"
-                       class="tf-btn tf-btn--primary"
+                    <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-session&action=advance&session_id=' . $session->id ), 'tweller_flow_2_advance_' . $session->id ); ?>"
+                       class="tf2-btn tf2-btn--primary"
                        style="background:#3B82F6; color:#FFFFFF; border-color:#3B82F6;"
                        onclick="return confirm('Advance to <?php echo esc_attr( $next_stage ); ?>?');">
                         Advance to <?php echo esc_html( $next_stage ); ?> &rarr;
@@ -93,8 +93,8 @@
                 <?php endif; ?>
 
                 <?php if ( in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) : ?>
-                    <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-session&action=send_delivery&session_id=' . $session->id ), 'tweller_flow_deliver_' . $session->id ); ?>"
-                       class="tf-btn tf-btn--primary"
+                    <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-session&action=send_delivery&session_id=' . $session->id ), 'tweller_flow_2_deliver_' . $session->id ); ?>"
+                       class="tf2-btn tf2-btn--primary"
                        style="background:#10B981; color:#FFFFFF; border-color:#10B981;"
                        onclick="return confirm('Send gallery delivery email to <?php echo esc_attr( $session->client_name ); ?> (<?php echo esc_attr( $session->client_email ); ?>)?');">
                         &#9993; Send Delivery Email
@@ -103,27 +103,27 @@
 
                 <!-- Jump to Specific Stage -->
                 <form method="post" style="display:inline-flex; gap:6px; align-items:center;">
-                    <?php wp_nonce_field( 'tweller_flow_set_stage' ); ?>
-                    <input type="hidden" name="tweller_flow_set_stage" value="1">
+                    <?php wp_nonce_field( 'tweller_flow_2_set_stage' ); ?>
+                    <input type="hidden" name="tweller_flow_2_set_stage" value="1">
                     <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
-                    <select name="stage" class="tf-filters__select" style="font-size:13px; padding:7px 32px 7px 10px;">
+                    <select name="stage" class="tf2-filters__select" style="font-size:13px; padding:7px 32px 7px 10px;">
                         <?php foreach ( $stage_keys as $key ) : ?>
                             <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $session->current_stage, $key ); ?>><?php echo esc_html( $stages[ $key ]['label'] ); ?></option>
                         <?php endforeach; ?>
                     </select>
                     <input type="text" name="stage_notes" placeholder="Note (optional)" style="padding:7px 10px; font-size:13px; border:1px solid #D1D5DB; border-radius:6px; width:160px; font-family:inherit;">
-                    <button type="submit" class="tf-btn tf-btn--secondary tf-btn--sm">Set Stage</button>
+                    <button type="submit" class="tf2-btn tf2-btn--secondary tf2-btn--sm">Set Stage</button>
                 </form>
             </div>
         </div>
     </div>
 
-    <div class="tf-grid tf-grid--sidebar">
+    <div class="tf2-grid tf2-grid--sidebar">
         <!-- Left Column -->
         <div>
             <?php $receipt = get_option( 'tf_receipt_' . $session->id ); ?>
             <?php if ( $receipt || $session->payment_status === 'verifying' ) : ?>
-                <div class="tf-card tf-mb-6" style="border:1px solid #C7D2FE; background:#EEF2FF;">
+                <div class="tf2-card tf2-mb-6" style="border:1px solid #C7D2FE; background:#EEF2FF;">
                     <h2 style="color:#4F46E5; margin-top:0;">Receipt Verification</h2>
                     <?php if ( $receipt ) : ?>
                         <div style="background:#FFF; padding:12px; border-radius:6px; margin-bottom:12px; display:flex; gap:20px;">
@@ -144,17 +144,17 @@
                             </div>
                         </div>
                         
-                        <div id="tf-receipt-preview" style="display:none; margin-bottom:12px; text-align:center;">
+                        <div id="tf2-receipt-preview" style="display:none; margin-bottom:12px; text-align:center;">
                             <img src="<?php echo esc_url($receipt['url']); ?>" style="max-width:100%; border-radius:6px; box-shadow:0 2px 4px rgba(0,0,0,0.1);" />
                         </div>
                         
-                        <button type="button" class="tf-btn tf-btn--secondary tf-btn--sm" onclick="document.getElementById('tf-receipt-preview').style.display = document.getElementById('tf-receipt-preview').style.display === 'none' ? 'block' : 'none';">Toggle Receipt Image</button>
+                        <button type="button" class="tf2-btn tf2-btn--secondary tf2-btn--sm" onclick="document.getElementById('tf2-receipt-preview').style.display = document.getElementById('tf2-receipt-preview').style.display === 'none' ? 'block' : 'none';">Toggle Receipt Image</button>
                         
                         <hr style="border:none; border-top:1px solid #C7D2FE; margin:16px 0;">
                         
                         <form method="post" style="display:flex; gap:10px; align-items:center;">
-                            <?php wp_nonce_field( 'tweller_flow_verify_receipt' ); ?>
-                            <input type="hidden" name="tweller_flow_verify_receipt" value="1">
+                            <?php wp_nonce_field( 'tweller_flow_2_verify_receipt' ); ?>
+                            <input type="hidden" name="tweller_flow_2_verify_receipt" value="1">
                             <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
                             
                             <select name="verify_action" style="padding:8px; border-radius:6px; font-size:13px; border:1px solid #D1D5DB; background:#FFF; color:#374151;">
@@ -167,7 +167,7 @@
                                 <input type="number" step="0.01" name="amount_paid" value="<?php echo esc_attr( $ocr_num ); ?>" style="padding:8px 8px 8px 36px; width:90px; border-radius:6px; font-size:13px; border:1px solid #D1D5DB; background:#FFF; color:#374151;" title="Edit the confirmed amount" required>
                             </div>
                             
-                            <button type="submit" class="tf-btn tf-btn--primary">Process Verification</button>
+                            <button type="submit" class="tf2-btn tf2-btn--primary">Process Verification</button>
                         </form>
                     <?php else: ?>
                         <p style="color:#6B7280; font-size:13px;">Payment is verifying but no receipt was found. Client may have bypassed standard upload or an error occurred.</p>
@@ -176,54 +176,54 @@
             <?php endif; ?>
 
             <!-- Client Details (Editable) -->
-            <div class="tf-card tf-mb-6">
-                <div class="tf-tabs" id="detail-tabs">
-                    <button class="tf-tab tf-tab--active" data-tab="info">Details</button>
-                    <button class="tf-tab" data-tab="edit">Edit</button>
-                    <button class="tf-tab" data-tab="notify">Notify</button>
+            <div class="tf2-card tf2-mb-6">
+                <div class="tf2-tabs" id="detail-tabs">
+                    <button class="tf2-tab tf2-tab--active" data-tab="info">Details</button>
+                    <button class="tf2-tab" data-tab="edit">Edit</button>
+                    <button class="tf2-tab" data-tab="notify">Notify</button>
                 </div>
 
                 <!-- Info Tab -->
-                <div class="tf-tab-content tf-tab-content--active" id="tab-info">
-                    <div class="tf-client-info">
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Name</span>
-                            <span class="tf-client-info__value"><?php echo esc_html( $session->client_name ); ?></span>
+                <div class="tf2-tab-content tf2-tab-content--active" id="tab-info">
+                    <div class="tf2-client-info">
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Name</span>
+                            <span class="tf2-client-info__value"><?php echo esc_html( $session->client_name ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Email</span>
-                            <span class="tf-client-info__value"><?php echo esc_html( $session->client_email ?: '—' ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Email</span>
+                            <span class="tf2-client-info__value"><?php echo esc_html( $session->client_email ?: '—' ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Phone</span>
-                            <span class="tf-client-info__value"><?php echo esc_html( $session->client_phone ?: '—' ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Phone</span>
+                            <span class="tf2-client-info__value"><?php echo esc_html( $session->client_phone ?: '—' ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Package</span>
-                            <span class="tf-client-info__value"><?php
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Package</span>
+                            <span class="tf2-client-info__value"><?php
                                 $pkg = $packages[ $session->package_type ] ?? array();
                                 echo esc_html( $pkg['name'] ?? ucfirst( $session->package_type ) );
                             ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Session Date</span>
-                            <span class="tf-client-info__value"><?php echo $session->session_date ? date( 'F j, Y', strtotime( $session->session_date ) ) : '—'; ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Session Date</span>
+                            <span class="tf2-client-info__value"><?php echo $session->session_date ? date( 'F j, Y', strtotime( $session->session_date ) ) : '—'; ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Session Time</span>
-                            <span class="tf-client-info__value"><?php echo $session->session_time ? date( 'g:i A', strtotime( $session->session_time ) ) : '—'; ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Session Time</span>
+                            <span class="tf2-client-info__value"><?php echo $session->session_time ? date( 'g:i A', strtotime( $session->session_time ) ) : '—'; ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Location</span>
-                            <span class="tf-client-info__value"><?php echo esc_html( $session->location ?: '—' ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Location</span>
+                            <span class="tf2-client-info__value"><?php echo esc_html( $session->location ?: '—' ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Members</span>
-                            <span class="tf-client-info__value"><?php echo $session->members_count; ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Members</span>
+                            <span class="tf2-client-info__value"><?php echo $session->members_count; ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Payment</span>
-                            <span class="tf-client-info__value">
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Payment</span>
+                            <span class="tf2-client-info__value">
                                 <?php 
                                     $disp_status = $session->payment_status;
                                     $disp_text = ucfirst($session->payment_status);
@@ -235,108 +235,108 @@
                                         $disp_status = 'paid';
                                     }
                                 ?>
-                                <span class="tf-badge tf-badge--<?php echo esc_attr( $disp_status ); ?>"><?php echo esc_html( $disp_text ); ?></span>
+                                <span class="tf2-badge tf2-badge--<?php echo esc_attr( $disp_status ); ?>"><?php echo esc_html( $disp_text ); ?></span>
                             </span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Total</span>
-                            <span class="tf-client-info__value">$<?php echo number_format( $session->total_amount, 2 ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Total</span>
+                            <span class="tf2-client-info__value">$<?php echo number_format( $session->total_amount, 2 ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Amount Paid</span>
-                            <span class="tf-client-info__value">$<?php echo number_format( $session->deposit_amount, 2 ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Amount Paid</span>
+                            <span class="tf2-client-info__value">$<?php echo number_format( $session->deposit_amount, 2 ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Balance</span>
-                            <span class="tf-client-info__value" style="color:#DC2626; font-weight:600;">$<?php echo number_format( max(0, $session->total_amount - $session->deposit_amount), 2 ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Balance</span>
+                            <span class="tf2-client-info__value" style="color:#DC2626; font-weight:600;">$<?php echo number_format( max(0, $session->total_amount - $session->deposit_amount), 2 ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Est. Delivery</span>
-                            <span class="tf-client-info__value"><?php echo $session->estimated_delivery ? date( 'F j, Y', strtotime( $session->estimated_delivery ) ) : '—'; ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Est. Delivery</span>
+                            <span class="tf2-client-info__value"><?php echo $session->estimated_delivery ? date( 'F j, Y', strtotime( $session->estimated_delivery ) ) : '—'; ?></span>
                         </div>
                         <?php if ( $session->gallery_url ) : ?>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Gallery URL</span>
-                            <span class="tf-client-info__value"><a href="<?php echo esc_url( $session->gallery_url ); ?>" target="_blank"><?php echo esc_html( $session->gallery_url ); ?></a></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Gallery URL</span>
+                            <span class="tf2-client-info__value"><a href="<?php echo esc_url( $session->gallery_url ); ?>" target="_blank"><?php echo esc_html( $session->gallery_url ); ?></a></span>
                         </div>
                         <?php endif; ?>
                     </div>
                     <?php if ( $session->notes ) : ?>
-                        <hr class="tf-separator">
-                        <div class="tf-section-title">Notes</div>
+                        <hr class="tf2-separator">
+                        <div class="tf2-section-title">Notes</div>
                         <p style="font-size:14px; color:#374151; white-space:pre-wrap;"><?php echo esc_html( $session->notes ); ?></p>
                     <?php endif; ?>
                 </div>
 
                 <!-- Edit Tab -->
-                <div class="tf-tab-content" id="tab-edit">
-                    <form method="post" class="tf-form">
-                        <?php wp_nonce_field( 'tweller_flow_update_session' ); ?>
-                        <input type="hidden" name="tweller_flow_update_session" value="1">
+                <div class="tf2-tab-content" id="tab-edit">
+                    <form method="post" class="tf2-form">
+                        <?php wp_nonce_field( 'tweller_flow_2_update_session' ); ?>
+                        <input type="hidden" name="tweller_flow_2_update_session" value="1">
                         <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
 
-                        <div class="tf-row">
-                            <div class="tf-field">
-                                <label class="tf-field__label">Client Name</label>
+                        <div class="tf2-row">
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Client Name</label>
                                 <input type="text" name="client_name" value="<?php echo esc_attr( $session->client_name ); ?>" required>
                             </div>
-                            <div class="tf-field">
-                                <label class="tf-field__label">Email</label>
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Email</label>
                                 <input type="email" name="client_email" value="<?php echo esc_attr( $session->client_email ); ?>">
                             </div>
                         </div>
-                        <div class="tf-row">
-                            <div class="tf-field">
-                                <label class="tf-field__label">Phone</label>
+                        <div class="tf2-row">
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Phone</label>
                                 <input type="tel" name="client_phone" value="<?php echo esc_attr( $session->client_phone ); ?>">
                             </div>
-                            <div class="tf-field">
-                                <label class="tf-field__label">Members</label>
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Members</label>
                                 <input type="number" name="members_count" value="<?php echo $session->members_count; ?>" min="1">
                             </div>
                         </div>
-                        <div class="tf-row--3">
-                            <div class="tf-field">
-                                <label class="tf-field__label">Package</label>
+                        <div class="tf2-row--3">
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Package</label>
                                 <select name="package_type">
                                     <?php foreach ( $packages as $key => $pkg ) : ?>
                                         <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $session->package_type, $key ); ?>><?php echo esc_html( $pkg['name'] ); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="tf-field">
-                                <label class="tf-field__label">Session Date</label>
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Session Date</label>
                                 <input type="date" name="session_date" value="<?php echo esc_attr( $session->session_date ); ?>">
                             </div>
-                            <div class="tf-field">
-                                <label class="tf-field__label">Session Time</label>
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Session Time</label>
                                 <input type="time" name="session_time" value="<?php echo esc_attr( $session->session_time ); ?>">
                             </div>
                         </div>
-                        <div class="tf-field">
-                            <label class="tf-field__label">Location</label>
+                        <div class="tf2-field">
+                            <label class="tf2-field__label">Location</label>
                             <input type="text" name="location" value="<?php echo esc_attr( $session->location ); ?>">
                         </div>
-                        <div class="tf-row--3">
-                            <div class="tf-field">
-                                <label class="tf-field__label">Payment Status</label>
+                        <div class="tf2-row--3">
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Payment Status</label>
                                 <select name="payment_status">
                                     <option value="pending" <?php selected( $session->payment_status, 'pending' ); ?>>Pending</option>
                                     <option value="deposit" <?php selected( $session->payment_status, 'deposit' ); ?>>Deposit Paid</option>
                                     <option value="paid" <?php selected( $session->payment_status, 'paid' ); ?>>Fully Paid</option>
                                 </select>
                             </div>
-                            <div class="tf-field">
-                                <label class="tf-field__label">Deposit</label>
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Deposit</label>
                                 <input type="number" name="deposit_amount" value="<?php echo $session->deposit_amount; ?>" step="0.01">
                             </div>
-                            <div class="tf-field">
-                                <label class="tf-field__label">Total</label>
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Total</label>
                                 <input type="number" name="total_amount" value="<?php echo $session->total_amount; ?>" step="0.01">
                             </div>
                         </div>
-                        <div class="tf-field">
-                            <label class="tf-field__label">Payment Method</label>
+                        <div class="tf2-field">
+                            <label class="tf2-field__label">Payment Method</label>
                             <select name="payment_method">
                                 <option value="" <?php selected( $session->payment_method, '' ); ?>>Not specified</option>
                                 <option value="cash" <?php selected( $session->payment_method, 'cash' ); ?>>Cash</option>
@@ -345,70 +345,70 @@
                                 <option value="other" <?php selected( $session->payment_method, 'other' ); ?>>Other</option>
                             </select>
                         </div>
-                        <div class="tf-row">
-                            <div class="tf-field">
-                                <label class="tf-field__label">Gallery URL</label>
+                        <div class="tf2-row">
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Gallery URL</label>
                                 <input type="url" name="gallery_url" value="<?php echo esc_attr( $session->gallery_url ); ?>" placeholder="https://...">
                             </div>
-                            <div class="tf-field">
-                                <label class="tf-field__label">Est. Delivery</label>
+                            <div class="tf2-field">
+                                <label class="tf2-field__label">Est. Delivery</label>
                                 <input type="date" name="estimated_delivery" value="<?php echo esc_attr( $session->estimated_delivery ); ?>">
                             </div>
                         </div>
-                        <div class="tf-field">
-                            <label class="tf-field__label">Notes</label>
+                        <div class="tf2-field">
+                            <label class="tf2-field__label">Notes</label>
                             <textarea name="notes"><?php echo esc_textarea( $session->notes ); ?></textarea>
                         </div>
 
-                        <hr class="tf-separator">
-                        <div class="tf-section-title">Client Culling</div>
-                        <?php $culling_enabled = TwellerFlow_Culling::is_culling_enabled( $session->id ); ?>
-                        <div class="tf-field">
+                        <hr class="tf2-separator">
+                        <div class="tf2-section-title">Client Culling</div>
+                        <?php $culling_enabled = TwellerFlow2_Culling::is_culling_enabled( $session->id ); ?>
+                        <div class="tf2-field">
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
                                 <input type="checkbox" name="culling_enabled" value="1" <?php checked( $culling_enabled ); ?> style="width:18px; height:18px; accent-color:#6366F1;">
                                 <span><strong>Enable Client Photo Selection</strong></span>
                             </label>
                         </div>
-                        <div class="tf-field">
-                            <label class="tf-field__label">Culling Portal Password</label>
+                        <div class="tf2-field">
+                            <label class="tf2-field__label">Culling Portal Password</label>
                             <input type="text" name="culling_password" placeholder="Leave blank to keep current">
                         </div>
 
-                        <button type="submit" class="tf-btn tf-btn--primary">Save Changes</button>
+                        <button type="submit" class="tf2-btn tf2-btn--primary">Save Changes</button>
                     </form>
                 </div>
 
                 <!-- Notify Tab -->
-                <div class="tf-tab-content" id="tab-notify">
-                    <form method="post" class="tf-form">
-                        <?php wp_nonce_field( 'tweller_flow_send_notification' ); ?>
-                        <input type="hidden" name="tweller_flow_send_notification" value="1">
+                <div class="tf2-tab-content" id="tab-notify">
+                    <form method="post" class="tf2-form">
+                        <?php wp_nonce_field( 'tweller_flow_2_send_notification' ); ?>
+                        <input type="hidden" name="tweller_flow_2_send_notification" value="1">
                         <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
-                        <div class="tf-field">
-                            <label class="tf-field__label">To</label>
+                        <div class="tf2-field">
+                            <label class="tf2-field__label">To</label>
                             <input type="text" value="<?php echo esc_attr( $session->client_email ); ?>" disabled style="background:#F9FAFB;">
                         </div>
-                        <div class="tf-field">
-                            <label class="tf-field__label">Subject</label>
+                        <div class="tf2-field">
+                            <label class="tf2-field__label">Subject</label>
                             <input type="text" name="notif_subject" value="Update on your photo session — Tweller Studios">
                         </div>
-                        <div class="tf-field">
-                            <label class="tf-field__label">Message</label>
+                        <div class="tf2-field">
+                            <label class="tf2-field__label">Message</label>
                             <textarea name="notif_body" rows="6"><p>Hi <?php echo esc_html( $session->client_name ); ?>,</p>
 <p>Here's an update on your photo session.</p>
 <p>Track your progress: <a href="<?php echo esc_url( $tracker_url ); ?>">View Tracker</a></p></textarea>
                         </div>
-                        <button type="submit" class="tf-btn tf-btn--primary" <?php echo empty( $session->client_email ) ? 'disabled title="No email address"' : ''; ?>>Send Email</button>
+                        <button type="submit" class="tf2-btn tf2-btn--primary" <?php echo empty( $session->client_email ) ? 'disabled title="No email address"' : ''; ?>>Send Email</button>
                     </form>
 
                     <?php if ( ! empty( $notifications ) ) : ?>
-                        <hr class="tf-separator">
-                        <div class="tf-section-title">Sent Notifications</div>
+                        <hr class="tf2-separator">
+                        <div class="tf2-section-title">Sent Notifications</div>
                         <?php foreach ( array_slice( $notifications, 0, 5 ) as $n ) : ?>
                             <div style="padding:8px 0; border-bottom:1px solid #F3F4F6; font-size:13px;">
-                                <span class="tf-notif-status--<?php echo esc_attr( $n->status ); ?>"><?php echo ucfirst( $n->status ); ?></span>
+                                <span class="tf2-notif-status--<?php echo esc_attr( $n->status ); ?>"><?php echo ucfirst( $n->status ); ?></span>
                                 <?php echo esc_html( $n->subject ); ?>
-                                <span class="tf-muted"> — <?php echo wp_date( 'M j, g:i A', strtotime( get_gmt_from_date( $n->sent_at ) ) ); ?></span>
+                                <span class="tf2-muted"> — <?php echo wp_date( 'M j, g:i A', strtotime( get_gmt_from_date( $n->sent_at ) ) ); ?></span>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -419,24 +419,24 @@
         <!-- Right Column -->
         <div>
             <!-- Stage History -->
-            <div class="tf-card tf-mb-6">
+            <div class="tf2-card tf2-mb-6">
                 <h2>History</h2>
                 <?php if ( empty( $history ) ) : ?>
-                    <p class="tf-muted" style="font-size:13px;">No history yet.</p>
+                    <p class="tf2-muted" style="font-size:13px;">No history yet.</p>
                 <?php else : ?>
-                    <div class="tf-timeline">
+                    <div class="tf2-timeline">
                         <?php foreach ( array_reverse( $history ) as $entry ) :
                             $stage_label = $stages[ $entry->stage ]['label'] ?? $entry->stage;
                             if ( strpos( $entry->notes, 'receipt' ) !== false && $entry->stage === 'booked' ) {
                                 $stage_label .= ' - Receipt Uploaded';
                             }
                         ?>
-                            <div class="tf-timeline__item">
-                                <div class="tf-timeline__dot"></div>
-                                <div class="tf-timeline__stage"><?php echo esc_html( $stage_label ); ?></div>
-                                <div class="tf-timeline__time"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $entry->timestamp ) ) ); ?></div>
+                            <div class="tf2-timeline__item">
+                                <div class="tf2-timeline__dot"></div>
+                                <div class="tf2-timeline__stage"><?php echo esc_html( $stage_label ); ?></div>
+                                <div class="tf2-timeline__time"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $entry->timestamp ) ) ); ?></div>
                                 <?php if ( $entry->notes ) : ?>
-                                    <div class="tf-timeline__notes"><?php echo esc_html( $entry->notes ); ?></div>
+                                    <div class="tf2-timeline__notes"><?php echo esc_html( $entry->notes ); ?></div>
                                 <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
@@ -445,51 +445,51 @@
             </div>
 
             <!-- Culling Status -->
-            <?php $culling = TwellerFlow_Culling::get_summary( $session->id ); ?>
+            <?php $culling = TwellerFlow2_Culling::get_summary( $session->id ); ?>
             <?php if ( $culling['enabled'] ) : ?>
-            <div class="tf-card tf-mb-6">
+            <div class="tf2-card tf2-mb-6">
                 <h2>Client Culling</h2>
-                <div class="tf-client-info">
-                    <div class="tf-client-info__item">
-                        <span class="tf-client-info__label">Status</span>
-                        <span class="tf-client-info__value">
+                <div class="tf2-client-info">
+                    <div class="tf2-client-info__item">
+                        <span class="tf2-client-info__label">Status</span>
+                        <span class="tf2-client-info__value">
                             <?php if ( $culling['submitted'] ) : ?>
-                                <span class="tf-badge tf-badge--paid" style="background:#D1FAE5; color:#065F46;">Selections Received</span>
+                                <span class="tf2-badge tf2-badge--paid" style="background:#D1FAE5; color:#065F46;">Selections Received</span>
                             <?php elseif ( $culling['ready'] ) : ?>
-                                <span class="tf-badge" style="background:#DBEAFE; color:#1E40AF;">Awaiting Client Selection</span>
+                                <span class="tf2-badge" style="background:#DBEAFE; color:#1E40AF;">Awaiting Client Selection</span>
                             <?php else : ?>
-                                <span class="tf-badge" style="background:#FEF3C7; color:#92400E;">Proofs Not Uploaded</span>
+                                <span class="tf2-badge" style="background:#FEF3C7; color:#92400E;">Proofs Not Uploaded</span>
                             <?php endif; ?>
                         </span>
                     </div>
-                    <div class="tf-client-info__item">
-                        <span class="tf-client-info__label">Proof Photos</span>
-                        <span class="tf-client-info__value"><?php echo $culling['proof_count']; ?></span>
+                    <div class="tf2-client-info__item">
+                        <span class="tf2-client-info__label">Proof Photos</span>
+                        <span class="tf2-client-info__value"><?php echo $culling['proof_count']; ?></span>
                     </div>
                     <?php if ( $culling['submitted'] ) : ?>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Selected</span>
-                            <span class="tf-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo $culling['selection_count']; ?> photos</span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Selected</span>
+                            <span class="tf2-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo $culling['selection_count']; ?> photos</span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Submitted At</span>
-                            <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $culling['submitted'] ) ) ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Submitted At</span>
+                            <span class="tf2-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $culling['submitted'] ) ) ); ?></span>
                         </div>
                         <?php if ( $culling['upsell'] ) : ?>
-                            <div class="tf-client-info__item">
-                                <span class="tf-client-info__label">Upsell</span>
-                                <span class="tf-client-info__value" style="color:#6366F1; font-weight:600;">
+                            <div class="tf2-client-info__item">
+                                <span class="tf2-client-info__label">Upsell</span>
+                                <span class="tf2-client-info__value" style="color:#6366F1; font-weight:600;">
                                     +<?php echo $culling['upsell']['tier'] ?: 'All'; ?> photos — $<?php echo $culling['upsell']['price']; ?>
                                 </span>
                             </div>
                         <?php endif; ?>
                     <?php endif; ?>
                     <?php
-                    $culling_url = TwellerFlow_Culling::get_culling_page_url( $session->tracking_code );
+                    $culling_url = TwellerFlow2_Culling::get_culling_page_url( $session->tracking_code );
                     ?>
-                    <div class="tf-client-info__item">
-                        <span class="tf-client-info__label">Portal Link</span>
-                        <span class="tf-client-info__value"><a href="<?php echo esc_url( $culling_url ); ?>" target="_blank">View Portal</a></span>
+                    <div class="tf2-client-info__item">
+                        <span class="tf2-client-info__label">Portal Link</span>
+                        <span class="tf2-client-info__value"><a href="<?php echo esc_url( $culling_url ); ?>" target="_blank">View Portal</a></span>
                     </div>
                 </div>
             </div>
@@ -497,19 +497,19 @@
 
             <!-- Proof Upload (Culling) -->
             <?php
-            $culling_summary = TwellerFlow_Culling::get_summary( $session->id );
+            $culling_summary = TwellerFlow2_Culling::get_summary( $session->id );
             $proof_count     = $culling_summary['proof_count'];
             $culling_ready   = $culling_summary['ready'];
             $culling_submitted = $culling_summary['submitted'];
             $culling_enabled = $culling_summary['enabled'];
-            $culling_rest    = rest_url( 'tweller-flow/v1/culling/' . $session->tracking_code );
+            $culling_rest    = rest_url( 'tweller-flow-2/v1/culling/' . $session->tracking_code );
             $culling_nonce   = wp_create_nonce( 'wp_rest' );
-            $packages_opts   = get_option( 'tweller_flow_packages', array() );
+            $packages_opts   = get_option( 'tweller_flow_2_packages', array() );
             $session_pkg     = $packages_opts[ $session->package_type ] ?? array();
             $pkg_included    = ( $session_pkg['images'] ?? 15 );
-            $price_per_photo = get_option( 'tweller_flow_culling_price_per_photo', 30 );
+            $price_per_photo = get_option( 'tweller_flow_2_culling_price_per_photo', 30 );
             ?>
-            <div class="tf-card tf-mb-6" id="tf-proof-manager">
+            <div class="tf2-card tf2-mb-6" id="tf2-proof-manager">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
                     <div>
                         <h2 style="margin:0 0 2px;">Proof Upload</h2>
@@ -526,10 +526,10 @@
                         </p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <label class="tf-toggle" title="Enable / disable photo selection for this session">
+                        <label class="tf2-toggle" title="Enable / disable photo selection for this session">
                             <input type="checkbox" id="pm-culling-toggle" <?php checked( $culling_enabled ); ?>>
-                            <span class="tf-toggle__switch"></span>
-                            <span class="tf-toggle__label" style="font-size:12px;">Culling On</span>
+                            <span class="tf2-toggle__switch"></span>
+                            <span class="tf2-toggle__label" style="font-size:12px;">Culling On</span>
                         </label>
                     </div>
                 </div>
@@ -545,8 +545,8 @@
                 <div id="pm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:6px; margin-bottom:14px; <?php echo $proof_count === 0 ? 'display:none;' : ''; ?>">
                     <?php
                     if ( $culling_enabled ) {
-                        $proofs    = TwellerFlow_Culling::get_proofs( $session->id );
-                        $proof_url = TwellerFlow_Culling::get_proof_url( $session->tracking_code );
+                        $proofs    = TwellerFlow2_Culling::get_proofs( $session->id );
+                        $proof_url = TwellerFlow2_Culling::get_proof_url( $session->tracking_code );
                         foreach ( $proofs as $proof ) : ?>
                             <div class="pm-proof" data-id="<?php echo $proof->id; ?>" style="position:relative; border-radius:6px; overflow:hidden; aspect-ratio:1; background:#F3F4F6; border:2px solid transparent; group;">
                                 <img src="<?php echo esc_url( $proof_url . '/thumbs/' . $proof->filename ); ?>" alt="<?php echo esc_attr( $proof->filename ); ?>" style="width:100%; height:100%; object-fit:cover;">
@@ -558,7 +558,7 @@
                 </div>
                 <div id="pm-count-label" style="font-size:12px; color:#6B7280; margin-bottom:10px; <?php echo $proof_count === 0 ? 'display:none;' : ''; ?>">
                     <span id="pm-count"><?php echo $proof_count; ?></span> proof<?php echo $proof_count !== 1 ? 's' : ''; ?> uploaded
-                    <button id="pm-edit-toggle" class="tf-btn tf-btn--secondary tf-btn--sm" style="margin-left:8px; font-size:11px;">Edit / Delete</button>
+                    <button id="pm-edit-toggle" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="margin-left:8px; font-size:11px;">Edit / Delete</button>
                 </div>
 
                 <!-- Drop zone -->
@@ -582,11 +582,11 @@
                 <?php if ( ! $culling_submitted ) : ?>
                 <div style="border-top:1px solid #F3F4F6; padding-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <input type="text" id="pm-password" placeholder="Set / change portal password (optional)" style="padding:7px 10px; font-size:12px; border:1px solid #D1D5DB; border-radius:6px; width:220px; font-family:inherit;">
-                    <button id="pm-mark-ready" class="tf-btn tf-btn--primary tf-btn--sm" style="background:#16A34A; border-color:#16A34A; font-size:12px;" <?php echo $proof_count === 0 ? 'disabled' : ''; ?>>
+                    <button id="pm-mark-ready" class="tf2-btn tf2-btn--primary tf2-btn--sm" style="background:#16A34A; border-color:#16A34A; font-size:12px;" <?php echo $proof_count === 0 ? 'disabled' : ''; ?>>
                         &#9993; <?php echo $culling_ready ? 'Re-send to Client' : 'Mark Ready &amp; Notify Client'; ?>
                     </button>
                     <?php if ( $culling_ready ) : ?>
-                        <a href="<?php echo esc_url( TwellerFlow_Culling::get_culling_page_url( $session->tracking_code ) ); ?>" target="_blank" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">View Portal</a>
+                        <a href="<?php echo esc_url( TwellerFlow2_Culling::get_culling_page_url( $session->tracking_code ) ); ?>" target="_blank" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:12px;">View Portal</a>
                     <?php endif; ?>
                 </div>
                 <?php elseif ( $culling_summary['upsell'] && $culling_summary['upsell']['extra_count'] > 0 ) : ?>
@@ -603,7 +603,7 @@
                 var CODE     = '<?php echo esc_js( $session->tracking_code ); ?>';
                 var REST     = '<?php echo esc_js( $culling_rest ); ?>';
                 var NONCE    = '<?php echo esc_js( $culling_nonce ); ?>';
-                var REST_BASE = '<?php echo esc_js( rest_url( 'tweller-flow/v1/' ) ); ?>';
+                var REST_BASE = '<?php echo esc_js( rest_url( 'tweller-flow-2/v1/' ) ); ?>';
 
                 // ── Toggle culling on/off ──────────────
                 var toggleEl = document.getElementById('pm-culling-toggle');
@@ -795,53 +795,53 @@
             </script>
 
             <!-- Client Activity -->
-            <?php $activity = TwellerFlow_Client_Activity::get_summary( $session->id ); ?>
-            <div class="tf-card tf-mb-6">
+            <?php $activity = TwellerFlow2_Client_Activity::get_summary( $session->id ); ?>
+            <div class="tf2-card tf2-mb-6">
                 <h2>Client Activity</h2>
                 <?php if ( $activity['first_viewed'] ) : ?>
-                    <div class="tf-client-info">
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">First Viewed</span>
-                            <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['first_viewed'] ) ) ); ?></span>
+                    <div class="tf2-client-info">
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">First Viewed</span>
+                            <span class="tf2-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['first_viewed'] ) ) ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Last Viewed</span>
-                            <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['last_viewed'] ) ) ); ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Last Viewed</span>
+                            <span class="tf2-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['last_viewed'] ) ) ); ?></span>
                         </div>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Total Views</span>
-                            <span class="tf-client-info__value"><?php echo $activity['total_views']; ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Total Views</span>
+                            <span class="tf2-client-info__value"><?php echo $activity['total_views']; ?></span>
                         </div>
                         <?php if ( $activity['first_downloaded'] ) : ?>
-                            <div class="tf-client-info__item">
-                                <span class="tf-client-info__label">First Download</span>
-                                <span class="tf-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['first_downloaded'] ) ) ); ?></span>
+                            <div class="tf2-client-info__item">
+                                <span class="tf2-client-info__label">First Download</span>
+                                <span class="tf2-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['first_downloaded'] ) ) ); ?></span>
                             </div>
-                            <div class="tf-client-info__item">
-                                <span class="tf-client-info__label">Last Download</span>
-                                <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['last_downloaded'] ) ) ); ?></span>
+                            <div class="tf2-client-info__item">
+                                <span class="tf2-client-info__label">Last Download</span>
+                                <span class="tf2-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['last_downloaded'] ) ) ); ?></span>
                             </div>
                         <?php endif; ?>
-                        <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Photos Downloaded</span>
-                            <span class="tf-client-info__value"><?php echo $activity['total_downloads']; ?> individual<?php if ( $activity['full_downloads'] ) echo ' + ' . $activity['full_downloads'] . ' full gallery'; ?></span>
+                        <div class="tf2-client-info__item">
+                            <span class="tf2-client-info__label">Photos Downloaded</span>
+                            <span class="tf2-client-info__value"><?php echo $activity['total_downloads']; ?> individual<?php if ( $activity['full_downloads'] ) echo ' + ' . $activity['full_downloads'] . ' full gallery'; ?></span>
                         </div>
                     </div>
                 <?php else : ?>
-                    <p class="tf-muted" style="font-size:13px;">Client has not viewed the gallery yet.</p>
+                    <p class="tf2-muted" style="font-size:13px;">Client has not viewed the gallery yet.</p>
                 <?php endif; ?>
             </div>
 
             <!-- Gallery Management -->
             <?php
-            $gallery_info = TwellerFlow_Gallery::get_gallery_info( $session->id, $session->tracking_code );
-            $gallery_url  = TwellerFlow_Gallery::get_gallery_url( $session->tracking_code );
+            $gallery_info = TwellerFlow2_Gallery::get_gallery_info( $session->id, $session->tracking_code );
+            $gallery_url  = TwellerFlow2_Gallery::get_gallery_url( $session->tracking_code );
             ?>
-            <div class="tf-card tf-mb-6" id="tf-gallery-manager">
+            <div class="tf2-card tf2-mb-6" id="tf2-gallery-manager">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                     <h2 style="margin:0;">Gallery (<span id="gm-count"><?php echo $gallery_info['photo_count']; ?></span> photos<?php echo $gallery_info['total_size_mb'] ? ' / ' . $gallery_info['total_size_mb'] . ' MB' : ''; ?>)</h2>
                     <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
-                        <button id="gm-edit-btn" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;" title="Edit gallery">&#9998; Edit</button>
+                        <button id="gm-edit-btn" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:12px;" title="Edit gallery">&#9998; Edit</button>
                     <?php endif; ?>
                 </div>
 
@@ -850,12 +850,12 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                         <div style="display:flex; gap:8px; align-items:center;">
                             <span id="gm-selected-count" style="font-size:12px; color:#92400E; font-weight:600;">0 selected</span>
-                            <button id="gm-select-all" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:11px;">Select All</button>
-                            <button id="gm-delete-selected" class="tf-btn tf-btn--sm" style="font-size:11px; background:#DC2626; color:#fff; border-color:#DC2626;" disabled>Delete Selected</button>
+                            <button id="gm-select-all" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">Select All</button>
+                            <button id="gm-delete-selected" class="tf2-btn tf2-btn--sm" style="font-size:11px; background:#DC2626; color:#fff; border-color:#DC2626;" disabled>Delete Selected</button>
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
-                            <button id="gm-save-order" class="tf-btn tf-btn--sm" style="font-size:11px; background:#6366F1; color:#fff; border-color:#6366F1; display:none;">Save Order</button>
-                            <button id="gm-done-btn" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:11px;">Done</button>
+                            <button id="gm-save-order" class="tf2-btn tf2-btn--sm" style="font-size:11px; background:#6366F1; color:#fff; border-color:#6366F1; display:none;">Save Order</button>
+                            <button id="gm-done-btn" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">Done</button>
                         </div>
                     </div>
                     <p style="margin:6px 0 0; font-size:11px; color:#92400E;">Click photos to select. Drag to reorder.</p>
@@ -891,7 +891,7 @@
                 <script>
                 (function($){
                     var SESSION_CODE = '<?php echo esc_js( $session->tracking_code ); ?>';
-                    var restBase = '<?php echo esc_js( rest_url( 'tweller-flow/v1/gallery/' . $session->tracking_code ) ); ?>';
+                    var restBase = '<?php echo esc_js( rest_url( 'tweller-flow-2/v1/gallery/' . $session->tracking_code ) ); ?>';
                     var restNonce = '<?php echo esc_js( wp_create_nonce( 'wp_rest' ) ); ?>';
 
                     // ── Upload ─────────────────────────────
@@ -927,13 +927,13 @@
                             $('#sd-progress-text').text('Uploading ' + (i+1) + ' of ' + total + ': ' + files[i].name);
 
                             var fd = new FormData();
-                            fd.append('action', 'tweller_flow_admin_upload');
-                            fd.append('nonce', twellerFlow.nonce);
+                            fd.append('action', 'tweller_flow_2_admin_upload');
+                            fd.append('nonce', twellerFlow2.nonce);
                             fd.append('session_code', SESSION_CODE);
                             fd.append('photos[]', files[i]);
 
                             $.ajax({
-                                url: twellerFlow.ajaxUrl, method: 'POST',
+                                url: twellerFlow2.ajaxUrl, method: 'POST',
                                 data: fd, processData: false, contentType: false,
                                 success: function(r){
                                     if (r.success) { saved = saved.concat(r.data.saved||[]); errors = errors.concat(r.data.errors||[]); }
@@ -1143,27 +1143,27 @@
                         <?php echo $gallery_info['has_password'] ? '&#128274; Password protected' : '&#128275; No password'; ?>
                     </span>
                     <form method="post" style="display:inline-flex; gap:6px; align-items:center; margin-left:auto;">
-                        <?php wp_nonce_field( 'tweller_flow_gallery_password' ); ?>
-                        <input type="hidden" name="tweller_flow_gallery_password" value="1">
+                        <?php wp_nonce_field( 'tweller_flow_2_gallery_password' ); ?>
+                        <input type="hidden" name="tweller_flow_2_gallery_password" value="1">
                         <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
                         <input type="text" name="gallery_pw" placeholder="Set or change password" style="padding:6px 10px; font-size:12px; border:1px solid #D1D5DB; border-radius:6px; width:140px; font-family:inherit;">
-                        <button type="submit" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">Set</button>
+                        <button type="submit" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:12px;">Set</button>
                     </form>
                 </div>
 
                 <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
                     <div style="margin-top:12px; padding-top:12px; border-top:1px solid #F3F4F6;">
-                        <a href="<?php echo esc_url( $tracker_url . '#gallery' ); ?>" target="_blank" class="tf-btn tf-btn--secondary tf-btn--sm" style="font-size:12px;">View Client Gallery</a>
+                        <a href="<?php echo esc_url( $tracker_url . '#gallery' ); ?>" target="_blank" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:12px;">View Client Gallery</a>
                     </div>
                 <?php endif; ?>
             </div>
 
             <!-- Danger Zone -->
-            <div class="tf-card tf-card--danger">
+            <div class="tf2-card tf2-card--danger">
                 <h2>Danger Zone</h2>
                 <p style="font-size:13px; color:#6B7280; margin-bottom:12px;">Permanently delete this session and all its data.</p>
-                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-sessions&action=delete&session_id=' . $session->id ), 'tweller_flow_delete_' . $session->id ); ?>"
-                   class="tf-btn tf-btn--danger tf-btn--sm"
+                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-sessions&action=delete&session_id=' . $session->id ), 'tweller_flow_2_delete_' . $session->id ); ?>"
+                   class="tf2-btn tf2-btn--danger tf2-btn--sm"
                    onclick="return confirm('Are you sure you want to delete this session? This cannot be undone.');">
                     Delete Session
                 </a>

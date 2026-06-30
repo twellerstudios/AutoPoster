@@ -11,6 +11,8 @@
         <div class="tf-alert tf-alert--success">Stage updated.</div>
     <?php elseif ( isset( $_GET['notified'] ) ) : ?>
         <div class="tf-alert tf-alert--success">Notification sent.</div>
+    <?php elseif ( isset( $_GET['receipt_processed'] ) ) : ?>
+        <div class="tf-alert tf-alert--success">Receipt processed successfully.</div>
     <?php endif; ?>
 
     <!-- Header -->
@@ -119,6 +121,60 @@
     <div class="tf-grid tf-grid--sidebar">
         <!-- Left Column -->
         <div>
+            <?php $receipt = get_option( 'tf_receipt_' . $session->id ); ?>
+            <?php if ( $receipt || $session->payment_status === 'verifying' ) : ?>
+                <div class="tf-card tf-mb-6" style="border:1px solid #C7D2FE; background:#EEF2FF;">
+                    <h2 style="color:#4F46E5; margin-top:0;">Receipt Verification</h2>
+                    <?php if ( $receipt ) : ?>
+                        <div style="background:#FFF; padding:12px; border-radius:6px; margin-bottom:12px; display:flex; gap:20px;">
+                            <div>
+                                <strong style="display:block; font-size:12px; color:#6B7280; text-transform:uppercase;">Bank Used</strong>
+                                <span style="font-size:16px; font-weight:600; color:#374151;"><?php echo esc_html($receipt['bank'] ?? 'Unknown'); ?></span>
+                            </div>
+                            <?php if ( ! empty($receipt['ref']) ) : ?>
+                            <div>
+                                <strong style="display:block; font-size:12px; color:#6B7280; text-transform:uppercase;">Reference / Trx ID</strong>
+                                <span style="font-size:16px; font-weight:600; color:#374151;"><?php echo esc_html($receipt['ref']); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <div>
+                                <strong style="display:block; font-size:12px; color:#6B7280; text-transform:uppercase;">AI Detected Amount</strong>
+                                <span style="font-size:16px; font-weight:700; color:#10B981;"><?php echo esc_html($receipt['ocr'] ?: 'None detected'); ?></span>
+                                <?php $ocr_num = preg_replace('/[^0-9.]/', '', $receipt['ocr']); ?>
+                            </div>
+                        </div>
+                        
+                        <div id="tf-receipt-preview" style="display:none; margin-bottom:12px; text-align:center;">
+                            <img src="<?php echo esc_url($receipt['url']); ?>" style="max-width:100%; border-radius:6px; box-shadow:0 2px 4px rgba(0,0,0,0.1);" />
+                        </div>
+                        
+                        <button type="button" class="tf-btn tf-btn--secondary tf-btn--sm" onclick="document.getElementById('tf-receipt-preview').style.display = document.getElementById('tf-receipt-preview').style.display === 'none' ? 'block' : 'none';">Toggle Receipt Image</button>
+                        
+                        <hr style="border:none; border-top:1px solid #C7D2FE; margin:16px 0;">
+                        
+                        <form method="post" style="display:flex; gap:10px; align-items:center;">
+                            <?php wp_nonce_field( 'tweller_flow_verify_receipt' ); ?>
+                            <input type="hidden" name="tweller_flow_verify_receipt" value="1">
+                            <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
+                            
+                            <select name="verify_action" style="padding:8px; border-radius:6px; font-size:13px; border:1px solid #D1D5DB; background:#FFF; color:#374151;">
+                                <option value="approve">Approve Receipt</option>
+                                <option value="reject">Reject Receipt (Resets to Pending)</option>
+                            </select>
+                            
+                            <div style="position:relative;">
+                                <span style="position:absolute; left:8px; top:8px; color:#6B7280; font-size:13px;">TTD</span>
+                                <input type="number" step="0.01" name="amount_paid" value="<?php echo esc_attr( $ocr_num ); ?>" style="padding:8px 8px 8px 36px; width:90px; border-radius:6px; font-size:13px; border:1px solid #D1D5DB; background:#FFF; color:#374151;" title="Edit the confirmed amount" required>
+                            </div>
+                            
+                            <button type="submit" class="tf-btn tf-btn--primary">Process Verification</button>
+                        </form>
+                    <?php else: ?>
+                        <p style="color:#6B7280; font-size:13px;">Payment is verifying but no receipt was found. Client may have bypassed standard upload or an error occurred.</p>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
             <!-- Client Details (Editable) -->
             <div class="tf-card tf-mb-6">
                 <div class="tf-tabs" id="detail-tabs">
@@ -168,7 +224,18 @@
                         <div class="tf-client-info__item">
                             <span class="tf-client-info__label">Payment</span>
                             <span class="tf-client-info__value">
-                                <span class="tf-badge tf-badge--<?php echo esc_attr( $session->payment_status ); ?>"><?php echo ucfirst( $session->payment_status ); ?></span>
+                                <?php 
+                                    $disp_status = $session->payment_status;
+                                    $disp_text = ucfirst($session->payment_status);
+                                    if ($session->deposit_amount > 0 && $session->deposit_amount < $session->total_amount) {
+                                        $disp_text = 'Partially Paid';
+                                        $disp_status = 'deposit';
+                                    } elseif ($session->deposit_amount >= $session->total_amount && $session->total_amount > 0) {
+                                        $disp_text = 'Fully Paid';
+                                        $disp_status = 'paid';
+                                    }
+                                ?>
+                                <span class="tf-badge tf-badge--<?php echo esc_attr( $disp_status ); ?>"><?php echo esc_html( $disp_text ); ?></span>
                             </span>
                         </div>
                         <div class="tf-client-info__item">
@@ -176,8 +243,12 @@
                             <span class="tf-client-info__value">$<?php echo number_format( $session->total_amount, 2 ); ?></span>
                         </div>
                         <div class="tf-client-info__item">
-                            <span class="tf-client-info__label">Deposit</span>
+                            <span class="tf-client-info__label">Amount Paid</span>
                             <span class="tf-client-info__value">$<?php echo number_format( $session->deposit_amount, 2 ); ?></span>
+                        </div>
+                        <div class="tf-client-info__item">
+                            <span class="tf-client-info__label">Balance</span>
+                            <span class="tf-client-info__value" style="color:#DC2626; font-weight:600;">$<?php echo number_format( max(0, $session->total_amount - $session->deposit_amount), 2 ); ?></span>
                         </div>
                         <div class="tf-client-info__item">
                             <span class="tf-client-info__label">Est. Delivery</span>
@@ -337,7 +408,7 @@
                             <div style="padding:8px 0; border-bottom:1px solid #F3F4F6; font-size:13px;">
                                 <span class="tf-notif-status--<?php echo esc_attr( $n->status ); ?>"><?php echo ucfirst( $n->status ); ?></span>
                                 <?php echo esc_html( $n->subject ); ?>
-                                <span class="tf-muted"> — <?php echo date( 'M j, g:i A', strtotime( $n->sent_at ) ); ?></span>
+                                <span class="tf-muted"> — <?php echo wp_date( 'M j, g:i A', strtotime( get_gmt_from_date( $n->sent_at ) ) ); ?></span>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -356,11 +427,14 @@
                     <div class="tf-timeline">
                         <?php foreach ( array_reverse( $history ) as $entry ) :
                             $stage_label = $stages[ $entry->stage ]['label'] ?? $entry->stage;
+                            if ( strpos( $entry->notes, 'receipt' ) !== false && $entry->stage === 'booked' ) {
+                                $stage_label .= ' - Receipt Uploaded';
+                            }
                         ?>
                             <div class="tf-timeline__item">
                                 <div class="tf-timeline__dot"></div>
                                 <div class="tf-timeline__stage"><?php echo esc_html( $stage_label ); ?></div>
-                                <div class="tf-timeline__time"><?php echo date( 'M j, Y — g:i A', strtotime( $entry->timestamp ) ); ?></div>
+                                <div class="tf-timeline__time"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $entry->timestamp ) ) ); ?></div>
                                 <?php if ( $entry->notes ) : ?>
                                     <div class="tf-timeline__notes"><?php echo esc_html( $entry->notes ); ?></div>
                                 <?php endif; ?>
@@ -399,7 +473,7 @@
                         </div>
                         <div class="tf-client-info__item">
                             <span class="tf-client-info__label">Submitted At</span>
-                            <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $culling['submitted'] ) ); ?></span>
+                            <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $culling['submitted'] ) ) ); ?></span>
                         </div>
                         <?php if ( $culling['upsell'] ) : ?>
                             <div class="tf-client-info__item">
@@ -429,11 +503,11 @@
                     <div class="tf-client-info">
                         <div class="tf-client-info__item">
                             <span class="tf-client-info__label">First Viewed</span>
-                            <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['first_viewed'] ) ); ?></span>
+                            <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['first_viewed'] ) ) ); ?></span>
                         </div>
                         <div class="tf-client-info__item">
                             <span class="tf-client-info__label">Last Viewed</span>
-                            <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['last_viewed'] ) ); ?></span>
+                            <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['last_viewed'] ) ) ); ?></span>
                         </div>
                         <div class="tf-client-info__item">
                             <span class="tf-client-info__label">Total Views</span>
@@ -442,11 +516,11 @@
                         <?php if ( $activity['first_downloaded'] ) : ?>
                             <div class="tf-client-info__item">
                                 <span class="tf-client-info__label">First Download</span>
-                                <span class="tf-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['first_downloaded'] ) ); ?></span>
+                                <span class="tf-client-info__value" style="color:#16A34A; font-weight:600;"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['first_downloaded'] ) ) ); ?></span>
                             </div>
                             <div class="tf-client-info__item">
                                 <span class="tf-client-info__label">Last Download</span>
-                                <span class="tf-client-info__value"><?php echo date( 'M j, Y — g:i A', strtotime( $activity['last_downloaded'] ) ); ?></span>
+                                <span class="tf-client-info__value"><?php echo wp_date( 'M j, Y — g:i A', strtotime( get_gmt_from_date( $activity['last_downloaded'] ) ) ); ?></span>
                             </div>
                         <?php endif; ?>
                         <div class="tf-client-info__item">

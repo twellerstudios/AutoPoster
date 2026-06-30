@@ -10,6 +10,15 @@
     var code = tracker.getAttribute('data-code');
     if (!code || typeof twellerFlowTracker === 'undefined') return;
 
+    // Handle post-upload scroll restoration smoothly
+    if (sessionStorage.getItem('tf_receipt_uploaded')) {
+        sessionStorage.removeItem('tf_receipt_uploaded');
+        setTimeout(function() {
+            var box = document.querySelector('.tf-tracker__receipt--verifying');
+            if (box) window.scrollTo({ top: box.offsetTop - 100, behavior: 'smooth' });
+        }, 200);
+    }
+
     // ── Progress bar sub-step mapping ────────────────
     // Maps each client-facing stage to its backend sub-steps (in order)
     var stageSubSteps = {
@@ -101,6 +110,152 @@
     var gallerySection = document.querySelector('.tf-gallery[data-code]');
     if (gallerySection) {
         trackActivity('gallery_viewed');
+    }
+
+    // ── Receipt Upload ────────────────────────────────────────
+    var receiptForm = document.getElementById('tf-receipt-form');
+    if (receiptForm) {
+        var bankSelect = document.getElementById('tf-receipt-bank');
+        var bankOther = document.getElementById('tf-receipt-bank-other');
+        if (bankSelect && bankOther) {
+            bankSelect.addEventListener('change', function() {
+                bankOther.style.display = this.value === 'Other' ? 'block' : 'none';
+                if (this.value === 'Other') {
+                    bankOther.setAttribute('required', 'required');
+                } else {
+                    bankOther.removeAttribute('required');
+                }
+            });
+        }
+
+        receiptForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            var btn = document.getElementById('tf-receipt-btn');
+            var btnText = document.getElementById('tf-receipt-btn-text');
+            var spinner = document.getElementById('tf-receipt-spinner');
+            var fileInput = document.getElementById('tf-receipt-file');
+            var statusDiv = document.getElementById('tf-receipt-status');
+            var codeInput = document.getElementById('tf-receipt-code');
+
+            if (!fileInput.files || fileInput.files.length === 0) return;
+            var file = fileInput.files[0];
+
+            btn.disabled = true;
+            if (btnText && spinner) {
+                btnText.innerText = 'Please wait...';
+                spinner.style.display = 'block';
+            } else {
+                btn.innerText = 'Please wait...';
+            }
+            statusDiv.style.display = 'block';
+            statusDiv.innerText = 'Please wait...';
+
+            let extractedAmount = null;
+            let extractedRef = null;
+
+            // Free OCR using Tesseract if available
+            if (window.Tesseract) {
+                try {
+                    const worker = await Tesseract.createWorker('eng');
+                    const ret = await worker.recognize(file);
+                    await worker.terminate();
+                    
+                    const text = ret.data.text;
+                    
+                    // 1. Amount Extraction Refinement
+                    let pickedAmount = null;
+                    const labeledAmountPattern = /(?:transfer\s+amount|amount)[\s:]*(?:TTD|\$)?\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i;
+                    const labeledMatch = text.match(labeledAmountPattern);
+                    
+                    if (labeledMatch && labeledMatch[1]) {
+                        pickedAmount = parseFloat(labeledMatch[1].replace(/[^\d.]/g, ''));
+                    } else {
+                        const currencyPattern = /(?:TTD|\$)\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi;
+                        const fallbackPattern = /\b\d{1,3}(?:,\d{3})*\.\d{2}\b/g;
+                        
+                        let matches = text.match(currencyPattern);
+                        let fallbackMatches = text.match(fallbackPattern);
+                        let amounts = [];
+                        
+                        if (matches) {
+                            amounts = matches.map(m => parseFloat(m.replace(/[^\d.]/g, '')));
+                        } else if (fallbackMatches) {
+                            amounts = fallbackMatches.map(m => parseFloat(m.replace(/,/g, '')));
+                        }
+
+                        amounts = amounts.filter(a => !isNaN(a) && a > 0);
+
+                        if (amounts.length > 0) {
+                            pickedAmount = Math.max(...amounts);
+                        }
+                    }
+
+                    if (pickedAmount) {
+                        extractedAmount = 'TTD ' + pickedAmount.toFixed(2);
+                        console.log('Final Amount Picked:', extractedAmount);
+                    }
+
+                    // 2. Reference / Transaction ID Extraction
+                    const refPattern = /(?:ref(?:erence)?\s*(?:no\.?|#|number)?|transaction\s*(?:id|no\.?|#)?|trx\s*(?:id|no\.?|#)?)\s*[:\-#]?\s*([a-z0-9]{6,15})/i;
+                    const refMatch = text.match(refPattern);
+                    if (refMatch && refMatch[1]) {
+                        extractedRef = refMatch[1].toUpperCase();
+                        console.log('Detected Reference ID:', extractedRef);
+                    }
+
+                } catch(err) {
+                    console.error('OCR failed', err);
+                }
+            }
+
+            if (btnText) btnText.innerText = 'Uploading...';
+            else btn.innerText = 'Uploading...';
+            statusDiv.innerText = 'Uploading...';
+
+            var formData = new FormData();
+            formData.append('receipt', file);
+            formData.append('tracking_code', codeInput.value);
+            if (extractedAmount) {
+                formData.append('ocr_amounts', extractedAmount);
+            }
+            if (extractedRef) {
+                formData.append('ocr_reference', extractedRef);
+            }
+            var sendingBank = bankSelect ? bankSelect.value : '';
+            if (sendingBank === 'Other' && bankOther) {
+                sendingBank = bankOther.value;
+            }
+            formData.append('bank_name', sendingBank);
+
+            // Standard fetch upload since it isn't hitting /track, its hitting /upload-receipt
+            var uploadUrl = twellerFlowTracker.apiUrl.replace('/track/', '/upload-receipt');
+            
+            try {
+                var res = await fetch(uploadUrl, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-WP-Nonce': twellerFlowTracker.nonce }
+                });
+                var data = await res.json();
+                
+                if (data.success) {
+                    statusDiv.innerHTML = '<span style="color:green">Success! Your receipt is pending manual approval.</span>';
+                    btn.innerText = 'Uploaded Successfully';
+                    fileInput.disabled = true;
+                    sessionStorage.setItem('tf_receipt_uploaded', '1');
+                    setTimeout(function(){ window.location.reload(); }, 1500);
+                } else {
+                    statusDiv.innerHTML = '<span style="color:red">' + (data.message || 'Error uploading receipt.') + '</span>';
+                    btn.disabled = false;
+                    btn.innerText = 'Try Again';
+                }
+            } catch (err) {
+                statusDiv.innerHTML = '<span style="color:red">Network error during upload.</span>';
+                btn.disabled = false;
+                btn.innerText = 'Try Again';
+            }
+        });
     }
 
     // ── Gallery ────────────────────────────────────────

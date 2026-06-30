@@ -60,6 +60,12 @@ class TwellerFlow_Session {
             self::record_stage_history( $session_id, 'booked', 0, 'Session created' );
             TwellerFlow_Notifications::on_stage_change( $session_id, 'booked' );
             do_action( 'tweller_flow_session_created', $session_id, $data );
+            
+            // Send tentative calendar hold if date is set
+            $session = self::get( $session_id );
+            if ( $session && !empty($session->session_date) ) {
+                TwellerFlow_Notifications::send_calendar_invite( $session, 'TENTATIVE', 0 );
+            }
         }
 
         return $session_id;
@@ -163,7 +169,7 @@ class TwellerFlow_Session {
         return $wpdb->delete( $sessions_table, array( 'id' => $id ) );
     }
 
-    public static function advance_stage( $id, $notes = '' ) {
+    public static function advance_stage( $id, $notes = '', $notify = true ) {
         $session = self::get( $id );
         if ( ! $session ) return false;
 
@@ -185,14 +191,14 @@ class TwellerFlow_Session {
         self::record_stage_history( $id, $next_stage, $next_idx, $notes );
 
         $stages = TwellerFlow_Database::get_stages();
-        if ( ! empty( $stages[ $next_stage ]['notify'] ) ) {
+        if ( $notify && ! empty( $stages[ $next_stage ]['notify'] ) ) {
             TwellerFlow_Notifications::on_stage_change( $id, $next_stage );
         }
 
         return $next_stage;
     }
 
-    public static function set_stage( $id, $stage, $notes = '' ) {
+    public static function set_stage( $id, $stage, $notes = '', $notify = true ) {
         $stage_keys = TwellerFlow_Database::get_stage_keys();
         $idx = array_search( $stage, $stage_keys );
         if ( $idx === false ) return false;
@@ -205,7 +211,7 @@ class TwellerFlow_Session {
         self::record_stage_history( $id, $stage, $idx, $notes );
 
         $stages = TwellerFlow_Database::get_stages();
-        if ( ! empty( $stages[ $stage ]['notify'] ) ) {
+        if ( $notify && ! empty( $stages[ $stage ]['notify'] ) ) {
             TwellerFlow_Notifications::on_stage_change( $id, $stage );
         }
 

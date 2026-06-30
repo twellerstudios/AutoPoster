@@ -76,42 +76,97 @@ class TwellerFlow_Database {
     public static function seed_defaults() {
         $defaults = array(
             'tweller_flow_stages' => array(
-                'booked'     => array( 'label' => 'Booked',     'client_label' => 'Booked',        'icon' => 'calendar',     'notify' => true ),
+                'booked'     => array( 'label' => 'Reserved',     'client_label' => 'Reserved',        'icon' => 'calendar',     'notify' => true ),
+                'confirmed'  => array( 'label' => 'Booking Confirmed', 'client_label' => 'Booking Confirmed', 'icon' => 'check-square', 'notify' => true ),
                 'imported'   => array( 'label' => 'Imported',   'client_label' => 'Editing',       'icon' => 'download',     'notify' => false ),
                 'culling'    => array( 'label' => 'Culling',    'client_label' => 'Select Photos for Editing', 'icon' => 'filter', 'notify' => false ),
                 'culled'     => array( 'label' => 'Culled',     'client_label' => 'Editing',       'icon' => 'check-square', 'notify' => false ),
                 'editing'    => array( 'label' => 'Editing',    'client_label' => 'Editing',       'icon' => 'edit-2',       'notify' => false ),
-                'edited'     => array( 'label' => 'Edited',     'client_label' => 'Done Editing',  'icon' => 'check-circle', 'notify' => true ),
-                'exporting'  => array( 'label' => 'Exporting',  'client_label' => 'Exporting',     'icon' => 'package',      'notify' => false ),
-                'exported'   => array( 'label' => 'Exported',   'client_label' => 'Exporting',     'icon' => 'package',      'notify' => false ),
+                'edited'     => array( 'label' => 'Edited',     'client_label' => 'Editing',       'icon' => 'check-circle', 'notify' => true ),
+                'exporting'  => array( 'label' => 'Exporting',  'client_label' => 'Editing',       'icon' => 'package',      'notify' => false ),
+                'exported'   => array( 'label' => 'Exported',   'client_label' => 'Editing',       'icon' => 'package',      'notify' => false ),
                 'uploading'  => array( 'label' => 'Uploading',  'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
                 'uploaded'   => array( 'label' => 'Uploaded',   'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
                 'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',     'icon' => 'check-circle', 'notify' => true ),
             ),
             'tweller_flow_client_stages' => array(
-                'Booked', 'Select Photos for Editing', 'Editing', 'Done Editing', 'Exporting', 'Gallery Ready', 'Delivered'
+                'Reserved', 'Booking Confirmed', 'Select Photos for Editing', 'Editing', 'Gallery Ready', 'Delivered'
+            ),
+            'tweller_flow_session_types' => array(
+                'mommy_and_me'    => array( 'name' => 'Mommy & Me', 'description' => 'Just mom and baby/kid.', 'allowed_packages' => array('mini', 'full', 'extended') ),
+                'mommy_and_us'    => array( 'name' => 'Mommy & Us', 'description' => 'Mom and her entire family.', 'allowed_packages' => array('mini', 'full', 'extended') ),
+                'one_year'        => array( 'name' => '1 Year Photos', 'description' => 'Capture the first milestone.', 'allowed_packages' => array('mini', 'full', 'extended') ),
+                'family'          => array( 'name' => 'Family Portraits', 'description' => 'Beautiful family memories.', 'allowed_packages' => array('mini', 'full', 'extended') ),
+                'headshots'       => array( 'name' => 'Headshots', 'description' => 'Professional headshots.', 'allowed_packages' => array('mini', 'full', 'extended') ),
+                'maternity'       => array( 'name' => 'Maternity', 'description' => 'Celebrate expecting a new life.', 'allowed_packages' => array('mini', 'full', 'extended') ),
+                'grads'           => array( 'name' => 'Grads', 'description' => 'Celebrate your graduation.', 'allowed_packages' => array('mini', 'full', 'extended') ),
+                'cake_smashes'    => array( 'name' => 'Cake Smashes', 'description' => 'Messy fun for their birthday.', 'allowed_packages' => array('full') ),
+                'events'          => array( 'name' => 'Events', 'description' => 'Birthdays, Showers, Graduations.', 'allowed_packages' => array('event_1hr', 'event_2hr', 'event_3hr', 'event_4hr') ),
+                'weddings'        => array( 'name' => 'Weddings', 'description' => 'Send us an inquiry for your big day!', 'allowed_packages' => array() ),
             ),
             'tweller_flow_packages' => array(
                 'mini' => array(
                     'name'     => 'Mini Session',
-                    'duration' => '30 minutes',
-                    'images'   => 15,
+                    'duration' => 30, // in minutes
+                    'images'   => 10,
                     'members'  => 4,
-                    'price'    => 600,
+                    'price'    => 500,
+                    'old_price'=> 550,
+                    'features' => array('Up to 30 minutes', '10 fully edited images', 'All digital copies included', 'Studio or on-location')
                 ),
                 'full' => array(
                     'name'     => 'Full Session',
-                    'duration' => '45 min - 1 hour',
-                    'images'   => 40,
+                    'duration' => 60,
+                    'images'   => 30,
                     'members'  => 8,
-                    'price'    => 800,
+                    'price'    => 700,
+                    'old_price'=> 750,
+                    'features' => array('Up to 1 hour', '30 fully edited images', 'All digital copies included', 'Studio or on-location', 'Outfit change included')
                 ),
                 'extended' => array(
                     'name'     => 'Extended Session',
-                    'duration' => '1.5 hours',
-                    'images'   => 60,
+                    'duration' => 120,
+                    'images'   => 50,
                     'members'  => 10,
-                    'price'    => 1100,
+                    'price'    => 900,
+                    'old_price'=> 1050,
+                    'features' => array('Up to 2 hours', '50+ fully edited images', 'All digital copies included', 'Studio or on-location', 'Multiple outfit changes')
+                ),
+                'event_1hr' => array(
+                    'name'     => '1 Hour Event Coverage',
+                    'duration' => 60,
+                    'images'   => 999,
+                    'members'  => 50,
+                    'price'    => 550,
+                    'old_price'=> 0,
+                    'features' => array('Unlimited edited images', 'Candid moments & group shots', 'Perfect for intimate gatherings')
+                ),
+                'event_2hr' => array(
+                    'name'     => '2 Hour Event Coverage',
+                    'duration' => 120,
+                    'images'   => 999,
+                    'members'  => 50,
+                    'price'    => 750,
+                    'old_price'=> 0,
+                    'features' => array('Unlimited edited images', 'Full event storytelling', 'Great for medium-sized parties')
+                ),
+                'event_3hr' => array(
+                    'name'     => '3 Hour Event Coverage',
+                    'duration' => 180,
+                    'images'   => 999,
+                    'members'  => 50,
+                    'price'    => 950,
+                    'old_price'=> 0,
+                    'features' => array('Unlimited edited images', 'Comprehensive coverage', 'Ideal for large celebrations')
+                ),
+                'event_4hr' => array(
+                    'name'     => '4 Hour Event Coverage',
+                    'duration' => 240,
+                    'images'   => 999,
+                    'members'  => 50,
+                    'price'    => 1150,
+                    'old_price'=> 0,
+                    'features' => array('Unlimited edited images', 'Non-stop documentation', 'Best for major events')
                 ),
             ),
             'tweller_flow_banking' => "Account Number: 2430006\nName: Tweller Studios\nBank: FCB\nBusiness savings\n\nPlease send a picture of the transaction to confirm.",
@@ -128,8 +183,7 @@ class TwellerFlow_Database {
         );
 
         foreach ( $defaults as $key => $value ) {
-            // Always update stages to ensure new pipeline is in place
-            if ( $key === 'tweller_flow_stages' || $key === 'tweller_flow_client_stages' ) {
+            if ( $key === 'tweller_flow_stages' || $key === 'tweller_flow_client_stages' || $key === 'tweller_flow_packages' || $key === 'tweller_flow_session_types' ) {
                 update_option( $key, $value );
             } elseif ( get_option( $key ) === false ) {
                 add_option( $key, $value );

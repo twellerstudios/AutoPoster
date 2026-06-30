@@ -751,3 +751,175 @@ body.page .page-hero {
     justify-content: center;
     min-height: 100px;
 }
+
+/* ── Receipt Upload ────────────────────────────────── */
+.tf-tracker__receipt {
+    background: var(--tf-white);
+    border: 1px solid var(--tf-gray-200);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 32px;
+    text-align: center;
+}
+.tf-tracker__receipt-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.tf-tracker__receipt-header h3 {
+    margin: 0;
+    font-size: 18px;
+}
+.tf-tracker__banking-info {
+    background: var(--tf-gray-100);
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--tf-gray-700);
+    margin-bottom: 16px;
+    text-align: left;
+    white-space: pre-wrap;
+    font-family: monospace;
+}
+.tf-tracker__receipt-desc {
+    font-size: 14px;
+    color: var(--tf-gray-500);
+    margin-bottom: 20px;
+}
+.tf-tracker__receipt-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.tf-tracker__receipt-file {
+    padding: 10px;
+    border: 1px dashed var(--tf-gray-300);
+    border-radius: 8px;
+    background: var(--tf-gray-100);
+    width: 100%;
+    box-sizing: border-box;
+}
+.tf-tracker__btn--full {
+    width: 100%;
+}
+.tf-tracker__receipt-status {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+@keyframes tf-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+/* -- Receipt Form (Stripe-style) ------------------------- */
+.tf-tracker__receipt {
+    background: var(--tf-white);
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 16px 0 24px 0;
+    width: 100%;
+    max-width: 420px;
+    box-sizing: border-box;
+    font-family: var(--tf-font);
+    text-align: left;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.tf-tracker__receipt:hover {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03);
+    transform: translateY(-1px);
+}
+
+.tf-tracker__receipt--verifying {
+    background: #FAFAFA;
+    border-color: #E5E7EB;
+}
+
+.tf-tracker__receipt--verifying .tf-tracker__receipt-header h3 {
+    color: var(--tf-black);
+}
+
+.tf-tracker__receipt-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+    padding-bottom: 12px;
+}
+
+.tf-tracker__receipt-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tf-black);
+    letter-spacing: -0.01em;
+}
+
+.tf-tracker__banking-info, .tf-tracker__receipt-desc {
+    font-size: 13px;
+    color: var(--tf-gray-500);
+    line-height: 1.5;
+    margin-bottom: 16px;
+}
+.tf-tracker__banking-info p { margin: 0 0 8px 0; font-family: monospace; background: var(--tf-gray-100); padding: 8px; border-radius: 6px; color: var(--tf-black); }
+
+.tf-tracker__receipt-form label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tf-gray-500);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tf-tracker__receipt-file {
+    width: 100%;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    margin-bottom: 16px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    background: var(--tf-white);
+    color: var(--tf-black);
+    box-sizing: border-box;
+}
+
+.tf-tracker__receipt-file:focus {
+    outline: none;
+    border-color: var(--tf-black);
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.05);
+}
+
+.tf-tracker__receipt-form button {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--tf-black);
+    color: var(--tf-gold);
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.tf-tracker__receipt-form button:hover {
+    background: #222;
+}
+
+.tf-tracker__receipt-form button:active {
+    transform: scale(0.98);
+}

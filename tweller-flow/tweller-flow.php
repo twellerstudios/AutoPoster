@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Flow
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client notifications, and folder watcher integration.
- * Version: 2.9.1
+ * Version: 3.3.3
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_VERSION', '2.9.1' );
+define( 'TWELLER_FLOW_VERSION', '3.3.3' );
 define( 'TWELLER_FLOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_TABLE_SESSIONS', 'tweller_sessions' );
@@ -31,6 +31,8 @@ require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-photo-automation.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-gallery.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-client-activity.php';
 require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-culling.php';
+require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-booking-api.php';
+require_once TWELLER_FLOW_PLUGIN_DIR . 'includes/class-booking-shortcode.php';
 
 if ( is_admin() ) {
     require_once TWELLER_FLOW_PLUGIN_DIR . 'admin/class-admin.php';
@@ -89,6 +91,36 @@ function tweller_flow_ensure_tracker_page() {
     }
 }
 register_activation_hook( __FILE__, 'tweller_flow_activate' );
+
+/**
+ * Force upgrade settings upon load to dynamically push new stages without reactivation
+ */
+function tweller_flow_upgrade_check() {
+    $db_version = get_option( 'tweller_flow_db_version', '1.0.0' );
+    if ( version_compare( $db_version, TWELLER_FLOW_VERSION, '<' ) ) {
+        // Redefine stages for new Confirmed feature
+        $stages = array(
+            'booked'     => array( 'label' => 'Reserved',     'client_label' => 'Reserved',        'icon' => 'calendar',     'notify' => true ),
+            'confirmed'  => array( 'label' => 'Booking Confirmed', 'client_label' => 'Booking Confirmed', 'icon' => 'check-square', 'notify' => true ),
+            'imported'   => array( 'label' => 'Imported',   'client_label' => 'Editing',       'icon' => 'download',     'notify' => false ),
+            'culling'    => array( 'label' => 'Culling',    'client_label' => 'Select Photos for Editing', 'icon' => 'filter', 'notify' => false ),
+            'culled'     => array( 'label' => 'Culled',     'client_label' => 'Editing',       'icon' => 'check-square', 'notify' => false ),
+            'editing'    => array( 'label' => 'Editing',    'client_label' => 'Editing',       'icon' => 'edit-2',       'notify' => false ),
+            'edited'     => array( 'label' => 'Edited',     'client_label' => 'Done Editing',  'icon' => 'check-circle', 'notify' => true ),
+            'exporting'  => array( 'label' => 'Exporting',  'client_label' => 'Exporting',     'icon' => 'package',      'notify' => false ),
+            'exported'   => array( 'label' => 'Exported',   'client_label' => 'Exporting',     'icon' => 'package',      'notify' => false ),
+            'uploading'  => array( 'label' => 'Uploading',  'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
+            'uploaded'   => array( 'label' => 'Uploaded',   'client_label' => 'Gallery Ready', 'icon' => 'upload',       'notify' => false ),
+            'delivered'  => array( 'label' => 'Delivered',  'client_label' => 'Delivered',     'icon' => 'check-circle', 'notify' => true ),
+        );
+        $client_stages = array( 'Reserved', 'Booking Confirmed', 'Select Photos for Editing', 'Editing', 'Done Editing', 'Exporting', 'Gallery Ready', 'Delivered' );
+        
+        update_option( 'tweller_flow_stages', $stages );
+        update_option( 'tweller_flow_client_stages', $client_stages );
+        update_option( 'tweller_flow_db_version', TWELLER_FLOW_VERSION );
+    }
+}
+add_action( 'plugins_loaded', 'tweller_flow_upgrade_check' );
 
 /**
  * Create the culling portal page with [tweller_culling] shortcode.
@@ -160,6 +192,8 @@ function tweller_flow_init() {
     TwellerFlow_Gallery::init();
     TwellerFlow_Client_Activity::init();
     TwellerFlow_Culling::init();
+    TwellerFlow_Booking_API::init();
+    TwellerFlow_Booking_Shortcode::init();
 
     // Auto-upgrade: create tables if missing
     $db_version = get_option( 'tweller_flow_db_version', '2.1.2' );

@@ -144,6 +144,36 @@
                     <div class="tf-field__hint">Webhook URL: <code><?php echo rest_url( 'tweller-flow/v1/webhook/surecart' ); ?></code></div>
                 </div>
             </div>
+
+            <!-- Booking Sync & Config -->
+            <div class="tf-settings-section">
+                <h3>Booking Sync & Config</h3>
+                <p class="tf-description">Fetch availability from external calendars and configure session types / packages.</p>
+
+                <div class="tf-field" style="max-width:640px;">
+                    <label class="tf-field__label">iCal Feed URL</label>
+                    <input type="url" name="booking_ical_url" value="<?php echo esc_attr( $booking_ical ); ?>" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
+                    <div class="tf-field__hint">Secret iCal URL from Google or Apple Calendar to block out busy times.</div>
+                </div>
+
+                <div class="tf-field" style="max-width:640px;">
+                    <label class="tf-field__label">Session Types (JSON format)</label>
+                    <textarea name="session_types_json" rows="8" style="font-family: monospace;"><?php 
+                        $types = get_option('tweller_flow_session_types', array());
+                        echo esc_textarea( wp_json_encode( $types, JSON_PRETTY_PRINT ) ); 
+                    ?></textarea>
+                    <div class="tf-field__hint">Advanced: Edit the available session types and their allowed packages. Valid JSON required.</div>
+                </div>
+
+                <div class="tf-field" style="max-width:640px;">
+                    <label class="tf-field__label">Packages (JSON format)</label>
+                    <textarea name="packages_json" rows="12" style="font-family: monospace;"><?php 
+                        $pkgs = get_option('tweller_flow_packages', array());
+                        echo esc_textarea( wp_json_encode( $pkgs, JSON_PRETTY_PRINT ) ); 
+                    ?></textarea>
+                    <div class="tf-field__hint">Advanced: Edit the available packages. Valid JSON required.</div>
+                </div>
+            </div>
         </div>
 
         <button type="submit" class="tf-btn tf-btn--primary tf-btn--lg">Save Settings</button>

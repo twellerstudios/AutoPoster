@@ -10,7 +10,8 @@ class TwellerFlow_Tracker_Shortcode {
     public static function render( $atts ) {
         wp_enqueue_style( 'tweller-flow-tracker' );
         wp_enqueue_script( 'tweller-flow-tracker' );
-
+        wp_enqueue_script( 'tesseract-js', 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', array(), null, true );
+        
         wp_localize_script( 'tweller-flow-tracker', 'twellerFlowTracker', array(
             'apiUrl'      => rest_url( 'tweller-flow/v1/track/' ),
             'galleryUrl'  => rest_url( 'tweller-flow/v1/gallery/' ),
@@ -88,7 +89,8 @@ class TwellerFlow_Tracker_Shortcode {
         $pkg_name = $pkg['name'] ?? ucfirst( $session->package_type );
 
         $stage_icons = array(
-            'Booked'        => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+            'Reserved'      => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+            'Booking Confirmed' => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
             'Select Photos for Editing' => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
             'Editing'       => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
             'Done Editing'  => '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
@@ -163,6 +165,22 @@ class TwellerFlow_Tracker_Shortcode {
                     $timestamp    = $stage_timestamps[ $stage_name ] ?? '';
                     $icon         = $stage_icons[ $stage_name ] ?? '';
                 ?>
+                <?php 
+                    $display_name = $stage_name;
+                    if ( $stage_name === 'Booking Confirmed' ) {
+                        if ( $is_completed ) {
+                            $display_name = 'Session Completed';
+                        } else {
+                            $session_stamp = strtotime($session->session_date . ' ' . $session->session_time);
+                            $now = current_time('timestamp');
+                            if ( $session_stamp && $now >= $session_stamp ) {
+                                $display_name = 'Session In Progress';
+                            } else {
+                                $display_name = 'Waiting for Session';
+                            }
+                        }
+                    }
+                ?>
                     <div class="tf-tracker__stage tf-tracker__stage--<?php echo $status_class; ?>">
                         <div class="tf-tracker__stage-connector">
                             <div class="tf-tracker__stage-line"></div>
@@ -178,17 +196,79 @@ class TwellerFlow_Tracker_Shortcode {
                         <div class="tf-tracker__stage-content">
                             <div class="tf-tracker__stage-icon"><?php echo $icon; ?></div>
                             <div class="tf-tracker__stage-info">
-                                <h3 class="tf-tracker__stage-name"><?php echo esc_html( $stage_name ); ?></h3>
+                                <h3 class="tf-tracker__stage-name"><?php echo esc_html( $display_name ); ?></h3>
                                 <?php if ( $is_current ) : ?>
+                                    <?php
+                                        $progress_percent = 50;
+                                        if ( $stage_name === 'Editing' ) {
+                                            if ( $session->current_stage === 'editing' ) $progress_percent = 33;
+                                            elseif ( $session->current_stage === 'edited' ) $progress_percent = 66;
+                                            elseif ( in_array( $session->current_stage, array('exporting', 'exported') ) ) $progress_percent = 90;
+                                        } elseif ( $stage_name === 'Reserved' ) {
+                                            $progress_percent = ($session->payment_status === 'pending') ? 10 : (($session->payment_status === 'verifying') ? 80 : 100);
+                                        }
+                                    ?>
                                     <div class="tf-tracker__progress" data-stage="<?php echo esc_attr( $stage_name ); ?>">
                                         <div class="tf-tracker__progress-bar">
-                                            <div class="tf-tracker__progress-fill" data-progress="0"></div>
+                                            <div class="tf-tracker__progress-fill" style="width: <?php echo esc_attr( $progress_percent ); ?>%;"></div>
                                         </div>
                                     </div>
                                 <?php endif; ?>
                             </div>
                         </div>
                     </div>
+                    
+                    <?php if ( $idx === 0 && $session->current_stage === 'booked' && $session->payment_status === 'pending' ) : ?>
+                        <div class="tf-tracker__receipt">
+                            <div class="tf-tracker__receipt-header">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--tf-gold)" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                                <h3>Make payment to confirm booking</h3>
+                            </div>
+                            <?php $banking_info = get_option('tweller_flow_banking', ''); ?>
+                            <?php if ( ! empty($banking_info) ) : ?>
+                                <div class="tf-tracker__banking-info">
+                                    <?php echo wpautop( esc_html( $banking_info ) ); ?>
+                                </div>
+                            <?php endif; ?>
+                            <p class="tf-tracker__receipt-desc">Please transfer <strong>TTD <?php echo number_format($session->total_amount, 2); ?></strong> and upload the receipt screenshot below to verify your booking.</p>
+                            <form id="tf-receipt-form" class="tf-tracker__receipt-form">
+                                <input type="hidden" id="tf-receipt-code" value="<?php echo esc_attr( $session->tracking_code ); ?>">
+                                
+                                <label>Sending Bank</label>
+                                <select id="tf-receipt-bank" class="tf-tracker__receipt-file" required>
+                                    <option value="">Select a Bank...</option>
+                                    <option value="Republic Bank Limited (RBL)">Republic Bank Limited (RBL)</option>
+                                    <option value="First Citizens Bank (FCB)">First Citizens Bank (FCB)</option>
+                                    <option value="Royal Bank (RBC)">Royal Bank (RBC)</option>
+                                    <option value="Scotiabank">Scotiabank</option>
+                                    <option value="JMMB">JMMB</option>
+                                    <option value="Other">Other...</option>
+                                </select>
+                                <input type="text" id="tf-receipt-bank-other" class="tf-tracker__receipt-file" style="display:none; margin-bottom:12px;" placeholder="Type bank name...">
+                                
+                                <label>Receipt Screenshot</label>
+                                <input type="file" id="tf-receipt-file" accept="image/*" required class="tf-tracker__receipt-file">
+                                
+                                <button type="submit" id="tf-receipt-btn" class="tf-tracker__btn tf-tracker__btn--full">
+                                    <span id="tf-receipt-btn-text">Verify Receipt Upload</span>
+                                    <div id="tf-receipt-spinner" style="display:none; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-radius:50%; border-top-color:#fff; animation:tf-spin 1s ease-in-out infinite; margin-right:8px;"></div>
+                                </button>
+                            </form>
+                            <div id="tf-receipt-status" class="tf-tracker__receipt-status" style="display:none;"></div>
+                        </div>
+                    <?php elseif ( $idx === 0 && $session->current_stage === 'booked' && $session->payment_status === 'verifying' ) : ?>
+                        <div class="tf-tracker__receipt tf-tracker__receipt--verifying">
+                            <div class="tf-tracker__receipt-header">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                <h3>Receipt Submitted</h3>
+                            </div>
+                            <?php $receipt = get_option('tf_receipt_' . $session->id); ?>
+                            <p class="tf-tracker__receipt-desc" style="margin-bottom:0;">
+                                Your <?php echo esc_html($receipt['bank'] ?? 'bank'); ?> transfer receipt has been successfully uploaded! We are currently verifying your payment. Please check back in 1-2 business days.
+                            </p>
+                        </div>
+                    <?php endif; ?>
+                    
                 <?php endforeach; ?>
             </div>
 

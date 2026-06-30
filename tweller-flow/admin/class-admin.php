@@ -193,6 +193,56 @@ class TwellerFlow_Admin {
             exit;
         }
 
+        // Verify Receipt
+        if ( isset( $_POST['tweller_flow_verify_receipt'] ) ) {
+            check_admin_referer( 'tweller_flow_verify_receipt' );
+            $id = intval( $_POST['session_id'] );
+            $action = sanitize_text_field( $_POST['verify_action'] );
+            $session = TwellerFlow_Session::get( $id );
+            
+            if ( $session ) {
+                if ( $action === 'approve' || $action === 'approve_paid' || $action === 'approve_deposit' ) {
+                    $amt = isset( $_POST['amount_paid'] ) ? floatval( $_POST['amount_paid'] ) : 0;
+                    $status = ( $session->total_amount > 0 && $amt >= $session->total_amount ) ? 'paid' : 'deposit';
+                    
+                    // Update payment status and the manually verified amount
+                    $update_data = array( 
+                        'payment_status' => $status,
+                        'deposit_amount' => $amt
+                    );
+                    
+                    TwellerFlow_Session::update( $id, $update_data );
+                    
+                    // Physically lock them into the Confirmed stage!
+                    // Note: We won't trigger the generic notification email since we want the highly custom one
+                    TwellerFlow_Session::set_stage( $id, 'confirmed', 'Payment verified and booking confirmed.', false );
+                    delete_option( 'tf_receipt_' . $id );
+                    
+                    // Fire the updated Sequence 1 calendar invite
+                    if ( !empty($session->session_date) ) {
+                        TwellerFlow_Notifications::send_calendar_invite( $session, 'CONFIRMED', 1 );
+                    }
+                    
+                    if ( !empty($session->client_email) ) {
+                        $tracker_url = get_option( 'tweller_flow_tracker_page', '' ) . '?code=' . $session->tracking_code;
+                        $confirmed_subj = "Booking Confirmed! 🎉 - Tweller Studios";
+                        $confirmed_body = "Hi {$session->client_name},\n\nWe have successfully verified your payment receipt and your booking is now officially CONFIRMED! We are thrilled to work with you.\n\nYou can always check the live status of your photo session here:\n$tracker_url\n\nThanks,\nTweller Studios";
+                        wp_mail( $session->client_email, $confirmed_subj, $confirmed_body );
+                    }
+                } elseif ( $action === 'reject' ) {
+                    TwellerFlow_Session::update( $id, array( 'payment_status' => 'pending' ) );
+                    delete_option( 'tf_receipt_' . $id );
+                    
+                    if ( !empty($session->client_email) ) {
+                        $tracker_url = get_option( 'tweller_flow_tracker_page', '' ) . '?code=' . $session->tracking_code;
+                        wp_mail( $session->client_email, "Action Required: Payment Verification Failed", "Hi {$session->client_name},\n\nWe had a problem verifying the bank transfer receipt you recently uploaded (it may have been the wrong image or the amount was incorrect).\n\nPlease click your tracker link to re-upload your correct receipt: $tracker_url\n\nThanks,\nTweller Studios" );
+                    }
+                }
+            }
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-session&id=' . $id . '&receipt_processed=1' ) );
+            exit;
+        }
+
         // Gallery password
         if ( isset( $_POST['tweller_flow_gallery_password'] ) ) {
             check_admin_referer( 'tweller_flow_gallery_password' );
@@ -282,6 +332,22 @@ class TwellerFlow_Admin {
             update_option( 'tweller_flow_delivery_days', intval( $_POST['delivery_days'] ) );
             update_option( 'tweller_flow_tracker_page', esc_url_raw( $_POST['tracker_page_url'] ) );
             update_option( 'tweller_flow_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );
+            update_option( 'tweller_flow_booking_ical_url', esc_url_raw( $_POST['booking_ical_url'] ?? '' ) );
+
+            if ( ! empty( $_POST['session_types_json'] ) ) {
+                $st_json = stripslashes( $_POST['session_types_json'] );
+                $st_arr = json_decode( $st_json, true );
+                if ( json_last_error() === JSON_ERROR_NONE ) {
+                    update_option( 'tweller_flow_session_types', $st_arr );
+                }
+            }
+            if ( ! empty( $_POST['packages_json'] ) ) {
+                $pkg_json = stripslashes( $_POST['packages_json'] );
+                $pkg_arr = json_decode( $pkg_json, true );
+                if ( json_last_error() === JSON_ERROR_NONE ) {
+                    update_option( 'tweller_flow_packages', $pkg_arr );
+                }
+            }
 
             // Save automation settings
             if ( isset( $_POST['automation_backend_url'] ) ) {
@@ -335,7 +401,7 @@ class TwellerFlow_Admin {
             'stage'    => $stage,
             'per_page' => $per_page,
             'offset'   => ( $paged - 1 ) * $per_page,
-            'orderby'  => 'updated_at',
+            'orderby'  => 'created_at',
             'order'    => 'DESC',
         ));
 
@@ -416,6 +482,7 @@ class TwellerFlow_Admin {
         $secret    = get_option( 'tweller_flow_webhook_secret', '' );
         $packages  = get_option( 'tweller_flow_packages', array() );
         $automation = TwellerFlow_Photo_Automation::get_settings();
+        $booking_ical = get_option( 'tweller_flow_booking_ical_url', '' );
 
         include TWELLER_FLOW_PLUGIN_DIR . 'admin/views/settings.php';
     }

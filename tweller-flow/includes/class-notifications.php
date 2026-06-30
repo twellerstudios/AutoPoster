@@ -180,4 +180,80 @@ class TwellerFlow_Notifications {
         </body>
         </html>';
     }
+
+    public static function send_calendar_invite( $session, $status = 'TENTATIVE', $sequence = 0 ) {
+        $packages = get_option('tweller_flow_packages', array());
+        $pkg = $packages[$session->package_type] ?? array();
+        $pkg_name = $pkg['name'] ?? ucfirst($session->package_type);
+        $pkg_name_clean = trim( explode('—', $pkg_name)[0] );
+
+        $session_types = get_option('tweller_flow_session_types', array());
+        $type = $session_types[$session->session_type] ?? array();
+        $type_name = $type['name'] ?? ucfirst($session->session_type);
+
+        // Remove typical am/pm logic to build a valid timestamp
+        $timestamp = strtotime($session->session_date . ' ' . $session->session_time);
+        if (!$timestamp) return;
+
+        $date_start = gmdate('Ymd\THis\Z', $timestamp);
+        
+        $duration = 60; // default 60 mins
+        if (!empty($pkg['duration'])) {
+            $duration = intval($pkg['duration']);
+        }
+        $date_end = gmdate('Ymd\THis\Z', $timestamp + ($duration * 60));
+        
+        $now = gmdate('Ymd\THis\Z');
+        $uid = $session->tracking_code . '@twellerstudios.com';
+        
+        $title = $status === 'TENTATIVE' ? "Temp Booking: " : "";
+        $title .= "[{$pkg_name_clean}] [{$type_name}] Session - with {$session->client_name}";
+        $clean_loc = wp_strip_all_tags($session->location);
+        if ($clean_loc) {
+            $title .= " at {$clean_loc}";
+        }
+        
+        $tracker_url = self::get_tracker_url($session->tracking_code);
+        $desc = "Client: {$session->client_name}\\nEmail: {$session->client_email}\\nPhone: {$session->client_phone}\\nTracker: {$tracker_url}\\nTotal: TTD " . number_format($session->total_amount, 2);
+
+        $ics = "BEGIN:VCALENDAR\r\n";
+        $ics .= "VERSION:2.0\r\n";
+        $ics .= "PRODID:-//Tweller Studios//Tweller Flow//EN\r\n";
+        $ics .= "CALSCALE:GREGORIAN\r\n";
+        $ics .= "METHOD:REQUEST\r\n";
+        $ics .= "BEGIN:VEVENT\r\n";
+        $ics .= "DTSTART:{$date_start}\r\n";
+        $ics .= "DTEND:{$date_end}\r\n";
+        $ics .= "DTSTAMP:{$now}\r\n";
+        $ics .= "ORGANIZER;CN=\"Tweller Studios\":mailto:stephen.twellerstudios@gmail.com\r\n";
+        $ics .= "ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=\"{$session->client_name}\":mailto:{$session->client_email}\r\n";
+        $ics .= "UID:{$uid}\r\n";
+        $ics .= "CREATED:{$now}\r\n";
+        $ics .= "LAST-MODIFIED:{$now}\r\n";
+        $ics .= "LOCATION:{$clean_loc}\r\n";
+        $ics .= "SEQUENCE:{$sequence}\r\n";
+        $ics .= "STATUS:{$status}\r\n";
+        $ics .= "SUMMARY:{$title}\r\n";
+        $ics .= "DESCRIPTION:{$desc}\r\n";
+        $ics .= "TRANSP:OPAQUE\r\n";
+        $ics .= "END:VEVENT\r\n";
+        $ics .= "END:VCALENDAR";
+
+        $tmp_dir = get_temp_dir();
+        $file_path = $tmp_dir . 'invite_' . $session->tracking_code . '.ics';
+        file_put_contents($file_path, $ics);
+
+        $subject = ($status === 'TENTATIVE' ? "Tentative Calendar Hold: " : "Confirmed Calendar Event: ") . $title;
+        $body = self::wrap_email_html("<h2>Calendar Invitation Update</h2><p>Hi {$session->client_name},</p><p>Please find the official calendar event attached for your photography session. It will automatically be added to your calendar if you are using Gmail or Apple Calendar.</p><p><a href='{$tracker_url}' style='color:#10B981; font-weight:bold;'>View your progress here</a></p>", $session->client_name);
+
+        add_action('phpmailer_init', array(__CLASS__, 'configure_smtp'));
+        $headers = array('Content-Type: text/html; charset=UTF-8');
+        
+        $recipients = array($session->client_email, 'stephen.twellerstudios@gmail.com');
+        $sent = wp_mail( $recipients, $subject, $body, $headers, array($file_path) );
+        remove_action('phpmailer_init', array(__CLASS__, 'configure_smtp'));
+        
+        @unlink($file_path);
+        return $sent;
+    }
 }

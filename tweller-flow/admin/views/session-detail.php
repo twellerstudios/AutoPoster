@@ -510,6 +510,15 @@
             $price_per_photo = get_option( 'tweller_flow_2_culling_price_per_photo', 30 );
             ?>
             <div class="tf2-card tf2-mb-6" id="tf2-proof-manager">
+                <!-- Lightroom Workflow Info -->
+                <div style="background:#F0F9FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px; margin-bottom:14px; font-size:12px; color:#1E40AF;">
+                    <p style="margin:0 0 8px; font-weight:600;">💡 Lightroom Preview Workflow</p>
+                    <p style="margin:0 0 6px;"><strong>Step 1:</strong> Export Lightroom previews (or smart previews) as JPEGs — keep the same filenames as originals</p>
+                    <p style="margin:0 0 6px;"><strong>Step 2:</strong> Upload the preview JPEGs below (not full RAW files)</p>
+                    <p style="margin:0 0 6px;"><strong>Step 3:</strong> Client selects from previews</p>
+                    <p style="margin:0;"><strong>Step 4:</strong> Download XMP metadata, extract into your Lightroom folder — stars apply to your original RAW files automatically</p>
+                </div>
+
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
                     <div>
                         <h2 style="margin:0 0 2px;">Proof Upload</h2>
@@ -620,6 +629,9 @@
                             <button id="pm-download-xmp" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;" title="Download XMP sidecar files for Lightroom">⬇ XMP (Lightroom)</button>
                             <button id="pm-download-csv" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">⬇ CSV</button>
                         </div>
+                    </div>
+                    <div style="background:#F5F3FF; border:1px solid #DDD6FE; border-radius:6px; padding:10px; margin-bottom:12px; font-size:11px; color:#5B21B6;">
+                        <strong>XMP for Lightroom:</strong> Download the XMP file, extract the .xmp files into the same folder as your original RAW files. Lightroom will automatically apply the star ratings to your originals.
                     </div>
                     <div style="border:1px solid #E5E7EB; border-radius:8px; overflow:hidden;">
                         <table style="width:100%; border-collapse:collapse; font-size:12px;">

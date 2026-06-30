@@ -21,8 +21,8 @@
 }
 
 /* ── Hide WordPress page title/hero when tracker is present ── */
-.tf-tracker ~ .entry-title,
-.tf-tracker ~ .page-title,
+.tf2-tracker ~ .entry-title,
+.tf2-tracker ~ .page-title,
 body.page .entry-header,
 body.page .page-header,
 body.page .entry-title,
@@ -34,7 +34,7 @@ body.page .page-hero {
     display: none !important;
 }
 
-.tf-tracker {
+.tf2-tracker {
     max-width: 480px;
     margin: 0 auto;
     padding: 24px 24px 32px;
@@ -44,12 +44,12 @@ body.page .page-hero {
 
 /* ── Header ─────────────────────────────────────────── */
 
-.tf-tracker__header {
+.tf2-tracker__header {
     text-align: center;
     margin-bottom: 28px;
 }
 
-.tf-tracker__greeting {
+.tf2-tracker__greeting {
     font-size: 15px;
     color: var(--tf-gray-500);
     margin: 0;
@@ -58,12 +58,12 @@ body.page .page-hero {
     letter-spacing: -0.01em;
 }
 
-.tf-tracker__greeting strong {
+.tf2-tracker__greeting strong {
     color: var(--tf-black);
     font-weight: 600;
 }
 
-.tf-tracker__meta {
+.tf2-tracker__meta {
     display: flex;
     justify-content: center;
     gap: 20px;
@@ -71,7 +71,7 @@ body.page .page-hero {
     flex-wrap: wrap;
 }
 
-.tf-tracker__meta-item {
+.tf2-tracker__meta-item {
     font-size: 12px;
     color: var(--tf-gray-400);
     font-weight: 500;
@@ -80,14 +80,14 @@ body.page .page-hero {
 
 /* ── Stages (center-aligned, Stripe-style) ─────────── */
 
-.tf-tracker__stages {
+.tf2-tracker__stages {
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 0;
 }
 
-.tf-tracker__stage {
+.tf2-tracker__stage {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -98,28 +98,28 @@ body.page .page-hero {
 }
 
 /* Connector Line — vertical between stages */
-.tf-tracker__stage-connector {
+.tf2-tracker__stage-connector {
     display: flex;
     flex-direction: column;
     align-items: center;
     flex-shrink: 0;
 }
 
-.tf-tracker__stage-line {
+.tf2-tracker__stage-line {
     width: 2px;
     height: 20px;
 }
 
-.tf-tracker__stage--completed .tf-tracker__stage-line { background: var(--tf-gold); }
-.tf-tracker__stage--current .tf-tracker__stage-line:first-child { background: var(--tf-gold); }
-.tf-tracker__stage--current .tf-tracker__stage-line:last-child { background: var(--tf-gray-200); }
-.tf-tracker__stage--upcoming .tf-tracker__stage-line { background: var(--tf-gray-200); }
+.tf2-tracker__stage--completed .tf2-tracker__stage-line { background: var(--tf-gold); }
+.tf2-tracker__stage--current .tf2-tracker__stage-line:first-child { background: var(--tf-gold); }
+.tf2-tracker__stage--current .tf2-tracker__stage-line:last-child { background: var(--tf-gray-200); }
+.tf2-tracker__stage--upcoming .tf2-tracker__stage-line { background: var(--tf-gray-200); }
 
-.tf-tracker__stage:first-child .tf-tracker__stage-line:first-child { display: none; }
-.tf-tracker__stage:last-child .tf-tracker__stage-line:last-child { display: none; }
+.tf2-tracker__stage:first-child .tf2-tracker__stage-line:first-child { display: none; }
+.tf2-tracker__stage:last-child .tf2-tracker__stage-line:last-child { display: none; }
 
 /* Dot */
-.tf-tracker__stage-dot {
+.tf2-tracker__stage-dot {
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -130,25 +130,25 @@ body.page .page-hero {
     transition: all 0.3s;
 }
 
-.tf-tracker__stage--completed .tf-tracker__stage-dot {
+.tf2-tracker__stage--completed .tf2-tracker__stage-dot {
     background: var(--tf-gold);
     color: var(--tf-white);
 }
 
-.tf-tracker__stage--current .tf-tracker__stage-dot {
+.tf2-tracker__stage--current .tf2-tracker__stage-dot {
     background: var(--tf-black);
     color: var(--tf-white);
     box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.10);
 }
 
-.tf-tracker__stage--upcoming .tf-tracker__stage-dot {
+.tf2-tracker__stage--upcoming .tf2-tracker__stage-dot {
     background: var(--tf-gray-200);
     color: var(--tf-gray-400);
     border: 2px solid var(--tf-gray-200);
 }
 
 /* Pulse animation */
-.tf-tracker__stage-pulse {
+.tf2-tracker__stage-pulse {
     width: 10px;
     height: 10px;
     background: var(--tf-gold);
@@ -162,7 +162,7 @@ body.page .page-hero {
 }
 
 /* Content — centered below the dot */
-.tf-tracker__stage-content {
+.tf2-tracker__stage-content {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -170,15 +170,15 @@ body.page .page-hero {
     padding: 6px 0 0;
 }
 
-.tf-tracker__stage-icon {
+.tf2-tracker__stage-icon {
     display: none; /* Icons are in the dot context now; hide the separate icon */
 }
 
-.tf-tracker__stage-info {
+.tf2-tracker__stage-info {
     text-align: center;
 }
 
-.tf-tracker__stage-name {
+.tf2-tracker__stage-name {
     font-size: 13px;
     font-weight: 600;
     margin: 0;
@@ -186,18 +186,18 @@ body.page .page-hero {
     letter-spacing: -0.02em;
 }
 
-.tf-tracker__stage--completed .tf-tracker__stage-name { color: var(--tf-gold-dark); }
-.tf-tracker__stage--current .tf-tracker__stage-name { color: var(--tf-black); font-weight: 700; }
-.tf-tracker__stage--upcoming .tf-tracker__stage-name { color: var(--tf-gray-400); font-weight: 500; }
+.tf2-tracker__stage--completed .tf2-tracker__stage-name { color: var(--tf-gold-dark); }
+.tf2-tracker__stage--current .tf2-tracker__stage-name { color: var(--tf-black); font-weight: 700; }
+.tf2-tracker__stage--upcoming .tf2-tracker__stage-name { color: var(--tf-gray-400); font-weight: 500; }
 
 /* ── Progress Bar ──────────────────────────────────── */
 
-.tf-tracker__progress {
+.tf2-tracker__progress {
     margin-top: 4px;
     width: 120px;
 }
 
-.tf-tracker__progress-bar {
+.tf2-tracker__progress-bar {
     width: 100%;
     height: 3px;
     background: var(--tf-gray-200);
@@ -205,7 +205,7 @@ body.page .page-hero {
     overflow: hidden;
 }
 
-.tf-tracker__progress-fill {
+.tf2-tracker__progress-fill {
     height: 100%;
     background: var(--tf-gold);
     border-radius: 100px;
@@ -215,20 +215,20 @@ body.page .page-hero {
 
 /* ── Footer ─────────────────────────────────────────── */
 
-.tf-tracker__footer {
+.tf2-tracker__footer {
     text-align: center;
     margin-top: 32px;
     padding-top: 20px;
     border-top: 1px solid var(--tf-gray-200);
 }
 
-.tf-tracker__code {
+.tf2-tracker__code {
     font-size: 13px;
     color: var(--tf-gray-500);
     margin: 0 0 4px 0;
 }
 
-.tf-tracker__code strong {
+.tf2-tracker__code strong {
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     background: var(--tf-gray-100);
     padding: 2px 8px;
@@ -236,7 +236,7 @@ body.page .page-hero {
     color: var(--tf-black);
 }
 
-.tf-tracker__refresh {
+.tf2-tracker__refresh {
     font-size: 11px;
     color: var(--tf-gray-400);
     margin: 0;
@@ -244,13 +244,13 @@ body.page .page-hero {
 
 /* ── Lookup Form ────────────────────────────────────── */
 
-.tf-tracker--lookup .tf-tracker__header,
-.tf-tracker--error .tf-tracker__header {
+.tf2-tracker--lookup .tf2-tracker__header,
+.tf2-tracker--error .tf2-tracker__header {
     margin-bottom: 24px;
 }
 
-.tf-tracker--lookup .tf-tracker__header h2,
-.tf-tracker--error .tf-tracker__header h2 {
+.tf2-tracker--lookup .tf2-tracker__header h2,
+.tf2-tracker--error .tf2-tracker__header h2 {
     font-size: 22px;
     font-weight: 700;
     color: var(--tf-black);
@@ -258,17 +258,17 @@ body.page .page-hero {
     letter-spacing: -0.02em;
 }
 
-.tf-tracker__form {
+.tf2-tracker__form {
     max-width: 400px;
     margin: 0 auto;
 }
 
-.tf-tracker__input-group {
+.tf2-tracker__input-group {
     display: flex;
     gap: 8px;
 }
 
-.tf-tracker__input {
+.tf2-tracker__input {
     flex: 1;
     padding: 12px 16px;
     font-family: var(--tf-font);
@@ -283,13 +283,13 @@ body.page .page-hero {
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.tf-tracker__input:focus {
+.tf2-tracker__input:focus {
     outline: none;
     border-color: var(--tf-black);
     box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.08);
 }
 
-.tf-tracker__btn {
+.tf2-tracker__btn {
     padding: 12px 24px;
     background: var(--tf-black);
     color: var(--tf-white);
@@ -303,13 +303,13 @@ body.page .page-hero {
     letter-spacing: -0.01em;
 }
 
-.tf-tracker__btn:hover {
+.tf2-tracker__btn:hover {
     background: var(--tf-gray-700);
 }
 
 /* ── Error State ────────────────────────────────────── */
 
-.tf-tracker--error .tf-tracker__header h2 {
+.tf2-tracker--error .tf2-tracker__header h2 {
     color: #DC2626;
 }
 
@@ -317,7 +317,7 @@ body.page .page-hero {
    Hero Cover — Full-width with Ken Burns bg
    ══════════════════════════════════════════════════════ */
 
-.tf-hero-cover {
+.tf2-hero-cover {
     position: relative;
     width: 100vw;
     height: 85vh;
@@ -327,7 +327,7 @@ body.page .page-hero {
     margin-top: 32px;
 }
 
-.tf-hero-cover__bg {
+.tf2-hero-cover__bg {
     position: absolute;
     inset: 0;
     background-size: cover;
@@ -341,14 +341,14 @@ body.page .page-hero {
     100% { transform: scale(1.08); }
 }
 
-.tf-hero-cover__overlay {
+.tf2-hero-cover__overlay {
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
     z-index: 1;
 }
 
-.tf-hero-cover__content {
+.tf2-hero-cover__content {
     position: absolute;
     inset: 0;
     z-index: 2;
@@ -360,7 +360,7 @@ body.page .page-hero {
     padding: 40px 24px;
 }
 
-.tf-hero-cover__name {
+.tf2-hero-cover__name {
     color: var(--tf-white);
     font-family: var(--tf-font);
     font-size: 48px;
@@ -370,7 +370,7 @@ body.page .page-hero {
     text-shadow: 0 2px 20px rgba(0,0,0,0.3);
 }
 
-.tf-hero-cover__date {
+.tf2-hero-cover__date {
     color: rgba(255, 255, 255, 0.7);
     font-family: var(--tf-font);
     font-size: 13px;
@@ -379,7 +379,7 @@ body.page .page-hero {
     margin: 0 0 40px 0;
 }
 
-.tf-hero-cover__btn {
+.tf2-hero-cover__btn {
     display: inline-block;
     padding: 14px 40px;
     background: transparent;
@@ -393,25 +393,25 @@ body.page .page-hero {
     transition: all 0.3s;
 }
 
-.tf-hero-cover__btn:hover {
+.tf2-hero-cover__btn:hover {
     background: var(--tf-gold);
     border-color: var(--tf-gold);
     color: var(--tf-black);
 }
 
 @media (max-width: 640px) {
-    .tf-hero-cover {
+    .tf2-hero-cover {
         height: 70vh;
         min-height: 400px;
     }
-    .tf-hero-cover__name {
+    .tf2-hero-cover__name {
         font-size: 28px;
         letter-spacing: 4px;
     }
-    .tf-hero-cover__date {
+    .tf2-hero-cover__date {
         font-size: 11px;
     }
-    .tf-hero-cover__btn {
+    .tf2-hero-cover__btn {
         padding: 12px 32px;
         font-size: 11px;
     }
@@ -421,14 +421,14 @@ body.page .page-hero {
    Gallery
    ══════════════════════════════════════════════════════ */
 
-.tf-gallery {
+.tf2-gallery {
     margin-top: 32px;
     font-family: var(--tf-font);
 }
 
 /* ── Password Gate ─────────────────────────────────── */
 
-.tf-gallery__password {
+.tf2-gallery__password {
     text-align: center;
     background: var(--tf-gray-100);
     border: 1px solid var(--tf-gray-200);
@@ -438,25 +438,25 @@ body.page .page-hero {
     margin: 0 auto;
 }
 
-.tf-gallery__lock-icon {
+.tf2-gallery__lock-icon {
     color: var(--tf-gray-400);
     margin-bottom: 12px;
 }
 
-.tf-gallery__password p {
+.tf2-gallery__password p {
     font-size: 14px;
     color: var(--tf-gray-500);
     margin: 0 0 20px 0;
 }
 
-.tf-gallery__password-form {
+.tf2-gallery__password-form {
     display: flex;
     gap: 8px;
     max-width: 320px;
     margin: 0 auto;
 }
 
-.tf-gallery__pw-input {
+.tf2-gallery__pw-input {
     flex: 1;
     padding: 12px 16px;
     font-family: var(--tf-font);
@@ -468,13 +468,13 @@ body.page .page-hero {
     color: var(--tf-black);
 }
 
-.tf-gallery__pw-input:focus {
+.tf2-gallery__pw-input:focus {
     outline: none;
     border-color: var(--tf-black);
     box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.08);
 }
 
-.tf-gallery__pw-btn {
+.tf2-gallery__pw-btn {
     padding: 12px 24px;
     background: var(--tf-black);
     color: var(--tf-white);
@@ -488,9 +488,9 @@ body.page .page-hero {
     white-space: nowrap;
 }
 
-.tf-gallery__pw-btn:hover { background: var(--tf-gray-700); }
+.tf2-gallery__pw-btn:hover { background: var(--tf-gray-700); }
 
-.tf-gallery__pw-error {
+.tf2-gallery__pw-error {
     color: #DC2626;
     font-size: 13px;
     margin-top: 12px;
@@ -498,7 +498,7 @@ body.page .page-hero {
 
 /* ── Gallery Toolbar ──────────────────────────────── */
 
-.tf-gallery__toolbar {
+.tf2-gallery__toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -511,7 +511,7 @@ body.page .page-hero {
     background: var(--tf-white);
 }
 
-.tf-gallery__toolbar-name {
+.tf2-gallery__toolbar-name {
     font-family: var(--tf-font);
     font-size: 13px;
     font-weight: 700;
@@ -519,13 +519,13 @@ body.page .page-hero {
     letter-spacing: 1px;
 }
 
-.tf-gallery__toolbar-right {
+.tf2-gallery__toolbar-right {
     display: flex;
     align-items: center;
     gap: 16px;
 }
 
-.tf-gallery__toolbar-action {
+.tf2-gallery__toolbar-action {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -538,18 +538,18 @@ body.page .page-hero {
     transition: color 0.15s, background 0.15s;
 }
 
-.tf-gallery__toolbar-action:hover {
+.tf2-gallery__toolbar-action:hover {
     color: var(--tf-black);
     background: var(--tf-gray-100);
 }
 
-.tf-gallery__toolbar-action span {
+.tf2-gallery__toolbar-action span {
     letter-spacing: -0.01em;
 }
 
 /* ── Photo Grid (masonry-like via columns) ──────── */
 
-.tf-gallery__grid {
+.tf2-gallery__grid {
     column-count: 4;
     column-gap: 6px;
     width: 100vw;
@@ -559,14 +559,14 @@ body.page .page-hero {
 }
 
 @media (max-width: 1100px) {
-    .tf-gallery__grid { column-count: 3; }
+    .tf2-gallery__grid { column-count: 3; }
 }
 
 @media (max-width: 700px) {
-    .tf-gallery__grid { column-count: 2; column-gap: 4px; }
+    .tf2-gallery__grid { column-count: 2; column-gap: 4px; }
 }
 
-.tf-gallery__item {
+.tf2-gallery__item {
     position: relative;
     break-inside: avoid;
     margin-bottom: 6px;
@@ -577,10 +577,10 @@ body.page .page-hero {
 }
 
 @media (max-width: 700px) {
-    .tf-gallery__item { margin-bottom: 4px; }
+    .tf2-gallery__item { margin-bottom: 4px; }
 }
 
-.tf-gallery__item::after {
+.tf2-gallery__item::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -588,28 +588,28 @@ body.page .page-hero {
     transition: background 0.2s;
 }
 
-.tf-gallery__item:hover::after {
+.tf2-gallery__item:hover::after {
     background: rgba(0,0,0,0.06);
 }
 
-.tf-gallery__item img {
+.tf2-gallery__item img {
     width: 100%;
     height: auto;
     display: block;
     transition: opacity 0.4s, transform 0.3s;
 }
 
-.tf-gallery__item:hover img {
+.tf2-gallery__item:hover img {
     transform: scale(1.02);
 }
 
-.tf-gallery__item img.loading {
+.tf2-gallery__item img.loading {
     opacity: 0;
 }
 
 /* ── Lightbox ──────────────────────────────────────── */
 
-.tf-lightbox {
+.tf2-lightbox {
     position: fixed;
     inset: 0;
     z-index: 99999;
@@ -620,7 +620,7 @@ body.page .page-hero {
     backdrop-filter: blur(8px);
 }
 
-.tf-lightbox__content {
+.tf2-lightbox__content {
     max-width: 92vw;
     max-height: 88vh;
     display: flex;
@@ -628,7 +628,7 @@ body.page .page-hero {
     justify-content: center;
 }
 
-.tf-lightbox__img {
+.tf2-lightbox__img {
     max-width: 100%;
     max-height: 88vh;
     object-fit: contain;
@@ -636,7 +636,7 @@ body.page .page-hero {
     user-select: none;
 }
 
-.tf-lightbox__close {
+.tf2-lightbox__close {
     position: absolute;
     top: 16px;
     right: 20px;
@@ -651,9 +651,9 @@ body.page .page-hero {
     z-index: 10;
 }
 
-.tf-lightbox__close:hover { opacity: 1; }
+.tf2-lightbox__close:hover { opacity: 1; }
 
-.tf-lightbox__nav {
+.tf2-lightbox__nav {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
@@ -672,15 +672,15 @@ body.page .page-hero {
     z-index: 10;
 }
 
-.tf-lightbox__nav:hover {
+.tf2-lightbox__nav:hover {
     opacity: 1;
     background: rgba(255,255,255,0.15);
 }
 
-.tf-lightbox__prev { left: 16px; }
-.tf-lightbox__next { right: 16px; }
+.tf2-lightbox__prev { left: 16px; }
+.tf2-lightbox__next { right: 16px; }
 
-.tf-lightbox__bar {
+.tf2-lightbox__bar {
     position: absolute;
     bottom: 20px;
     left: 50%;
@@ -694,14 +694,14 @@ body.page .page-hero {
     backdrop-filter: blur(4px);
 }
 
-.tf-lightbox__counter {
+.tf2-lightbox__counter {
     color: rgba(255,255,255,0.6);
     font-size: 13px;
     font-weight: 500;
     letter-spacing: -0.01em;
 }
 
-.tf-lightbox__download {
+.tf2-lightbox__download {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -715,14 +715,14 @@ body.page .page-hero {
     letter-spacing: -0.01em;
 }
 
-.tf-lightbox__download:hover {
+.tf2-lightbox__download:hover {
     opacity: 1;
     color: var(--tf-white);
 }
 
 /* ── Gallery Messages & Loading ──────────────────────── */
 
-.tf-gallery__message {
+.tf2-gallery__message {
     text-align: center;
     padding: 40px 24px;
     font-size: 14px;
@@ -733,7 +733,7 @@ body.page .page-hero {
     margin: 20px 0;
 }
 
-.tf-hero-cover--loading .tf-hero-cover__bg {
+.tf2-hero-cover--loading .tf2-hero-cover__bg {
     background: linear-gradient(135deg, #F3F4F6 25%, #E5E5E5 50%, #F3F4F6 75%);
     background-size: 200% 100%;
     animation: tf-shimmer 1.5s ease-in-out infinite;
@@ -744,7 +744,7 @@ body.page .page-hero {
     100% { background-position: -200% 0; }
 }
 
-.tf-gallery__img-error {
+.tf2-gallery__img-error {
     background: var(--tf-gray-100);
     display: flex;
     align-items: center;
@@ -753,7 +753,7 @@ body.page .page-hero {
 }
 
 /* ── Receipt Upload ────────────────────────────────── */
-.tf-tracker__receipt {
+.tf2-tracker__receipt {
     background: var(--tf-white);
     border: 1px solid var(--tf-gray-200);
     border-radius: 12px;
@@ -761,18 +761,18 @@ body.page .page-hero {
     margin-top: 32px;
     text-align: center;
 }
-.tf-tracker__receipt-header {
+.tf2-tracker__receipt-header {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
     margin-bottom: 12px;
 }
-.tf-tracker__receipt-header h3 {
+.tf2-tracker__receipt-header h3 {
     margin: 0;
     font-size: 18px;
 }
-.tf-tracker__banking-info {
+.tf2-tracker__banking-info {
     background: var(--tf-gray-100);
     padding: 12px;
     border-radius: 8px;
@@ -783,17 +783,17 @@ body.page .page-hero {
     white-space: pre-wrap;
     font-family: monospace;
 }
-.tf-tracker__receipt-desc {
+.tf2-tracker__receipt-desc {
     font-size: 14px;
     color: var(--tf-gray-500);
     margin-bottom: 20px;
 }
-.tf-tracker__receipt-form {
+.tf2-tracker__receipt-form {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
-.tf-tracker__receipt-file {
+.tf2-tracker__receipt-file {
     padding: 10px;
     border: 1px dashed var(--tf-gray-300);
     border-radius: 8px;
@@ -801,10 +801,10 @@ body.page .page-hero {
     width: 100%;
     box-sizing: border-box;
 }
-.tf-tracker__btn--full {
+.tf2-tracker__btn--full {
     width: 100%;
 }
-.tf-tracker__receipt-status {
+.tf2-tracker__receipt-status {
     font-size: 14px;
     font-weight: 500;
 }
@@ -815,7 +815,7 @@ body.page .page-hero {
     }
 }
 /* -- Receipt Form (Stripe-style) ------------------------- */
-.tf-tracker__receipt {
+.tf2-tracker__receipt {
     background: var(--tf-white);
     border: 1px solid rgba(0,0,0,0.06);
     box-shadow: 0 4px 12px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
@@ -830,21 +830,21 @@ body.page .page-hero {
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.tf-tracker__receipt:hover {
+.tf2-tracker__receipt:hover {
     box-shadow: 0 8px 24px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03);
     transform: translateY(-1px);
 }
 
-.tf-tracker__receipt--verifying {
+.tf2-tracker__receipt--verifying {
     background: #FAFAFA;
     border-color: #E5E7EB;
 }
 
-.tf-tracker__receipt--verifying .tf-tracker__receipt-header h3 {
+.tf2-tracker__receipt--verifying .tf2-tracker__receipt-header h3 {
     color: var(--tf-black);
 }
 
-.tf-tracker__receipt-header {
+.tf2-tracker__receipt-header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -853,7 +853,7 @@ body.page .page-hero {
     padding-bottom: 12px;
 }
 
-.tf-tracker__receipt-header h3 {
+.tf2-tracker__receipt-header h3 {
     margin: 0;
     font-size: 15px;
     font-weight: 700;
@@ -861,15 +861,15 @@ body.page .page-hero {
     letter-spacing: -0.01em;
 }
 
-.tf-tracker__banking-info, .tf-tracker__receipt-desc {
+.tf2-tracker__banking-info, .tf2-tracker__receipt-desc {
     font-size: 13px;
     color: var(--tf-gray-500);
     line-height: 1.5;
     margin-bottom: 16px;
 }
-.tf-tracker__banking-info p { margin: 0 0 8px 0; font-family: monospace; background: var(--tf-gray-100); padding: 8px; border-radius: 6px; color: var(--tf-black); }
+.tf2-tracker__banking-info p { margin: 0 0 8px 0; font-family: monospace; background: var(--tf-gray-100); padding: 8px; border-radius: 6px; color: var(--tf-black); }
 
-.tf-tracker__receipt-form label {
+.tf2-tracker__receipt-form label {
     display: block;
     font-size: 12px;
     font-weight: 600;
@@ -879,7 +879,7 @@ body.page .page-hero {
     letter-spacing: 0.05em;
 }
 
-.tf-tracker__receipt-file {
+.tf2-tracker__receipt-file {
     width: 100%;
     border: 1px solid #D1D5DB;
     border-radius: 8px;
@@ -893,13 +893,13 @@ body.page .page-hero {
     box-sizing: border-box;
 }
 
-.tf-tracker__receipt-file:focus {
+.tf2-tracker__receipt-file:focus {
     outline: none;
     border-color: var(--tf-black);
     box-shadow: 0 0 0 3px rgba(0,0,0,0.05);
 }
 
-.tf-tracker__receipt-form button {
+.tf2-tracker__receipt-form button {
     position: relative;
     display: flex;
     justify-content: center;
@@ -916,10 +916,10 @@ body.page .page-hero {
     transition: background 0.2s, transform 0.1s;
 }
 
-.tf-tracker__receipt-form button:hover {
+.tf2-tracker__receipt-form button:hover {
     background: #222;
 }
 
-.tf-tracker__receipt-form button:active {
+.tf2-tracker__receipt-form button:active {
     transform: scale(0.98);
 }

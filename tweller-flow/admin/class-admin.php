@@ -15,8 +15,8 @@ class TwellerFlow2_Admin {
      */
     public function add_menus() {
         add_menu_page(
-            'Tweller Flow',
-            'Tweller Flow',
+            'Tweller Flow 2',
+            'Tweller Flow 2',
             'manage_options',
             'tweller-flow-2',
             array( $this, 'page_dashboard' ),

@@ -63,21 +63,52 @@ end
 local function fetchSessions( siteUrl, apiKey )
     local url = apiBase( siteUrl ) .. "/automation/sessions?range=recent&api_key=" .. urlencode( apiKey )
     local body = LrHttp.get( url )
-    if not body then return {} end
+
+    if not body or body == "" then
+        log( "fetchSessions: empty response from " .. url )
+        return {}
+    end
+
+    log( "fetchSessions response: " .. body:sub( 1, 200 ) )
 
     local sessions = {}
-    for item in body:gmatch( "%{(.-)%}" ) do
-        local code = item:match( '"tracking_code"%s*:%s*"([^"]*)"' )
-        local name = item:match( '"client_name"%s*:%s*"([^"]*)"' )
-        local stage = item:match( '"current_stage"%s*:%s*"([^"]*)"' )
-        local date = item:match( '"session_date"%s*:%s*"([^"]*)"' )
-        if code and name then
-            sessions[#sessions + 1] = {
-                title = name .. " — " .. ( date or "no date" ) .. "  [" .. ( stage or "" ) .. "]",
-                value = code,
-            }
+
+    -- Parse JSON array of sessions
+    -- Looking for objects like: {"id":"31","tracking_code":"BC8E62","client_name":"John Doe",...}
+    local in_string = false
+    local depth = 0
+    local obj_start = 1
+
+    for i = 1, #body do
+        local char = body:sub( i, i )
+
+        if char == '"' and ( i == 1 or body:sub( i - 1, i - 1 ) ~= '\\' ) then
+            in_string = not in_string
+        elseif not in_string then
+            if char == '{' then
+                if depth == 0 then obj_start = i end
+                depth = depth + 1
+            elseif char == '}' then
+                depth = depth - 1
+                if depth == 0 then
+                    local obj_str = body:sub( obj_start, i )
+                    local code = jsonValue( obj_str, 'tracking_code' )
+                    local name = jsonValue( obj_str, 'client_name' )
+                    local stage = jsonValue( obj_str, 'current_stage' )
+                    local date = jsonValue( obj_str, 'session_date' )
+                    if code and name then
+                        sessions[#sessions + 1] = {
+                            title = name .. " — " .. ( date or "no date" ) .. "  [" .. ( stage or "" ) .. "]",
+                            value = code,
+                        }
+                        log( "Parsed session: " .. code .. " - " .. name )
+                    end
+                end
+            end
         end
     end
+
+    log( "fetchSessions found " .. #sessions .. " sessions" )
     return sessions
 end
 

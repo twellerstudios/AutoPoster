@@ -11,5 +11,5 @@ return {
         builtInPresetsDir    = 'presets',
     },
 
-    VERSION = { major = 2, minor = 1, revision = 0 },
+    VERSION = { major = 2, minor = 1, revision = 1 },
 }

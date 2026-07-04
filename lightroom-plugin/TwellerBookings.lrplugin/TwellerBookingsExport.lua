@@ -244,7 +244,9 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
                     action = function()
                         LrTasks.startAsyncTask( function()
                             propertyTable.statusText = 'Loading sessions...'
-                            local ok, sessions, errMsg = pcall( fetchSessions, trim( propertyTable.siteUrl ), trim( propertyTable.apiKey ) )
+                            -- LrTasks.pcall (NOT plain pcall): LrHttp yields, and
+                            -- plain pcall can't cross a yield in Lightroom's Lua.
+                            local ok, sessions, errMsg = LrTasks.pcall( fetchSessions, trim( propertyTable.siteUrl ), trim( propertyTable.apiKey ) )
                             if ok and sessions and #sessions > 0 then
                                 propertyTable.sessionItems = sessions
                                 propertyTable.statusText = #sessions .. ' session(s) loaded — pick one from the menu'
@@ -473,7 +475,7 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
             -- 1. Copy to local folder
             if localSessionDir then
                 local destPath = LrPathUtils.child( localSessionDir, fileName )
-                local ok, err = pcall( function()
+                local ok, err = LrTasks.pcall( function()
                     LrFileUtils.copy( renderedPath, destPath )
                 end )
                 if not ok then

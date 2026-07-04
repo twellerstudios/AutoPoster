@@ -61,6 +61,7 @@ class TwellerFlow2_Notifications {
         $pkg_name  = $pkg['name'] ?? ucfirst( $session->package_type );
         $tracker_url = self::get_tracker_url( $session->tracking_code );
         $delivery_days = get_option( 'tweller_flow_2_delivery_days', 14 );
+        $review_url  = get_option( 'tweller_flow_2_review_url', 'https://g.page/r/CbntSRvzXVrSEBM/review' );
 
         $templates = array(
             'booked' => array(
@@ -89,7 +90,7 @@ class TwellerFlow2_Notifications {
                         <h3 style='margin-top:0;'>Track Your Session</h3>
                         <p>Track your session progress at any time:</p>
                         <p><a href='{$tracker_url}' style='display:inline-block; background:#2c3e50; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none;'>Track My Session</a></p>
-                        <p><small>Your tracking code: <strong>{$session->tracking_code}</strong></small></p>
+                        <p><small>Your shoot code: <strong>{$session->tracking_code}</strong></small></p>
                     </div>
                 ",
             ),
@@ -131,11 +132,11 @@ class TwellerFlow2_Notifications {
                     <div style='background:#f8f9fa; padding:20px; border-radius:8px; margin:20px 0;'>
                         <h3 style='margin-top:0;'>Share the Love</h3>
                         <p>Enjoyed your experience? We'd appreciate a review!</p>
-                        <p><a href='https://g.page/r/twellerstudios/review' style='display:inline-block; background:#4285f4; color:#fff; padding:10px 20px; border-radius:6px; text-decoration:none;'>Leave a Google Review</a></p>
+                        <p><a href='{$review_url}' style='display:inline-block; background:#4285f4; color:#fff; padding:10px 20px; border-radius:6px; text-decoration:none;'>Leave Us a Review</a></p>
                     </div>
 
                     <div style='text-align:center; margin-top:20px;'>
-                        <p style='font-size:12px; color:#9CA3AF;'>Tracking code: <strong>{$session->tracking_code}</strong></p>
+                        <p style='font-size:12px; color:#9CA3AF;'>Shoot code: <strong>{$session->tracking_code}</strong></p>
                     </div>
                 ",
             ),

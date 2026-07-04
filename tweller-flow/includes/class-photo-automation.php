@@ -27,12 +27,80 @@ class TwellerFlow2_Photo_Automation {
         ));
 
         // Get automation status for a session
-        register_rest_route( 'tweller-flow-2/v1', '/automation/status/(?P<code>[a-zA-Z0-9]+)', array(
+        register_rest_route( 'tweller-flow-2/v1', '/automation/status/(?P<code>[a-zA-Z0-9\-]+)', array(
             'methods'  => 'GET',
             'callback' => array( __CLASS__, 'rest_get_status' ),
             'permission_callback' => function() {
                 return current_user_can( 'manage_options' );
             },
+        ));
+
+        // LR plugin: find-or-create a session (for last-minute / unregistered shoots)
+        register_rest_route( 'tweller-flow-2/v1', '/automation/create-session', array(
+            'methods'  => array( 'GET', 'POST' ),
+            'callback' => array( __CLASS__, 'rest_create_session' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+    }
+
+    /**
+     * Find-or-create a session from the Lightroom plugin.
+     * If a session already exists for the same client name + date, it is
+     * returned instead of creating a duplicate.
+     */
+    public static function rest_create_session( $request ) {
+        $client_name  = sanitize_text_field( $request->get_param( 'client_name' ) );
+        $client_email = sanitize_email( $request->get_param( 'client_email' ) ?? '' );
+        $session_date = sanitize_text_field( $request->get_param( 'session_date' ) ?? '' );
+        $package_type = sanitize_text_field( $request->get_param( 'package_type' ) ?? 'mini' );
+
+        if ( ! $client_name ) {
+            return new WP_Error( 'missing_params', 'client_name is required', array( 'status' => 400 ) );
+        }
+        if ( ! $session_date || ! strtotime( $session_date ) ) {
+            $session_date = current_time( 'Y-m-d' );
+        }
+
+        // Reuse an existing session for the same client + date
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM $table WHERE client_name = %s AND session_date = %s ORDER BY id DESC LIMIT 1",
+            $client_name, $session_date
+        ));
+        if ( $existing ) {
+            return rest_ensure_response( array(
+                'ok'            => true,
+                'existing'      => true,
+                'session_id'    => $existing->id,
+                'tracking_code' => $existing->tracking_code,
+                'client_name'   => $existing->client_name,
+            ));
+        }
+
+        $session_id = TwellerFlow2_Session::create( array(
+            'client_name'        => $client_name,
+            'client_email'       => $client_email,
+            'package_type'       => $package_type,
+            'session_date'       => $session_date,
+            'payment_status'     => 'paid',
+            'notes'              => 'Created from Lightroom plugin',
+            'skip_notifications' => true,
+        ));
+
+        if ( ! $session_id ) {
+            return new WP_Error( 'create_failed', 'Could not create session', array( 'status' => 500 ) );
+        }
+
+        $session = TwellerFlow2_Session::get( $session_id );
+        self::log_activity( $session_id, 'booked', 'Session created from Lightroom plugin' );
+
+        return rest_ensure_response( array(
+            'ok'            => true,
+            'existing'      => false,
+            'session_id'    => $session_id,
+            'tracking_code' => $session->tracking_code,
+            'client_name'   => $session->client_name,
         ));
     }
 
@@ -87,10 +155,14 @@ class TwellerFlow2_Photo_Automation {
 
         self::log_activity( $session->id, $target_stage, $notes );
 
+        $stages_conf = TwellerFlow2_Database::get_stages();
+        $notified = ! empty( $stages_conf[ $result ]['notify'] ) && ! empty( $session->client_email );
+
         return rest_ensure_response( array(
             'ok'         => true,
             'session_id' => $session->id,
             'new_stage'  => $result,
+            'notified'   => $notified,
         ));
     }
 

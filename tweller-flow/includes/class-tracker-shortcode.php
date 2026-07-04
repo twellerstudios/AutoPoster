@@ -5,6 +5,34 @@ class TwellerFlow2_Tracker_Shortcode {
 
     public static function init() {
         add_shortcode( 'tweller_tracker', array( __CLASS__, 'render' ) );
+        add_action( 'wp_head', array( __CLASS__, 'output_og_tags' ), 5 );
+    }
+
+    /**
+     * Social share (Open Graph) tags for tracker/gallery links.
+     * Uses the admin-positioned gallery cover crop so shared links
+     * preview the right part of the photo.
+     */
+    public static function output_og_tags() {
+        if ( empty( $_GET['code'] ) || is_admin() ) return;
+
+        $code    = sanitize_text_field( $_GET['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) return;
+
+        $og_image = '';
+        if ( class_exists( 'TwellerFlow2_Gallery' ) && in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
+            $og_image = TwellerFlow2_Gallery::get_og_image_url( $session );
+        }
+        if ( ! $og_image ) return;
+
+        $title = esc_attr( $session->client_name . ' — Your Gallery | Tweller Studios' );
+        echo "\n<meta property=\"og:title\" content=\"{$title}\" />\n";
+        echo "<meta property=\"og:image\" content=\"" . esc_url( $og_image ) . "\" />\n";
+        echo "<meta property=\"og:image:width\" content=\"1200\" />\n";
+        echo "<meta property=\"og:image:height\" content=\"630\" />\n";
+        echo "<meta name=\"twitter:card\" content=\"summary_large_image\" />\n";
+        echo "<meta name=\"twitter:image\" content=\"" . esc_url( $og_image ) . "\" />\n";
     }
 
     public static function render( $atts ) {
@@ -41,11 +69,11 @@ class TwellerFlow2_Tracker_Shortcode {
         <div class="tf2-tracker tf2-tracker--lookup">
             <div class="tf2-tracker__header">
                 <h2>Track Your Session</h2>
-                <p>Enter your tracking code to see the progress of your photo session.</p>
+                <p>Enter your shoot code to see the progress of your photo session.</p>
             </div>
             <form class="tf2-tracker__form" method="get">
                 <div class="tf2-tracker__input-group">
-                    <input type="text" name="code" placeholder="e.g. A1B2C3" class="tf2-tracker__input" maxlength="10" required pattern="[A-Za-z0-9]+" style="text-transform:uppercase;">
+                    <input type="text" name="code" placeholder="e.g. 04-July-2024-JohnDoe-Mini" class="tf2-tracker__input" maxlength="120" required pattern="[A-Za-z0-9\-]+">
                     <button type="submit" class="tf2-tracker__btn">Track</button>
                 </div>
             </form>
@@ -62,7 +90,7 @@ class TwellerFlow2_Tracker_Shortcode {
             </div>
             <form class="tf2-tracker__form" method="get">
                 <div class="tf2-tracker__input-group">
-                    <input type="text" name="code" placeholder="Enter tracking code" class="tf2-tracker__input" maxlength="10" required style="text-transform:uppercase;">
+                    <input type="text" name="code" placeholder="Enter shoot code" class="tf2-tracker__input" maxlength="120" required>
                     <button type="submit" class="tf2-tracker__btn">Try Again</button>
                 </div>
             </form>
@@ -341,7 +369,7 @@ class TwellerFlow2_Tracker_Shortcode {
             <?php endif; ?>
 
             <div class="tf2-tracker__footer">
-                <p class="tf2-tracker__code">Tracking Code: <strong><?php echo esc_html( $session->tracking_code ); ?></strong></p>
+                <p class="tf2-tracker__code">Shoot Code: <strong><?php echo esc_html( $session->tracking_code ); ?></strong></p>
                 <p class="tf2-tracker__refresh">This page auto-refreshes every 60 seconds.</p>
             </div>
         </div>

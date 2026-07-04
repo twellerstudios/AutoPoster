@@ -3,13 +3,32 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class TwellerFlow2_Session {
 
-    public static function generate_tracking_code() {
-        $code = strtoupper( substr( md5( uniqid( mt_rand(), true ) ), 0, 6 ) );
+    /**
+     * Generate a human-readable "Shoot Code" for a session.
+     * Format: 04-July-2024-JohnDoe-Mini (date-ClientName-Package).
+     * Falls back to a random code only when no client data is available.
+     */
+    public static function generate_tracking_code( $data = array() ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
-        $exists = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE tracking_code = %s", $code ) );
-        if ( $exists > 0 ) {
-            return self::generate_tracking_code();
+
+        $date_ts  = ! empty( $data['session_date'] ) ? strtotime( $data['session_date'] ) : current_time( 'timestamp' );
+        $date_str = date( 'd-F-Y', $date_ts );
+
+        $name = preg_replace( '/[^A-Za-z0-9]/', '', ucwords( strtolower( trim( $data['client_name'] ?? '' ) ) ) );
+        if ( $name === '' ) {
+            $name = strtoupper( substr( md5( uniqid( mt_rand(), true ) ), 0, 6 ) );
+        }
+
+        $pkg = preg_replace( '/[^A-Za-z0-9]/', '', ucwords( str_replace( '_', ' ', strtolower( $data['package_type'] ?? '' ) ) ) );
+
+        $base = substr( $date_str . '-' . $name . ( $pkg ? '-' . $pkg : '' ), 0, 110 );
+
+        $code = $base;
+        $i = 2;
+        while ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE tracking_code = %s", $code ) ) > 0 ) {
+            $code = $base . '-' . $i;
+            $i++;
         }
         return $code;
     }
@@ -18,7 +37,7 @@ class TwellerFlow2_Session {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
-        $tracking_code = self::generate_tracking_code();
+        $tracking_code = self::generate_tracking_code( $data );
         $delivery_days = get_option( 'tweller_flow_2_delivery_days', 14 );
 
         $session_date = ! empty( $data['session_date'] ) ? $data['session_date'] : null;
@@ -58,13 +77,18 @@ class TwellerFlow2_Session {
 
         if ( $session_id ) {
             self::record_stage_history( $session_id, 'booked', 0, 'Session created' );
-            TwellerFlow2_Notifications::on_stage_change( $session_id, 'booked' );
+
+            if ( empty( $data['skip_notifications'] ) ) {
+                TwellerFlow2_Notifications::on_stage_change( $session_id, 'booked' );
+            }
             do_action( 'tweller_flow_2_session_created', $session_id, $data );
-            
+
             // Send tentative calendar hold if date is set
-            $session = self::get( $session_id );
-            if ( $session && !empty($session->session_date) ) {
-                TwellerFlow2_Notifications::send_calendar_invite( $session, 'TENTATIVE', 0 );
+            if ( empty( $data['skip_notifications'] ) ) {
+                $session = self::get( $session_id );
+                if ( $session && !empty($session->session_date) ) {
+                    TwellerFlow2_Notifications::send_calendar_invite( $session, 'TENTATIVE', 0 );
+                }
             }
         }
 

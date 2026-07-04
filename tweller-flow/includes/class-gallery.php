@@ -26,67 +26,200 @@ class TwellerFlow2_Gallery {
         ));
 
         // Get gallery photos (public — used by client tracker)
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_gallery' ),
             'permission_callback' => '__return_true',
         ));
 
         // Verify gallery password
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/verify', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/verify', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_verify_password' ),
             'permission_callback' => '__return_true',
         ));
 
         // Download single photo (proxied for password-protected galleries)
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/download', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/download', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_download_photo' ),
             'permission_callback' => '__return_true',
         ));
 
         // Download all photos as zip
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/download-all', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/download-all', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_download_all' ),
             'permission_callback' => '__return_true',
         ));
 
         // Admin: delete gallery photo
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/photo/(?P<photo_id>\d+)', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/photo/(?P<photo_id>\d+)', array(
             'methods'             => 'DELETE',
             'callback'            => array( __CLASS__, 'rest_delete_photo' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Check existing photo filenames (used by watcher to avoid re-uploads)
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/filenames', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/filenames', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_filenames' ),
             'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Admin: batch delete photos
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/batch-delete', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/batch-delete', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_batch_delete' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Admin: reorder photos
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/reorder', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/reorder', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_reorder' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Admin: set gallery password
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/password', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/password', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_set_password' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
+
+        // Admin: set gallery cover photo + focal position
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/cover', array(
+            'methods'             => 'POST',
+            'callback'            => array( __CLASS__, 'rest_set_cover' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+    }
+
+    // ── Admin: Cover Photo & Position ──────────────────
+
+    public static function rest_set_cover( $request ) {
+        $code     = sanitize_text_field( $request['code'] );
+        $photo_id = intval( $request->get_param( 'photo_id' ) ?? 0 );
+        $pos_x    = $request->get_param( 'pos_x' );
+        $pos_y    = $request->get_param( 'pos_y' );
+
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        if ( $photo_id ) {
+            update_option( 'tweller_gallery_cover_' . $session->id, $photo_id );
+        }
+        if ( $pos_x !== null && $pos_y !== null ) {
+            $pos_x = max( 0, min( 100, floatval( $pos_x ) ) );
+            $pos_y = max( 0, min( 100, floatval( $pos_y ) ) );
+            update_option( 'tweller_gallery_cover_pos_' . $session->id, round( $pos_x, 1 ) . ',' . round( $pos_y, 1 ) );
+        }
+
+        // Regenerate the social-share (og:image) crop from the new cover/position
+        self::generate_og_image( $session );
+
+        $cover = self::get_cover( $session );
+        return rest_ensure_response( array( 'ok' => true, 'cover' => $cover ) );
+    }
+
+    /**
+     * Resolve the gallery cover: chosen photo (or first photo) + focal position.
+     * Returns null when the gallery is empty.
+     */
+    public static function get_cover( $session ) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'tweller_gallery_photos';
+
+        $cover_id = (int) get_option( 'tweller_gallery_cover_' . $session->id, 0 );
+        $photo = null;
+        if ( $cover_id ) {
+            $photo = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM $table WHERE id = %d AND session_id = %d", $cover_id, $session->id
+            ));
+        }
+        if ( ! $photo ) {
+            $photo = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM $table WHERE session_id = %d ORDER BY sort_order ASC LIMIT 1", $session->id
+            ));
+        }
+        if ( ! $photo ) return null;
+
+        $pos = get_option( 'tweller_gallery_cover_pos_' . $session->id, '50,50' );
+        $parts = explode( ',', $pos );
+        $pos_x = isset( $parts[0] ) ? floatval( $parts[0] ) : 50;
+        $pos_y = isset( $parts[1] ) ? floatval( $parts[1] ) : 50;
+
+        $gallery_url = self::get_gallery_url( $session->tracking_code );
+
+        return array(
+            'photo_id'  => (int) $photo->id,
+            'url'       => $gallery_url . '/' . $photo->filename,
+            'thumb_url' => $gallery_url . '/thumbs/' . $photo->filename,
+            'pos_x'     => $pos_x,
+            'pos_y'     => $pos_y,
+            'position'  => $pos_x . '% ' . $pos_y . '%',
+        );
+    }
+
+    /**
+     * Generate a 1200x630 crop of the cover photo centred on the focal point.
+     * Used as og:image so shared links show the right part of the photo.
+     */
+    public static function generate_og_image( $session ) {
+        $cover = self::get_cover( $session );
+        if ( ! $cover ) return false;
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'tweller_gallery_photos';
+        $photo = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM $table WHERE id = %d", $cover['photo_id']
+        ));
+        if ( ! $photo ) return false;
+
+        $gallery_dir = self::get_gallery_dir( $session->tracking_code );
+        $source = $gallery_dir . '/' . $photo->filename;
+        if ( ! file_exists( $source ) ) return false;
+
+        $editor = wp_get_image_editor( $source );
+        if ( is_wp_error( $editor ) ) return false;
+
+        $size = $editor->get_size();
+        $src_w = $size['width'];
+        $src_h = $size['height'];
+
+        // Target 1200x630 (1.9:1). Crop the largest region at that ratio
+        // centred on the focal point, then scale down.
+        $target_ratio = 1200 / 630;
+        $crop_w = $src_w;
+        $crop_h = (int) round( $crop_w / $target_ratio );
+        if ( $crop_h > $src_h ) {
+            $crop_h = $src_h;
+            $crop_w = (int) round( $crop_h * $target_ratio );
+        }
+
+        $focal_x = (int) round( $src_w * $cover['pos_x'] / 100 );
+        $focal_y = (int) round( $src_h * $cover['pos_y'] / 100 );
+
+        $crop_x = max( 0, min( $src_w - $crop_w, $focal_x - (int) ( $crop_w / 2 ) ) );
+        $crop_y = max( 0, min( $src_h - $crop_h, $focal_y - (int) ( $crop_h / 2 ) ) );
+
+        $editor->crop( $crop_x, $crop_y, $crop_w, $crop_h, 1200, 630 );
+        $editor->set_quality( 82 );
+        $saved = $editor->save( $gallery_dir . '/og-cover.jpg', 'image/jpeg' );
+
+        return ! is_wp_error( $saved );
+    }
+
+    public static function get_og_image_url( $session ) {
+        $gallery_dir = self::get_gallery_dir( $session->tracking_code );
+        if ( ! file_exists( $gallery_dir . '/og-cover.jpg' ) ) {
+            // Try to build it on the fly (first share before admin repositioned)
+            if ( ! self::generate_og_image( $session ) ) return '';
+        }
+        return self::get_gallery_url( $session->tracking_code ) . '/og-cover.jpg?v=' . filemtime( $gallery_dir . '/og-cover.jpg' );
     }
 
     // ── Upload ─────────────────────────────────────────
@@ -262,6 +395,7 @@ class TwellerFlow2_Gallery {
             'session_date' => $session->session_date,
             'photos'       => $photo_list,
             'photo_count'  => count( $photo_list ),
+            'cover'        => self::get_cover( $session ),
         ));
     }
 
@@ -495,7 +629,7 @@ class TwellerFlow2_Gallery {
         $sql = "CREATE TABLE $table (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             session_id bigint(20) unsigned NOT NULL,
-            session_code varchar(10) NOT NULL,
+            session_code varchar(120) NOT NULL,
             filename varchar(255) NOT NULL,
             sort_order int DEFAULT 0,
             uploaded_at datetime DEFAULT CURRENT_TIMESTAMP,

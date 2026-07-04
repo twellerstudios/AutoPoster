@@ -13,7 +13,7 @@ class TwellerFlow2_Database {
 
         $sql_sessions = "CREATE TABLE $sessions_table (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-            tracking_code varchar(10) NOT NULL,
+            tracking_code varchar(120) NOT NULL,
             client_name varchar(255) NOT NULL,
             client_email varchar(255) DEFAULT '',
             client_phone varchar(50) DEFAULT '',

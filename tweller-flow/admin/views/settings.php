@@ -132,6 +132,12 @@
                     <input type="number" name="culling_price_per_photo" value="<?php echo esc_attr( get_option( 'tweller_flow_2_culling_price_per_photo', 30 ) ); ?>" min="1" step="1" placeholder="30">
                     <div class="tf2-field__hint">Charge per additional photo beyond the included package amount.</div>
                 </div>
+
+                <div class="tf2-field" style="max-width:640px;">
+                    <label class="tf2-field__label">Leave a Review URL</label>
+                    <input type="url" name="review_url" value="<?php echo esc_attr( get_option( 'tweller_flow_2_review_url', 'https://g.page/r/CbntSRvzXVrSEBM/review' ) ); ?>" placeholder="https://g.page/r/.../review">
+                    <div class="tf2-field__hint">The "Leave Us a Review" button in the delivery email links here.</div>
+                </div>
             </div>
 
             <!-- Client Tracker -->

@@ -2,7 +2,7 @@
 <div class="wrap tf2-wrap">
 
     <?php if ( isset( $_GET['created'] ) ) : ?>
-        <div class="tf2-alert tf2-alert--success">Session created! Tracking code: <strong><?php echo esc_html( $session->tracking_code ); ?></strong></div>
+        <div class="tf2-alert tf2-alert--success">Session created! Shoot code: <strong><?php echo esc_html( $session->tracking_code ); ?></strong></div>
     <?php elseif ( isset( $_GET['updated'] ) ) : ?>
         <div class="tf2-alert tf2-alert--success">Session updated.</div>
     <?php elseif ( isset( $_GET['advanced'] ) ) : ?>
@@ -21,7 +21,7 @@
             <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-sessions' ); ?>" class="tf2-btn tf2-btn--ghost tf2-btn--sm" style="margin-bottom:8px;">&larr; Back to Sessions</a>
             <h1><?php echo esc_html( $session->client_name ); ?></h1>
             <div class="tf2-detail-header__code">
-                Tracking Code: <span><?php echo esc_html( $session->tracking_code ); ?></span>
+                Shoot Code: <span><?php echo esc_html( $session->tracking_code ); ?></span>
                 <button class="tf2-copy-btn" onclick="navigator.clipboard.writeText('<?php echo esc_attr( $session->tracking_code ); ?>'); this.textContent='Copied!';">Copy</button>
             </div>
         </div>
@@ -1032,6 +1032,9 @@
                     <p style="margin:6px 0 0; font-size:11px; color:#92400E;">Click photos to select. Drag to reorder.</p>
                 </div>
 
+                <?php
+                $cover = $gallery_info['photo_count'] > 0 ? TwellerFlow2_Gallery::get_cover( $session ) : null;
+                ?>
                 <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
                     <div id="gm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:6px; margin-bottom:16px;">
                         <?php foreach ( $gallery_info['photos'] as $photo ) : ?>
@@ -1039,8 +1042,29 @@
                                 <img src="<?php echo esc_url( $gallery_url . '/thumbs/' . $photo->filename ); ?>" alt="<?php echo esc_attr( $photo->filename ); ?>" style="width:100%; height:100%; object-fit:cover; pointer-events:none;">
                                 <div class="gm-check" style="display:none; position:absolute; top:4px; left:4px; width:20px; height:20px; background:#3B82F6; border-radius:50%; color:#fff; font-size:12px; line-height:20px; text-align:center;">&#10003;</div>
                                 <div class="gm-order-badge" style="display:none; position:absolute; bottom:4px; right:4px; min-width:20px; height:20px; background:rgba(0,0,0,0.6); border-radius:10px; color:#fff; font-size:10px; line-height:20px; text-align:center; padding:0 5px;"></div>
+                                <button class="gm-cover-btn" data-id="<?php echo $photo->id; ?>" data-url="<?php echo esc_url( $gallery_url . '/' . $photo->filename ); ?>" title="Set as cover photo" style="position:absolute; top:4px; right:4px; width:22px; height:22px; background:rgba(0,0,0,0.55); color:#fff; border:none; border-radius:50%; font-size:12px; line-height:22px; padding:0; cursor:pointer; text-align:center; <?php echo ( $cover && (int) $cover['photo_id'] === (int) $photo->id ) ? 'background:#F59E0B;' : ''; ?>">&#9733;</button>
                             </div>
                         <?php endforeach; ?>
+                    </div>
+
+                    <!-- Cover photo & positioning -->
+                    <div id="gm-cover-panel" style="border:1px solid #E5E7EB; border-radius:10px; padding:14px; margin-bottom:16px; background:#FAFAFA;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <h3 style="margin:0; font-size:13px; font-weight:600; color:#374151;">Gallery Cover &amp; Framing</h3>
+                            <button id="gm-cover-save" class="tf2-btn tf2-btn--primary tf2-btn--sm" style="font-size:11px;" disabled>Save Position</button>
+                        </div>
+                        <p style="margin:0 0 10px; font-size:11px; color:#6B7280;">
+                            This framing is what the client sees at the top of their gallery, and what shows when the link is shared on WhatsApp / social media.
+                            Click the &#9733; on any photo above to make it the cover, then <strong>drag inside the preview</strong> to frame it.
+                        </p>
+                        <div id="gm-cover-preview" style="position:relative; width:100%; max-width:640px; aspect-ratio:21/9; border-radius:8px; overflow:hidden; background:#111 center/cover no-repeat; cursor:grab; user-select:none; touch-action:none;
+                            background-image:url('<?php echo $cover ? esc_url( $cover['url'] ) : ''; ?>');
+                            background-position:<?php echo $cover ? esc_attr( $cover['position'] ) : 'center'; ?>;">
+                            <div style="position:absolute; inset:0; display:flex; align-items:flex-end; padding:10px; pointer-events:none;">
+                                <span style="background:rgba(0,0,0,0.55); color:#fff; font-size:10px; padding:3px 8px; border-radius:5px;">Client hero preview — drag to reposition</span>
+                            </div>
+                        </div>
+                        <p id="gm-cover-status" style="margin:8px 0 0; font-size:11px; color:#16A34A; display:none;"></p>
                     </div>
                 <?php endif; ?>
 
@@ -1115,6 +1139,102 @@
                             });
                         }
                         next(0);
+                    }
+
+                    // ── Cover photo & framing ──────────────
+                    var coverPreview = document.getElementById('gm-cover-preview');
+                    var coverSaveBtn = document.getElementById('gm-cover-save');
+                    var coverStatus  = document.getElementById('gm-cover-status');
+                    var coverPos = { x: <?php echo $cover ? floatval( $cover['pos_x'] ) : 50; ?>, y: <?php echo $cover ? floatval( $cover['pos_y'] ) : 50; ?> };
+                    var coverDirty = false;
+
+                    function coverShowStatus(msg, ok) {
+                        if (!coverStatus) return;
+                        coverStatus.textContent = msg;
+                        coverStatus.style.color = ok ? '#16A34A' : '#DC2626';
+                        coverStatus.style.display = 'block';
+                        setTimeout(function(){ coverStatus.style.display = 'none'; }, 3000);
+                    }
+
+                    function saveCover(payload, doneMsg) {
+                        return fetch(restBase + '/cover', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': restNonce },
+                            body: JSON.stringify(payload)
+                        })
+                        .then(function(r){ return r.json(); })
+                        .then(function(d){
+                            if (d.ok) {
+                                coverShowStatus(doneMsg, true);
+                                if (d.cover && coverPreview) {
+                                    coverPreview.style.backgroundImage = 'url(' + d.cover.url + ')';
+                                }
+                            } else {
+                                coverShowStatus('Could not save cover.', false);
+                            }
+                            return d;
+                        })
+                        .catch(function(){ coverShowStatus('Network error saving cover.', false); });
+                    }
+
+                    // Set-as-cover star buttons
+                    document.querySelectorAll('.gm-cover-btn').forEach(function(btn) {
+                        btn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            var id = this.getAttribute('data-id');
+                            var url = this.getAttribute('data-url');
+                            document.querySelectorAll('.gm-cover-btn').forEach(function(b){ b.style.background = 'rgba(0,0,0,0.55)'; });
+                            this.style.background = '#F59E0B';
+                            if (coverPreview) {
+                                coverPreview.style.backgroundImage = 'url(' + url + ')';
+                                coverPos = { x: 50, y: 50 };
+                                coverPreview.style.backgroundPosition = '50% 50%';
+                            }
+                            saveCover({ photo_id: parseInt(id), pos_x: 50, pos_y: 50 }, 'Cover photo updated.');
+                        });
+                    });
+
+                    // Drag inside the preview to reposition (moves background-position)
+                    if (coverPreview) {
+                        var dragging = false, startX = 0, startY = 0, startPos = null;
+
+                        coverPreview.addEventListener('pointerdown', function(e) {
+                            dragging = true;
+                            startX = e.clientX; startY = e.clientY;
+                            startPos = { x: coverPos.x, y: coverPos.y };
+                            coverPreview.style.cursor = 'grabbing';
+                            coverPreview.setPointerCapture(e.pointerId);
+                        });
+                        coverPreview.addEventListener('pointermove', function(e) {
+                            if (!dragging) return;
+                            var rect = coverPreview.getBoundingClientRect();
+                            // Dragging the image right moves focus left (natural drag feel)
+                            var dx = ((e.clientX - startX) / rect.width) * 100;
+                            var dy = ((e.clientY - startY) / rect.height) * 100;
+                            coverPos.x = Math.max(0, Math.min(100, startPos.x - dx));
+                            coverPos.y = Math.max(0, Math.min(100, startPos.y - dy));
+                            coverPreview.style.backgroundPosition = coverPos.x + '% ' + coverPos.y + '%';
+                            coverDirty = true;
+                            if (coverSaveBtn) coverSaveBtn.disabled = false;
+                        });
+                        function endDrag() {
+                            dragging = false;
+                            coverPreview.style.cursor = 'grab';
+                        }
+                        coverPreview.addEventListener('pointerup', endDrag);
+                        coverPreview.addEventListener('pointercancel', endDrag);
+                    }
+
+                    if (coverSaveBtn) {
+                        coverSaveBtn.addEventListener('click', function() {
+                            coverSaveBtn.disabled = true;
+                            coverSaveBtn.textContent = 'Saving...';
+                            saveCover({ pos_x: coverPos.x, pos_y: coverPos.y }, 'Framing saved — clients and shared links now use this view.')
+                            .then(function(){
+                                coverSaveBtn.textContent = 'Save Position';
+                                coverDirty = false;
+                            });
+                        });
                     }
 
                     // ── Gallery Edit Mode ──────────────────

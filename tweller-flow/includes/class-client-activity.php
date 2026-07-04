@@ -16,14 +16,14 @@ class TwellerFlow2_Client_Activity {
 
     public static function register_rest_routes() {
         // Log a client activity event (public — called from tracker JS)
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/activity', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/activity', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_log_activity' ),
             'permission_callback' => '__return_true',
         ));
 
         // Get activity for a session (admin only)
-        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9]+)/activity', array(
+        register_rest_route( 'tweller-flow-2/v1', '/gallery/(?P<code>[a-zA-Z0-9\-]+)/activity', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_activity' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },

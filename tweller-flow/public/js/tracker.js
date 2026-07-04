@@ -337,7 +337,7 @@
             }
 
             if (photos.length && heroCover && heroCoverBg) {
-                heroCoverBg.style.backgroundImage = 'url(' + photos[0].url + ')';
+                applyCover(data.cover, photos);
                 heroCover.style.display = '';
             }
         })
@@ -347,6 +347,15 @@
             showGalleryMessage('Unable to load gallery. Please try refreshing the page.');
             console.error('[Tweller Gallery]', err.message || err);
         });
+    }
+
+    // Apply the admin-chosen cover photo and focal position to the hero.
+    function applyCover(cover, photoList) {
+        if (!heroCoverBg) return;
+        var url = (cover && cover.url) ? cover.url : (photoList[0] && photoList[0].url);
+        if (!url) return;
+        heroCoverBg.style.backgroundImage = 'url(' + url + ')';
+        heroCoverBg.style.backgroundPosition = (cover && cover.position) ? cover.position : 'center';
     }
 
     function showGalleryMessage(msg) {

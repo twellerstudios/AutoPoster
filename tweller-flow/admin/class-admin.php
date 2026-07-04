@@ -15,8 +15,8 @@ class TwellerFlow2_Admin {
      */
     public function add_menus() {
         add_menu_page(
-            'Tweller Flow 2',
-            'Tweller Flow 2',
+            'Tweller Bookings',
+            'Tweller Bookings',
             'manage_options',
             'tweller-flow-2',
             array( $this, 'page_dashboard' ),
@@ -332,6 +332,7 @@ class TwellerFlow2_Admin {
             update_option( 'tweller_flow_2_banking', sanitize_textarea_field( $_POST['banking_info'] ) );
             update_option( 'tweller_flow_2_wipay_url', esc_url_raw( $_POST['wipay_url'] ?? '' ) );
             update_option( 'tweller_flow_2_culling_price_per_photo', max( 1, intval( $_POST['culling_price_per_photo'] ?? 30 ) ) );
+            update_option( 'tweller_flow_2_review_url', esc_url_raw( $_POST['review_url'] ?? 'https://g.page/r/CbntSRvzXVrSEBM/review' ) );
             update_option( 'tweller_flow_2_delivery_days', intval( $_POST['delivery_days'] ) );
             update_option( 'tweller_flow_2_tracker_page', esc_url_raw( $_POST['tracker_page_url'] ) );
             update_option( 'tweller_flow_2_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );

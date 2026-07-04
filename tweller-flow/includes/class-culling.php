@@ -29,49 +29,49 @@ class TwellerFlow2_Culling {
         $ns = 'tweller-flow-2/v1';
 
         // Upload proof photo (from watcher, auth required)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/upload', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/upload', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_upload_proof' ),
             'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Get proofs for client (public, password-protected)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_proofs' ),
             'permission_callback' => '__return_true',
         ));
 
         // Submit selections (public)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/select', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/select', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_submit_selections' ),
             'permission_callback' => '__return_true',
         ));
 
         // Get selections (watcher pulls these)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/selections', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/selections', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_selections' ),
             'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Verify culling password
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/verify', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/verify', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_verify_password' ),
             'permission_callback' => '__return_true',
         ));
 
         // Batch upload status / mark culling ready (from watcher)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/ready', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/ready', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_mark_ready' ),
             'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
 
         // Get existing proof filenames (dedup for watcher)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/filenames', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/filenames', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_filenames' ),
             'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
@@ -79,14 +79,14 @@ class TwellerFlow2_Culling {
 
         // ── Admin-authenticated routes ─────────────────
         // Upload proofs from admin dashboard
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/upload-admin', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/upload-admin', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_upload_admin' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // List proofs for admin view
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/admin-proofs', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/admin-proofs', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_admin_proofs' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
@@ -100,35 +100,35 @@ class TwellerFlow2_Culling {
         ));
 
         // Mark ready (admin version)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/admin-ready', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/admin-ready', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_mark_ready_admin' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Enable / disable culling for a session
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/toggle', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/toggle', array(
             'methods'             => 'POST',
             'callback'            => array( __CLASS__, 'rest_toggle_culling' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Download selections as CSV (admin)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/download-selections', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/download-selections', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_download_selections' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Download selections as XMP metadata (admin) — for Lightroom import
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/download-xmp', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/download-xmp', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_download_xmp' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
         // Get all proofs with selection status (admin)
-        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9]+)/admin-proofs-status', array(
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/admin-proofs-status', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'rest_get_proofs_with_status' ),
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
@@ -145,7 +145,7 @@ class TwellerFlow2_Culling {
         $sql_proofs = "CREATE TABLE $proofs_table (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             session_id bigint(20) unsigned NOT NULL,
-            session_code varchar(10) NOT NULL,
+            session_code varchar(120) NOT NULL,
             filename varchar(255) NOT NULL,
             original_filename varchar(255) NOT NULL,
             sort_order int DEFAULT 0,
@@ -159,7 +159,7 @@ class TwellerFlow2_Culling {
         $sql_selections = "CREATE TABLE $selections_table (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             session_id bigint(20) unsigned NOT NULL,
-            session_code varchar(10) NOT NULL,
+            session_code varchar(120) NOT NULL,
             proof_id bigint(20) unsigned NOT NULL,
             filename varchar(255) NOT NULL,
             star_rating tinyint(1) DEFAULT 1,
@@ -1254,7 +1254,7 @@ class TwellerFlow2_Culling {
                 <div style='margin:20px 0;'>
                     <h3 style='font-size:16px; color:#111827; margin:0 0 14px;'>How to Pay</h3>
                     {$payment_html}
-                    <p style='font-size:13px; color:#6B7280; margin-top:8px;'>Please use your tracking code <strong>{$session->tracking_code}</strong> as a reference when paying.</p>
+                    <p style='font-size:13px; color:#6B7280; margin-top:8px;'>Please use your shoot code <strong>{$session->tracking_code}</strong> as a reference when paying.</p>
                 </div>";
         }
 

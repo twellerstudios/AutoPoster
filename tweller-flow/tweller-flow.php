@@ -1,20 +1,20 @@
 <?php
 /**
- * Plugin Name: Tweller Flow 2
+ * Plugin Name: Tweller Bookings WP
  * Plugin URI: https://twellerstudios.com
- * Description: Photography session workflow — booking, pipeline tracking, client proof uploads, photo selection portal, and WiPay payment integration.
- * Version: 3.4.2
+ * Description: Photography session workflow — booking, pipeline tracking, client proof uploads, photo selection portal, gallery delivery, and WiPay payment integration.
+ * Version: 3.5.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
- * Text Domain: tweller-flow-2-2
+ * Text Domain: tweller-bookings
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_2_VERSION', '3.4.2' );
+define( 'TWELLER_FLOW_2_VERSION', '3.5.0' );
 define( 'TWELLER_FLOW_2_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_2_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_2_TABLE_SESSIONS', 'tweller_sessions' );
@@ -123,6 +123,17 @@ function tweller_flow_2_upgrade_check() {
         ));
         if ( empty( $col ) ) {
             $wpdb->query( "ALTER TABLE `$sel_table` ADD COLUMN `star_rating` tinyint(1) DEFAULT 1 AFTER `filename`" );
+        }
+
+        // Widen code columns for friendly Shoot Codes (e.g. 04-July-2024-JohnDoe-Mini)
+        $wpdb->query( "ALTER TABLE `{$wpdb->prefix}tweller_sessions` MODIFY `tracking_code` varchar(120) NOT NULL" );
+        $wpdb->query( "ALTER TABLE `{$wpdb->prefix}tweller_gallery_photos` MODIFY `session_code` varchar(120) NOT NULL" );
+        $wpdb->query( "ALTER TABLE `{$wpdb->prefix}tweller_culling_proofs` MODIFY `session_code` varchar(120) NOT NULL" );
+        $wpdb->query( "ALTER TABLE `$sel_table` MODIFY `session_code` varchar(120) NOT NULL" );
+
+        // Seed the review link setting (editable in Settings)
+        if ( get_option( 'tweller_flow_2_review_url' ) === false ) {
+            add_option( 'tweller_flow_2_review_url', 'https://g.page/r/CbntSRvzXVrSEBM/review' );
         }
 
         update_option( 'tweller_flow_2_stages', $stages );
@@ -255,7 +266,7 @@ function tweller_flow_2_public_assets() {
  * Register REST API routes
  */
 function tweller_flow_2_register_rest_routes() {
-    register_rest_route( 'tweller-flow-2/v1', '/track/(?P<code>[a-zA-Z0-9]+)', array(
+    register_rest_route( 'tweller-flow-2/v1', '/track/(?P<code>[a-zA-Z0-9\-]+)', array(
         'methods'  => 'GET',
         'callback' => array( 'TwellerFlow2_Session', 'rest_track' ),
         'permission_callback' => '__return_true',

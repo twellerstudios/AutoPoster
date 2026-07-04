@@ -57,7 +57,10 @@ class TwellerFlow2_Photo_Automation {
         if ( ! $client_name ) {
             return new WP_Error( 'missing_params', 'client_name is required', array( 'status' => 400 ) );
         }
-        if ( ! $session_date || ! strtotime( $session_date ) ) {
+        if ( $session_date && strtotime( $session_date ) ) {
+            // Normalize whatever format was sent to Y-m-d
+            $session_date = date( 'Y-m-d', strtotime( $session_date ) );
+        } else {
             $session_date = current_time( 'Y-m-d' );
         }
 

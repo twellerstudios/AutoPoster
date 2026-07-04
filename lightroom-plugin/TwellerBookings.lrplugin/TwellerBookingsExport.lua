@@ -59,22 +59,9 @@ local function apiBase( siteUrl )
     return siteUrl:gsub( "/+$", "" ) .. "/wp-json/tweller-flow-2/v1"
 end
 
---- Fetch recent sessions from WordPress for the session picker
-local function fetchSessions( siteUrl, apiKey )
-    local url = apiBase( siteUrl ) .. "/automation/sessions?range=recent&api_key=" .. urlencode( apiKey )
-    local body = LrHttp.get( url )
-
-    if not body or body == "" then
-        log( "fetchSessions: empty response from " .. url )
-        return {}
-    end
-
-    log( "fetchSessions response: " .. body:sub( 1, 200 ) )
-
+--- Parse a JSON array of session objects into popup items
+local function parseSessionList( body )
     local sessions = {}
-
-    -- Parse JSON array of sessions
-    -- Looking for objects like: {"id":"31","tracking_code":"BC8E62","client_name":"John Doe",...}
     local in_string = false
     local depth = 0
     local obj_start = 1
@@ -101,15 +88,62 @@ local function fetchSessions( siteUrl, apiKey )
                             title = name .. " — " .. ( date or "no date" ) .. "  [" .. ( stage or "" ) .. "]",
                             value = code,
                         }
-                        log( "Parsed session: " .. code .. " - " .. name )
                     end
                 end
             end
         end
     end
-
-    log( "fetchSessions found " .. #sessions .. " sessions" )
     return sessions
+end
+
+--- Fetch sessions from WordPress for the session picker.
+--- Returns sessions table + error message (nil on success).
+local function fetchSessions( siteUrl, apiKey )
+    if siteUrl == "" then
+        return {}, "Enter your website URL first."
+    end
+
+    -- Try recent sessions first, then fall back to all active sessions
+    local urls = {
+        apiBase( siteUrl ) .. "/automation/sessions?range=recent&api_key=" .. urlencode( apiKey ),
+        apiBase( siteUrl ) .. "/automation/sessions?api_key=" .. urlencode( apiKey ),
+    }
+
+    local lastError = nil
+
+    for _, url in ipairs( urls ) do
+        local body, hdrs = LrHttp.get( url, {
+            { field = "Authorization", value = "Bearer " .. apiKey },
+            { field = "Accept",        value = "application/json" },
+        }, 30 )
+
+        local status = hdrs and hdrs.status or 0
+
+        if not body or body == "" then
+            local errMsg = hdrs and hdrs.error and ( hdrs.error.errorCode or "network error" ) or "no response"
+            lastError = "Could not reach the website (" .. tostring( errMsg ) .. "). Check the URL."
+            log( "fetchSessions: no body from " .. url .. " status=" .. tostring( status ) )
+        elseif status == 401 or status == 403 then
+            lastError = "Access denied (HTTP " .. status .. "). Check the API key."
+            log( "fetchSessions: auth failed " .. tostring( body:sub( 1, 300 ) ) )
+        elseif status == 404 then
+            lastError = "Endpoint not found (HTTP 404). Is the Tweller Bookings plugin active and up to date?"
+            log( "fetchSessions: 404 " .. tostring( body:sub( 1, 300 ) ) )
+        elseif status >= 400 then
+            lastError = "Website error (HTTP " .. status .. ")."
+            log( "fetchSessions: HTTP " .. status .. " body=" .. tostring( body:sub( 1, 300 ) ) )
+        else
+            log( "fetchSessions response (" .. tostring( status ) .. "): " .. body:sub( 1, 300 ) )
+            local sessions = parseSessionList( body )
+            if #sessions > 0 then
+                log( "fetchSessions found " .. #sessions .. " sessions" )
+                return sessions, nil
+            end
+            lastError = "Connected OK, but no sessions came back. Response: " .. trim( body ):sub( 1, 120 )
+        end
+    end
+
+    return {}, lastError
 end
 
 --------------------------------------------------------------------------------
@@ -210,12 +244,14 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
                     action = function()
                         LrTasks.startAsyncTask( function()
                             propertyTable.statusText = 'Loading sessions...'
-                            local ok, sessions = pcall( fetchSessions, trim( propertyTable.siteUrl ), trim( propertyTable.apiKey ) )
-                            if ok and #sessions > 0 then
+                            local ok, sessions, errMsg = pcall( fetchSessions, trim( propertyTable.siteUrl ), trim( propertyTable.apiKey ) )
+                            if ok and sessions and #sessions > 0 then
                                 propertyTable.sessionItems = sessions
                                 propertyTable.statusText = #sessions .. ' session(s) loaded — pick one from the menu'
+                            elseif ok then
+                                propertyTable.statusText = errMsg or 'No sessions found.'
                             else
-                                propertyTable.statusText = 'No sessions found. Check URL / API key.'
+                                propertyTable.statusText = 'Error: ' .. tostring( sessions )
                             end
                         end )
                     end,
@@ -267,24 +303,35 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
                                 return
                             end
                             propertyTable.statusText = 'Creating session...'
+
+                            -- Default to the LOCAL machine's date so the session
+                            -- date matches your timezone, not the server's.
+                            local sessionDate = trim( propertyTable.newSessionDate )
+                            if sessionDate == '' then
+                                sessionDate = os.date( '%Y-%m-%d' )
+                            end
+
                             local url = apiBase( siteUrl ) .. "/automation/create-session"
                                 .. "?client_name=" .. urlencode( name )
                                 .. "&client_email=" .. urlencode( trim( propertyTable.newClientEmail ) )
-                                .. "&session_date=" .. urlencode( trim( propertyTable.newSessionDate ) )
+                                .. "&session_date=" .. urlencode( sessionDate )
                                 .. "&package_type=" .. urlencode( propertyTable.newPackage or 'mini' )
                                 .. "&api_key=" .. urlencode( apiKey )
-                            local body = LrHttp.get( url )
+                            local body, hdrs = LrHttp.get( url, {
+                                { field = "Authorization", value = "Bearer " .. apiKey },
+                            }, 30 )
                             if body and jsonBool( body, 'ok' ) then
                                 local code = jsonValue( body, 'tracking_code' )
                                 propertyTable.sessionCode = code or ''
                                 if jsonBool( body, 'existing' ) then
-                                    propertyTable.statusText = 'Found existing session: ' .. tostring( code )
+                                    propertyTable.statusText = 'Found existing session: ' .. tostring( code ) .. ' (' .. sessionDate .. ')'
                                 else
-                                    propertyTable.statusText = 'Session created: ' .. tostring( code )
+                                    propertyTable.statusText = 'Session created: ' .. tostring( code ) .. ' (' .. sessionDate .. ')'
                                 end
                             else
-                                propertyTable.statusText = 'Could not create session. Check URL / API key.'
-                                log( 'create-session failed: ' .. tostring( body ) )
+                                local status = hdrs and hdrs.status or 0
+                                propertyTable.statusText = 'Could not create session (HTTP ' .. tostring( status ) .. '). Check URL / API key.'
+                                log( 'create-session failed: HTTP ' .. tostring( status ) .. ' ' .. tostring( body ) )
                             end
                         end )
                     end,
@@ -375,14 +422,20 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     local advanceStage    = propertyTable.advanceStage
     local galleryPassword = trim( propertyTable.galleryPassword )
 
-    -- Validate
+    -- Validate. On failure, skip all renditions so Lightroom shows our
+    -- message instead of a generic "failed to export" error.
+    local validationError = nil
     if sessionCode == "" then
-        LrDialogs.message( "Tweller Bookings", "Please pick a session or create one first (Session section).", "critical" )
-        return
+        validationError = "Please pick a session or create one first (Session section)."
+    elseif siteUrl == "" and uploadToSite then
+        validationError = "Please enter your website URL to upload photos."
     end
 
-    if siteUrl == "" and uploadToSite then
-        LrDialogs.message( "Tweller Bookings", "Please enter your website URL to upload photos.", "critical" )
+    if validationError then
+        for _, rendition in exportContext:renditions() do
+            rendition:skipRender()
+        end
+        LrDialogs.message( "Tweller Bookings", validationError, "critical" )
         return
     end
 
@@ -402,6 +455,7 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     local uploadedCount = 0
     local failedCount   = 0
     local photoIndex    = 0
+    local firstError    = nil
 
     for i, rendition in exportContext:renditions { stopIfCanceled = true } do
         progressScope:setPortionComplete( photoIndex, nPhotos )
@@ -474,17 +528,30 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
                         { field = "Authorization", value = "Bearer " .. apiKey },
                     }
 
-                    local respBody = LrHttp.post( uploadUrl, body, headers )
+                    -- Generous timeout: big JPEGs on slow connections
+                    local respBody, respHdrs = LrHttp.post( uploadUrl, body, headers, "POST", 300 )
+                    local status = respHdrs and respHdrs.status or 0
 
                     if respBody and jsonBool( respBody, "ok" ) then
                         uploadedCount = uploadedCount + 1
                         log( "Uploaded: " .. fileName )
                     else
                         failedCount = failedCount + 1
-                        log( "Upload failed for " .. fileName .. ": " .. tostring( respBody ) )
+                        local detail
+                        if not respBody or respBody == "" then
+                            local netErr = respHdrs and respHdrs.error and ( respHdrs.error.errorCode or "network error" ) or "no response"
+                            detail = "Could not reach the website (" .. tostring( netErr ) .. ")"
+                        else
+                            local serverMsg = jsonValue( respBody, "message" ) or trim( respBody ):sub( 1, 150 )
+                            detail = "HTTP " .. tostring( status ) .. ": " .. serverMsg
+                        end
+                        firstError = firstError or detail
+                        rendition:uploadFailed( detail )
+                        log( "Upload failed for " .. fileName .. ": " .. detail )
                     end
                 else
                     failedCount = failedCount + 1
+                    firstError = firstError or ( "Could not read exported file: " .. renderedPath )
                     log( "Could not read file: " .. renderedPath )
                 end
             end
@@ -493,27 +560,36 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
         end
     end
 
-    -- Advance stage to delivered (this triggers the delivery email in WP)
+    -- Advance the session stage automatically after a successful upload:
+    --   - "Mark delivered" checked  -> delivered (sends the delivery email)
+    --   - otherwise                 -> uploaded  (gallery goes live, no email)
     local deliveredMsg = ""
-    if advanceStage and uploadToSite and uploadedCount > 0 and siteUrl ~= "" then
-        progressScope:setCaption( "Marking session delivered..." )
+    if uploadToSite and uploadedCount > 0 and siteUrl ~= "" then
+        local targetStage = advanceStage and "delivered" or "uploaded"
+        progressScope:setCaption( "Updating session status..." )
 
         local advanceUrl = base .. "/automation/advance"
             .. "?session_code=" .. urlencode( sessionCode )
-            .. "&target_stage=delivered"
-            .. "&notes=" .. urlencode( uploadedCount .. " photos delivered via Lightroom" )
+            .. "&target_stage=" .. targetStage
+            .. "&notes=" .. urlencode( uploadedCount .. " photos uploaded via Lightroom" )
             .. "&photo_count=" .. uploadedCount
             .. "&api_key=" .. urlencode( apiKey )
 
-        local body = LrHttp.get( advanceUrl )
+        local body = LrHttp.get( advanceUrl, {
+            { field = "Authorization", value = "Bearer " .. apiKey },
+        }, 30 )
         if body and jsonBool( body, "ok" ) then
-            if jsonBool( body, "notified" ) then
-                deliveredMsg = "\n\nSession marked delivered — delivery email sent to the client."
+            if targetStage == "delivered" then
+                if jsonBool( body, "notified" ) then
+                    deliveredMsg = "\n\nSession marked delivered — delivery email sent to the client."
+                else
+                    deliveredMsg = "\n\nSession marked delivered. (No email sent — the session has no client email.)"
+                end
             else
-                deliveredMsg = "\n\nSession marked delivered. (No email sent — the session has no client email.)"
+                deliveredMsg = "\n\nSession moved to \"Uploaded\" — the gallery is now live."
             end
         else
-            deliveredMsg = "\n\nWarning: could not mark session delivered: " .. tostring( body )
+            deliveredMsg = "\n\nWarning: could not update session status: " .. tostring( body )
             log( "Stage advance warning: " .. tostring( body ) )
         end
     end
@@ -528,6 +604,9 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     end
     if failedCount > 0 then
         summary = summary .. "\n\n" .. failedCount .. " photo(s) failed."
+        if firstError then
+            summary = summary .. "\nReason: " .. firstError
+        end
     end
     summary = summary .. deliveredMsg
 

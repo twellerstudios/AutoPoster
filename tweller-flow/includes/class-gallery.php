@@ -319,6 +319,15 @@ class TwellerFlow2_Gallery {
             return $result;
         }
 
+        // Auto-advance: once photos start arriving, move the session to
+        // "uploading" if it's still at an earlier stage (booked, editing, etc.)
+        $stage_keys    = TwellerFlow2_Database::get_stage_keys();
+        $current_idx   = array_search( $session->current_stage, $stage_keys );
+        $uploading_idx = array_search( 'uploading', $stage_keys );
+        if ( $current_idx !== false && $uploading_idx !== false && $current_idx < $uploading_idx ) {
+            TwellerFlow2_Session::set_stage( $session->id, 'uploading', 'Photos uploading from Lightroom', false );
+        }
+
         return rest_ensure_response( $result );
     }
 

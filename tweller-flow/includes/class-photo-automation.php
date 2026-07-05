@@ -177,17 +177,17 @@ class TwellerFlow2_Photo_Automation {
         $range = sanitize_text_field( $request->get_param( 'range' ) ?? '' );
 
         if ( $range === 'recent' ) {
-            $from = date( 'Y-m-d', strtotime( '-7 days' ) );
-            $to   = date( 'Y-m-d', strtotime( '+7 days' ) );
-            $sessions = $wpdb->get_results( $wpdb->prepare(
+            // Lightroom session picker: the latest sessions, newest first.
+            // No date window and no stage filter — a session created moments
+            // ago from Lightroom (or already delivered) must always appear.
+            $sessions = $wpdb->get_results(
                 "SELECT id, tracking_code, client_name, client_email, client_phone,
                         package_type, session_date, session_time, location, members_count,
                         current_stage, folder_name, photo_count
                  FROM $table
-                 WHERE session_date BETWEEN %s AND %s
-                 ORDER BY session_date ASC, session_time ASC",
-                $from, $to
-            ));
+                 ORDER BY session_date DESC, id DESC
+                 LIMIT 30"
+            );
         } elseif ( $date ) {
             $sessions = $wpdb->get_results( $wpdb->prepare(
                 "SELECT id, tracking_code, client_name, client_email, client_phone,

@@ -59,6 +59,25 @@ local function apiBase( siteUrl )
     return siteUrl:gsub( "/+$", "" ) .. "/wp-json/tweller-flow-2/v1"
 end
 
+--- Resolve the site's canonical URL (www vs non-www, http vs https).
+--- POST requests don't survive redirects (they get converted to GET and
+--- WordPress replies "no route"), so uploads must hit the final URL directly.
+local function resolveSiteUrl( siteUrl )
+    local body = LrHttp.get( siteUrl:gsub( "/+$", "" ) .. "/wp-json/", nil, 15 )
+    if body then
+        local url = body:match( '"url"%s*:%s*"([^"]-)"' )
+        if url then
+            url = url:gsub( '\\/', '/' ):gsub( "/+$", "" )
+            if url:match( "^https?://" ) then
+                log( "Resolved canonical site URL: " .. url )
+                return url
+            end
+        end
+    end
+    log( "Could not resolve canonical URL, using as entered: " .. siteUrl )
+    return siteUrl
+end
+
 --- Parse a JSON array of session objects into popup items
 local function parseSessionList( body )
     local sessions = {}
@@ -439,6 +458,11 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
         end
         LrDialogs.message( "Tweller Bookings", validationError, "critical" )
         return
+    end
+
+    -- Uploads are POSTs and must not go through a www/https redirect
+    if uploadToSite and siteUrl ~= "" then
+        siteUrl = resolveSiteUrl( siteUrl )
     end
 
     local base = apiBase( siteUrl )

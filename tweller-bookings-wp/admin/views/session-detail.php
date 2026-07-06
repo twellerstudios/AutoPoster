@@ -591,14 +591,14 @@
                 <div id="pm-count-label" style="font-size:12px; color:#6B7280; margin-bottom:10px; <?php echo $proof_count === 0 ? 'display:none;' : ''; ?>">
                     <span id="pm-count"><?php echo $proof_count; ?></span> proof<?php echo $proof_count !== 1 ? 's' : ''; ?> uploaded
                     <button id="pm-edit-toggle" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="margin-left:8px; font-size:11px;">Edit / Delete</button>
+                    <button id="pm-delete-all" class="tf2-btn tf2-btn--sm" style="margin-left:4px; font-size:11px; background:#DC2626; border-color:#DC2626; color:#fff;">Delete All</button>
                 </div>
 
-                <!-- Drop zone -->
-                <?php if ( ! $culling_submitted ) : ?>
+                <!-- Drop zone (always available — add more proofs anytime) -->
                 <div id="pm-drop-zone" style="border:2px dashed #D1D5DB; border-radius:8px; padding:22px 16px; text-align:center; cursor:pointer; background:#FAFAFA; margin-bottom:12px; transition:border-color .2s, background .2s;">
                     <div style="font-size:24px; margin-bottom:6px;">&#128444;</div>
-                    <p style="margin:0 0 4px; font-size:13px; font-weight:600; color:#374151;">Drop proof photos here or <span style="color:#6366F1; text-decoration:underline;">browse</span></p>
-                    <p style="margin:0; font-size:11px; color:#9CA3AF;">JPEG, PNG or WebP — multiple files OK</p>
+                    <p style="margin:0 0 4px; font-size:13px; font-weight:600; color:#374151;">Drop proof photos here or <span style="color:#6366F1; text-decoration:underline;">browse</span> to add more</p>
+                    <p style="margin:0; font-size:11px; color:#9CA3AF;">JPEG, PNG or WebP — multiple files OK<?php echo $culling_submitted ? ' (client already submitted — new proofs won\'t reopen selection)' : ''; ?></p>
                     <input type="file" id="pm-file-input" accept="image/jpeg,image/png,image/webp" multiple style="display:none;">
                 </div>
                 <div id="pm-progress" style="display:none; margin-bottom:10px;">
@@ -608,7 +608,6 @@
                     <p id="pm-progress-text" style="font-size:11px; color:#6B7280; margin:0;"></p>
                 </div>
                 <div id="pm-result" style="display:none; font-size:12px; margin-bottom:10px;"></div>
-                <?php endif; ?>
 
                 <!-- Mark Ready & Password -->
                 <?php if ( ! $culling_submitted ) : ?>
@@ -719,6 +718,37 @@
                         var btns = document.querySelectorAll('.pm-delete-btn');
                         btns.forEach(function(b) { b.style.display = editMode ? 'block' : 'none'; });
                         editBtn.textContent = editMode ? 'Done Editing' : 'Edit / Delete';
+                    });
+                }
+
+                // ── Delete ALL proofs ──────────────────
+                var delAllBtn = document.getElementById('pm-delete-all');
+                if (delAllBtn) {
+                    delAllBtn.addEventListener('click', function() {
+                        var n = document.getElementById('pm-count');
+                        var count = n ? n.textContent : 'all';
+                        if (!confirm('Delete ALL ' + count + ' proof photos for this session?\n\nThis also clears any client selections and resets the culling round. This cannot be undone.')) return;
+                        delAllBtn.disabled = true;
+                        delAllBtn.textContent = 'Deleting...';
+                        fetch(REST + '/all-proofs', {
+                            method: 'DELETE',
+                            headers: { 'X-WP-Nonce': NONCE }
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.ok) {
+                                window.location.reload();
+                            } else {
+                                alert('Could not delete: ' + (data.message || 'unknown error'));
+                                delAllBtn.disabled = false;
+                                delAllBtn.textContent = 'Delete All';
+                            }
+                        })
+                        .catch(function() {
+                            alert('Network error while deleting.');
+                            delAllBtn.disabled = false;
+                            delAllBtn.textContent = 'Delete All';
+                        });
                     });
                 }
 

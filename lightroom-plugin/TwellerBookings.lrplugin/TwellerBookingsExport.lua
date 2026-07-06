@@ -567,6 +567,17 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
             local renderedPath = pathOrMessage
             local fileName     = LrPathUtils.leafName( renderedPath )
 
+            -- The photo's name inside Lightroom (e.g. DSC_1234.NEF) — used
+            -- for culling so XMP sidecars match the originals even when
+            -- file renaming is enabled in the export dialog.
+            local sourceName = fileName
+            local okName, name = LrTasks.pcall( function()
+                return rendition.photo:getFormattedMetadata( 'fileName' )
+            end )
+            if okName and type( name ) == 'string' and name ~= '' then
+                sourceName = name
+            end
+
             -- 1. Copy to local folder
             if localSessionDir then
                 local destPath = LrPathUtils.child( localSessionDir, fileName )
@@ -608,7 +619,7 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
                     else
                         body = body .. "--" .. boundary .. "\r\n"
                         body = body .. 'Content-Disposition: form-data; name="original_filename"\r\n\r\n'
-                        body = body .. fileName .. "\r\n"
+                        body = body .. sourceName .. "\r\n"
                     end
 
                     -- API key in body (Authorization header may be stripped by hosts)

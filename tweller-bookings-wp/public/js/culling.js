@@ -175,9 +175,20 @@
             var number = document.createElement('div');
             number.className = 'tc-grid__number';
 
+            var zoom = document.createElement('button');
+            zoom.type = 'button';
+            zoom.className = 'tc-grid__zoom';
+            zoom.title = 'View larger';
+            zoom.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
+            zoom.addEventListener('click', function(e) {
+                e.stopPropagation();
+                openLightbox(proofs.indexOf(proof));
+            });
+
             item.appendChild(img);
             item.appendChild(check);
             item.appendChild(number);
+            item.appendChild(zoom);
 
             item.addEventListener('click', function() {
                 if (submitted) return;
@@ -188,6 +199,88 @@
         });
 
         updateSelectionNumbers();
+    }
+
+    // ── Lightbox (bigger view with select) ─────────────
+    var lightboxIndex = -1;
+
+    function findItemEl(id) {
+        return grid.querySelector('.tc-grid__item[data-id="' + id + '"]');
+    }
+
+    function openLightbox(index) {
+        if (index < 0 || index >= proofs.length) return;
+        lightboxIndex = index;
+
+        var lb = document.getElementById('tc-lightbox');
+        if (!lb) {
+            lb = document.createElement('div');
+            lb.id = 'tc-lightbox';
+            lb.className = 'tc-lightbox';
+            lb.innerHTML =
+                '<button type="button" class="tc-lightbox__close" title="Close">&times;</button>' +
+                '<button type="button" class="tc-lightbox__nav tc-lightbox__nav--prev" title="Previous">&#8249;</button>' +
+                '<img alt="" draggable="false">' +
+                '<button type="button" class="tc-lightbox__nav tc-lightbox__nav--next" title="Next">&#8250;</button>' +
+                '<div class="tc-lightbox__footer">' +
+                    '<span class="tc-lightbox__counter"></span>' +
+                    '<button type="button" class="tc-lightbox__select"></button>' +
+                '</div>';
+            portal.appendChild(lb);
+
+            lb.querySelector('.tc-lightbox__close').addEventListener('click', closeLightbox);
+            lb.querySelector('.tc-lightbox__nav--prev').addEventListener('click', function() { openLightbox(lightboxIndex - 1); });
+            lb.querySelector('.tc-lightbox__nav--next').addEventListener('click', function() { openLightbox(lightboxIndex + 1); });
+            lb.querySelector('.tc-lightbox__select').addEventListener('click', function() {
+                var proof = proofs[lightboxIndex];
+                if (!proof || submitted) return;
+                var itemEl = findItemEl(proof.id);
+                if (itemEl) toggleSelection(proof.id, itemEl);
+                updateLightbox();
+            });
+            lb.addEventListener('click', function(e) {
+                if (e.target === lb) closeLightbox();
+            });
+            lb.oncontextmenu = function(e) { e.preventDefault(); return false; };
+
+            document.addEventListener('keydown', function(e) {
+                var box = document.getElementById('tc-lightbox');
+                if (!box || box.style.display === 'none') return;
+                if (e.key === 'Escape') closeLightbox();
+                if (e.key === 'ArrowLeft') openLightbox(lightboxIndex - 1);
+                if (e.key === 'ArrowRight') openLightbox(lightboxIndex + 1);
+            });
+        }
+
+        lb.style.display = 'flex';
+        updateLightbox();
+    }
+
+    function updateLightbox() {
+        var lb = document.getElementById('tc-lightbox');
+        if (!lb) return;
+        var proof = proofs[lightboxIndex];
+        if (!proof) return;
+
+        lb.querySelector('img').src = proof.url || proof.thumb_url;
+        lb.querySelector('.tc-lightbox__counter').textContent = (lightboxIndex + 1) + ' / ' + proofs.length;
+        lb.querySelector('.tc-lightbox__nav--prev').style.visibility = lightboxIndex > 0 ? 'visible' : 'hidden';
+        lb.querySelector('.tc-lightbox__nav--next').style.visibility = lightboxIndex < proofs.length - 1 ? 'visible' : 'hidden';
+
+        var selBtn = lb.querySelector('.tc-lightbox__select');
+        if (submitted) {
+            selBtn.style.display = 'none';
+        } else {
+            selBtn.style.display = '';
+            var isSel = selectedIds.has(proof.id);
+            selBtn.textContent = isSel ? '✓ Selected — tap to remove' : 'Select this photo';
+            selBtn.className = 'tc-lightbox__select' + (isSel ? ' tc-lightbox__select--on' : '');
+        }
+    }
+
+    function closeLightbox() {
+        var lb = document.getElementById('tc-lightbox');
+        if (lb) lb.style.display = 'none';
     }
 
     function toggleSelection(id, item) {

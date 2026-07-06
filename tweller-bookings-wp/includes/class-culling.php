@@ -103,6 +103,13 @@ class TwellerFlow2_Culling {
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
+        // Delete ALL proofs for a session (admin)
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/all-proofs', array(
+            'methods'             => 'DELETE',
+            'callback'            => array( __CLASS__, 'rest_delete_all_proofs' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+
         // Mark ready (admin version)
         register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/admin-ready', array(
             'methods'             => 'POST',
@@ -419,6 +426,14 @@ class TwellerFlow2_Culling {
 
         // Mark as submitted
         update_option( 'tweller_culling_submitted_' . $session->id, current_time( 'mysql' ) );
+
+        // Advance the pipeline: selections are in, session moves to "culled"
+        $stage_keys  = TwellerFlow2_Database::get_stage_keys();
+        $current_idx = array_search( $session->current_stage, $stage_keys );
+        $culled_idx  = array_search( 'culled', $stage_keys );
+        if ( $current_idx !== false && $culled_idx !== false && $current_idx < $culled_idx ) {
+            TwellerFlow2_Session::set_stage( $session->id, 'culled', 'Client submitted ' . $total_selected . ' photo selections', false );
+        }
 
         // Store extra cost info
         update_option( 'tweller_culling_upsell_' . $session->id, array(
@@ -1112,6 +1127,46 @@ class TwellerFlow2_Culling {
         $wpdb->delete( $table, array( 'id' => $proof_id ) );
 
         return rest_ensure_response( array( 'ok' => true ) );
+    }
+
+    // ── Admin: Delete ALL Proofs ───────────────────────
+
+    /**
+     * Wipe every proof for a session (files + thumbs + DB rows) and reset
+     * the culling round: selections, submitted/ready flags, and upsell info
+     * are cleared so a fresh set of proofs can be uploaded.
+     */
+    public static function rest_delete_all_proofs( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        global $wpdb;
+        $proof_table = $wpdb->prefix . self::TABLE_PROOFS;
+        $sel_table   = $wpdb->prefix . self::TABLE_SELECTIONS;
+
+        $proofs  = self::get_proofs( $session->id );
+        $deleted = 0;
+
+        $proof_dir = self::get_proof_dir( $code );
+        foreach ( $proofs as $proof ) {
+            $file_path = $proof_dir . '/' . $proof->filename;
+            $thumb     = $proof_dir . '/thumbs/' . $proof->filename;
+            if ( file_exists( $file_path ) ) @unlink( $file_path );
+            if ( file_exists( $thumb ) ) @unlink( $thumb );
+            $deleted++;
+        }
+
+        $wpdb->delete( $proof_table, array( 'session_id' => $session->id ) );
+        $wpdb->delete( $sel_table, array( 'session_id' => $session->id ) );
+
+        delete_option( 'tweller_culling_submitted_' . $session->id );
+        delete_option( 'tweller_culling_ready_' . $session->id );
+        delete_option( 'tweller_culling_upsell_' . $session->id );
+
+        return rest_ensure_response( array( 'ok' => true, 'deleted' => $deleted ) );
     }
 
     // ── Admin: Mark Ready ──────────────────────────────

@@ -288,7 +288,7 @@
     overflow: hidden;
     cursor: pointer;
     aspect-ratio: 3/2;
-    background: #F3F4F6;
+    background: #141414;
     border: 3px solid transparent;
     transition: border-color 0.15s, transform 0.1s;
     user-select: none;
@@ -306,7 +306,8 @@
 .tc-grid__item img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;    /* show the WHOLE photo — never crop heads off */
+    background: #141414;
     pointer-events: none;
     -webkit-user-drag: none;
 }
@@ -471,4 +472,115 @@
 @media print {
     .tc-portal img { visibility: hidden !important; }
     .tc-portal::before { content: "Images are protected."; }
+}
+
+/* ── Zoom button on each proof card ── */
+.tc-grid__zoom {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    z-index: 3;             /* above the protection shield */
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.85;
+    transition: opacity 0.15s, background 0.15s;
+    padding: 0;
+}
+.tc-grid__zoom:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.8);
+}
+
+/* ── Lightbox (bigger view) ── */
+.tc-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(10, 10, 10, 0.96);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.tc-lightbox img {
+    max-width: 92vw;
+    max-height: 78vh;
+    object-fit: contain;
+    border-radius: 6px;
+    pointer-events: none;
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+}
+.tc-lightbox__close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+}
+.tc-lightbox__close:hover { background: rgba(255, 255, 255, 0.25); }
+.tc-lightbox__nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+}
+.tc-lightbox__nav:hover { background: rgba(255, 255, 255, 0.25); }
+.tc-lightbox__nav--prev { left: 14px; }
+.tc-lightbox__nav--next { right: 14px; }
+.tc-lightbox__footer {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.tc-lightbox__counter {
+    color: #9CA3AF;
+    font-size: 14px;
+    min-width: 70px;
+    text-align: center;
+}
+.tc-lightbox__select {
+    border: 2px solid #6366F1;
+    border-radius: 999px;
+    background: transparent;
+    color: #A5B4FC;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 10px 26px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.tc-lightbox__select--on {
+    background: #6366F1;
+    color: #fff;
+}
+@media (max-width: 600px) {
+    .tc-lightbox__nav { width: 40px; height: 40px; font-size: 20px; }
+    .tc-lightbox img { max-height: 70vh; }
 }

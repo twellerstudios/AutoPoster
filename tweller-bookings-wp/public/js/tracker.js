@@ -660,7 +660,7 @@
     var ssClose   = document.getElementById('tf2-ss-close');
     var ssPause   = document.getElementById('tf2-ss-pause');
 
-    var SS_INTERVAL = 6000;  // ms per photo
+    var SS_INTERVAL = 4000;  // ms per photo
     var ssTimer = null, ssIdleTimer = null;
     var ssIndex = 0, ssFront = null, ssPaused = false;
 

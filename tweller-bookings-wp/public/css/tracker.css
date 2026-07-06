@@ -986,19 +986,17 @@ body.page .page-hero {
 .tf2-slideshow__layer--visible {
     opacity: 1;
 }
-/* Cinematic mode: cover + slow drift */
-.tf2-slideshow--kenburns .tf2-slideshow__layer {
-    background-size: cover;
-}
-.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-1 { animation: tf2-kb-1 9s ease-in-out forwards; }
-.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-2 { animation: tf2-kb-2 9s ease-in-out forwards; }
-.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-3 { animation: tf2-kb-3 9s ease-in-out forwards; }
-.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-4 { animation: tf2-kb-4 9s ease-in-out forwards; }
+/* Cinematic mode: whole photo visible (contain), constant gentle
+   linear motion so nothing stops or jumps mid-crossfade */
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-1 { animation: tf2-kb-1 8s linear forwards; }
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-2 { animation: tf2-kb-2 8s linear forwards; }
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-3 { animation: tf2-kb-3 8s linear forwards; }
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-4 { animation: tf2-kb-4 8s linear forwards; }
 
-@keyframes tf2-kb-1 { from { transform: scale(1)    translate(0, 0); }        to { transform: scale(1.09) translate(1.5%, -1%); } }
-@keyframes tf2-kb-2 { from { transform: scale(1.09) translate(-1.5%, 1%); }   to { transform: scale(1)    translate(0, 0); } }
-@keyframes tf2-kb-3 { from { transform: scale(1)    translate(0, 0); }        to { transform: scale(1.09) translate(-1.5%, 1%); } }
-@keyframes tf2-kb-4 { from { transform: scale(1.08) translate(1%, 1%); }      to { transform: scale(1)    translate(-0.5%, -1%); } }
+@keyframes tf2-kb-1 { from { transform: scale(1.0);  }                       to { transform: scale(1.07); } }
+@keyframes tf2-kb-2 { from { transform: scale(1.07); }                       to { transform: scale(1.0); } }
+@keyframes tf2-kb-3 { from { transform: scale(1.0)  translate(0.4%, 0); }    to { transform: scale(1.07) translate(-0.4%, 0); } }
+@keyframes tf2-kb-4 { from { transform: scale(1.07) translate(-0.4%, 0); }   to { transform: scale(1.0)  translate(0.4%, 0); } }
 
 .tf2-slideshow__close,
 .tf2-slideshow__pause {

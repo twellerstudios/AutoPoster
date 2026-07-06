@@ -176,7 +176,13 @@ class TwellerFlow2_Tracker_Shortcode {
         // When the gallery is live, it takes over the page: hero first,
         // pipeline compressed and moved below the photos.
         $gallery_live = in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true );
+
+        // Browser tab shows the album, not the generic page name
+        $tab_title = $gallery_live
+            ? $session->client_name . ' — Gallery | Tweller Studios'
+            : $session->client_name . ' — Session Tracker | Tweller Studios';
         ?>
+        <script>document.title = <?php echo wp_json_encode( $tab_title ); ?>;</script>
         <div class="tf2-tracker<?php echo $gallery_live ? ' tf2-tracker--gallery-first' : ''; ?>" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
             <div class="tf2-tracker__header">
                 <p class="tf2-tracker__greeting">Hi <?php echo esc_html( $session->client_name ); ?>! Here's the progress of your <strong><?php echo esc_html( $pkg_name ); ?></strong>.</p>

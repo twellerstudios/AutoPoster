@@ -183,8 +183,15 @@ class TwellerFlow2_Database {
         );
 
         foreach ( $defaults as $key => $value ) {
-            if ( $key === 'tweller_flow_2_stages' || $key === 'tweller_flow_2_client_stages' || $key === 'tweller_flow_2_packages' || $key === 'tweller_flow_2_session_types' ) {
+            if ( $key === 'tweller_flow_2_stages' || $key === 'tweller_flow_2_client_stages' ) {
+                // Pipeline stages are code-driven — always refresh
                 update_option( $key, $value );
+            } elseif ( $key === 'tweller_flow_2_packages' || $key === 'tweller_flow_2_session_types' ) {
+                // Offerings are admin-editable (Tweller Bookings > Offerings):
+                // seed once, never overwrite customizations on update
+                if ( get_option( $key ) === false ) {
+                    add_option( $key, $value );
+                }
             } elseif ( get_option( $key ) === false ) {
                 add_option( $key, $value );
             }

@@ -176,21 +176,69 @@
                 </div>
 
                 <div class="tf2-field" style="max-width:640px;">
-                    <label class="tf2-field__label">Session Types (JSON format)</label>
-                    <textarea name="session_types_json" rows="8" style="font-family: monospace;"><?php 
-                        $types = get_option('tweller_flow_2_session_types', array());
-                        echo esc_textarea( wp_json_encode( $types, JSON_PRETTY_PRINT ) ); 
-                    ?></textarea>
-                    <div class="tf2-field__hint">Advanced: Edit the available session types and their allowed packages. Valid JSON required.</div>
+                    <p class="tf2-description">
+                        Session types and packages are now managed visually on the
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=tweller-flow-2-offerings' ) ); ?>"><strong>Offerings</strong></a> page —
+                        add, remove, reorder, and edit prices there.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Google Contacts sync -->
+        <div class="tf2-card tf2-mb-6">
+            <div class="tf2-settings-section">
+                <h3>Google Contacts</h3>
+                <p class="tf2-description">Automatically add new booking clients to your Google Contacts — they sync straight to your phone.</p>
+
+                <?php
+                $g_config    = TwellerFlow2_Google_Contacts::get_config();
+                $g_connected = TwellerFlow2_Google_Contacts::is_connected();
+                ?>
+
+                <?php if ( isset( $_GET['google'] ) && $_GET['google'] === 'connected' ) : ?>
+                    <div class="tf2-alert tf2-alert--success">Google account connected — new bookings will sync to your contacts.</div>
+                <?php elseif ( isset( $_GET['google'] ) && $_GET['google'] === 'error' ) : ?>
+                    <div class="tf2-alert" style="background:#FEE2E2; color:#991B1B;">Google connection failed. Check the Client ID / Secret and try again.</div>
+                <?php endif; ?>
+
+                <div class="tf2-row" style="max-width:640px;">
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Google OAuth Client ID</label>
+                        <input type="text" name="google_client_id" value="<?php echo esc_attr( $g_config['client_id'] ?? '' ); ?>" placeholder="xxxx.apps.googleusercontent.com">
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Client Secret</label>
+                        <input type="password" name="google_client_secret" value="<?php echo esc_attr( $g_config['client_secret'] ?? '' ); ?>">
+                    </div>
                 </div>
 
                 <div class="tf2-field" style="max-width:640px;">
-                    <label class="tf2-field__label">Packages (JSON format)</label>
-                    <textarea name="packages_json" rows="12" style="font-family: monospace;"><?php 
-                        $pkgs = get_option('tweller_flow_2_packages', array());
-                        echo esc_textarea( wp_json_encode( $pkgs, JSON_PRETTY_PRINT ) ); 
-                    ?></textarea>
-                    <div class="tf2-field__hint">Advanced: Edit the available packages. Valid JSON required.</div>
+                    <label class="tf2-toggle">
+                        <input type="checkbox" name="google_sync_enabled" value="1" <?php checked( ! empty( $g_config['enabled'] ) ); ?>>
+                        <span class="tf2-toggle__switch"></span>
+                        <span class="tf2-toggle__label">Sync new bookings to Google Contacts</span>
+                    </label>
+                </div>
+
+                <div class="tf2-field" style="max-width:640px;">
+                    <?php if ( $g_connected ) : ?>
+                        <p style="margin:0 0 8px; color:#166534; font-weight:600;">
+                            &#10003; Connected as <?php echo esc_html( TwellerFlow2_Google_Contacts::get_account_email() ?: 'Google account' ); ?>
+                        </p>
+                        <a class="tf2-btn tf2-btn--secondary tf2-btn--sm"
+                           href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-settings&tf2_google=disconnect' ), 'tf2_google_disconnect' ) ); ?>">Disconnect</a>
+                    <?php elseif ( ! empty( $g_config['client_id'] ) && ! empty( $g_config['client_secret'] ) ) : ?>
+                        <a class="tf2-btn tf2-btn--primary" href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Connect Google Account</a>
+                        <div class="tf2-field__hint" style="margin-top:8px;">Save settings first if you just entered the Client ID / Secret.</div>
+                    <?php else : ?>
+                        <div class="tf2-field__hint">
+                            <strong>One-time setup:</strong> at <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>
+                            create a project, enable the <em>People API</em>, create an <em>OAuth Client ID (Web application)</em>, and add this redirect URI:<br>
+                            <code style="user-select:all;"><?php echo esc_html( TwellerFlow2_Google_Contacts::redirect_uri() ); ?></code><br>
+                            Then paste the Client ID and Secret above, save, and click Connect.
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

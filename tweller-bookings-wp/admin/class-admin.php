@@ -71,6 +71,15 @@ class TwellerFlow2_Admin {
 
         add_submenu_page(
             'tweller-flow-2',
+            'Offerings',
+            'Offerings',
+            'manage_options',
+            'tweller-flow-2-offerings',
+            array( $this, 'page_offerings' )
+        );
+
+        add_submenu_page(
+            'tweller-flow-2',
             'Settings',
             'Settings',
             'manage_options',
@@ -191,6 +200,74 @@ class TwellerFlow2_Admin {
             $notes = sanitize_text_field( $_POST['stage_notes'] ?? '' );
             TwellerFlow2_Session::set_stage( $id, $stage, $notes );
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&stage_set=1' ) );
+            exit;
+        }
+
+        // Save offerings (session types + packages)
+        if ( isset( $_POST['tweller_flow_2_save_offerings'] ) ) {
+            check_admin_referer( 'tweller_flow_2_save_offerings' );
+
+            // Rows arrive in DOM order, so the saved order is the on-page order
+            $packages = array();
+            foreach ( (array) ( $_POST['pk'] ?? array() ) as $row ) {
+                $name = sanitize_text_field( $row['name'] ?? '' );
+                if ( $name === '' ) continue;
+
+                $key = sanitize_key( $row['key'] ?? '' );
+                if ( $key === '' ) {
+                    $key = str_replace( '-', '_', sanitize_title( $name ) );
+                }
+                $base = $key ?: 'package';
+                $i = 2;
+                while ( isset( $packages[ $key ] ) ) { $key = $base . '_' . $i++; }
+
+                $features = array_filter( array_map( 'sanitize_text_field',
+                    preg_split( '/\r\n|\r|\n/', (string) ( $row['features'] ?? '' ) ) ) );
+
+                $packages[ $key ] = array(
+                    'name'      => $name,
+                    'duration'  => max( 5, intval( $row['duration'] ?? 60 ) ),
+                    'images'    => intval( $row['images'] ?? 10 ),
+                    'members'   => intval( $row['members'] ?? 1 ),
+                    'price'     => floatval( $row['price'] ?? 0 ),
+                    'old_price' => floatval( $row['old_price'] ?? 0 ),
+                    'features'  => array_values( $features ),
+                );
+            }
+
+            $session_types = array();
+            foreach ( (array) ( $_POST['st'] ?? array() ) as $row ) {
+                $name = sanitize_text_field( $row['name'] ?? '' );
+                if ( $name === '' ) continue;
+
+                $key = sanitize_key( $row['key'] ?? '' );
+                if ( $key === '' ) {
+                    $key = str_replace( '-', '_', sanitize_title( $name ) );
+                }
+                $base = $key ?: 'session';
+                $i = 2;
+                while ( isset( $session_types[ $key ] ) ) { $key = $base . '_' . $i++; }
+
+                $allowed = array_values( array_intersect(
+                    array_map( 'sanitize_key', (array) ( $row['allowed'] ?? array() ) ),
+                    array_keys( $packages )
+                ) );
+
+                $session_types[ $key ] = array(
+                    'name'             => $name,
+                    'description'      => sanitize_text_field( $row['description'] ?? '' ),
+                    'allowed_packages' => $allowed,
+                );
+            }
+
+            if ( ! empty( $packages ) ) {
+                update_option( 'tweller_flow_2_packages', $packages );
+            }
+            if ( ! empty( $session_types ) ) {
+                update_option( 'tweller_flow_2_session_types', $session_types );
+            }
+
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-offerings&saved=1' ) );
             exit;
         }
 
@@ -353,24 +430,20 @@ class TwellerFlow2_Admin {
             update_option( 'tweller_flow_2_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );
             update_option( 'tweller_flow_2_booking_ical_url', esc_url_raw( $_POST['booking_ical_url'] ?? '' ) );
 
-            if ( ! empty( $_POST['session_types_json'] ) ) {
-                $st_json = stripslashes( $_POST['session_types_json'] );
-                $st_arr = json_decode( $st_json, true );
-                if ( json_last_error() === JSON_ERROR_NONE ) {
-                    update_option( 'tweller_flow_2_session_types', $st_arr );
-                }
-            }
-            if ( ! empty( $_POST['packages_json'] ) ) {
-                $pkg_json = stripslashes( $_POST['packages_json'] );
-                $pkg_arr = json_decode( $pkg_json, true );
-                if ( json_last_error() === JSON_ERROR_NONE ) {
-                    update_option( 'tweller_flow_2_packages', $pkg_arr );
-                }
-            }
+            // Session types & packages are managed on the Offerings page
 
             // Save automation settings
             if ( isset( $_POST['automation_backend_url'] ) ) {
                 TwellerFlow2_Photo_Automation::save_settings( $_POST );
+            }
+
+            // Google Contacts sync
+            if ( isset( $_POST['google_client_id'] ) ) {
+                update_option( TwellerFlow2_Google_Contacts::OPT_CONFIG, array(
+                    'client_id'     => sanitize_text_field( $_POST['google_client_id'] ),
+                    'client_secret' => sanitize_text_field( $_POST['google_client_secret'] ?? '' ),
+                    'enabled'       => ! empty( $_POST['google_sync_enabled'] ),
+                ) );
             }
 
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-settings&saved=1' ) );
@@ -488,6 +561,15 @@ class TwellerFlow2_Admin {
         );
 
         include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/notifications.php';
+    }
+
+    /**
+     * Offerings page — session types & packages shown on the booking form
+     */
+    public function page_offerings() {
+        $session_types = get_option( 'tweller_flow_2_session_types', array() );
+        $packages      = get_option( 'tweller_flow_2_packages', array() );
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/offerings.php';
     }
 
     /**

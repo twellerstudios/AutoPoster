@@ -696,6 +696,7 @@ class TwellerFlow2_Culling {
         $pkg_name = $pkg['name'] ?? ucfirst( $session->package_type );
         $included = $pkg['images'] ?? 15;
         ?>
+        <script>document.title = <?php echo wp_json_encode( $session->client_name . ' — Choose Your Photos | Tweller Studios' ); ?>;</script>
         <div class="tc-portal" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
 
             <!-- Header -->

@@ -628,9 +628,16 @@
                     </div>
                 <?php endif; ?>
 
-                <!-- Visual proof grid with selection status -->
+                <!-- Visual proof grid with selection status (click to edit) -->
                 <div style="border-top:1px solid #F3F4F6; padding-top:14px; margin-top:14px; display:none;" id="pm-visual-grid-section">
-                    <h3 style="margin:0 0 10px; font-size:13px; font-weight:600; color:#374151;">All Proofs Overview</h3>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                        <h3 style="margin:0; font-size:13px; font-weight:600; color:#374151;">All Proofs Overview <span style="font-weight:400; color:#9CA3AF;">— click photos to select / deselect</span></h3>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <span id="pm-sel-count" style="font-size:11px; color:#6B7280;"></span>
+                            <button id="pm-save-selections" class="tf2-btn tf2-btn--primary tf2-btn--sm" style="font-size:11px;" disabled>Save Selections</button>
+                            <button id="pm-clear-selections" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">Clear All</button>
+                        </div>
+                    </div>
                     <p style="margin:0 0 10px; font-size:11px; color:#9CA3AF;">
                         <span style="display:inline-block; margin-right:12px;"><span style="display:inline-block; width:12px; height:12px; border:2px solid #16A34A; border-radius:4px; vertical-align:middle;"></span> Selected (Included)</span>
                         <span style="display:inline-block;"><span style="display:inline-block; width:12px; height:12px; border:2px solid #6366F1; border-radius:4px; vertical-align:middle;"></span> Selected (Extra)</span>
@@ -915,43 +922,125 @@
                     });
                 }
 
-                // ── Load and display proofs with selection status ────
+                // ── Proofs overview: click to select on the client's behalf ────
                 var visualGridSection = document.getElementById('pm-visual-grid-section');
                 var visualGrid = document.getElementById('pm-visual-grid');
+                var saveSelBtn  = document.getElementById('pm-save-selections');
+                var clearSelBtn = document.getElementById('pm-clear-selections');
+                var selCountEl  = document.getElementById('pm-sel-count');
+                var INCLUDED    = <?php echo intval( $pkg_included ?? 15 ); ?>;
+                var adminSel    = [];   // proof ids in click order
+                var selDirty    = false;
+
+                function repaintVisualGrid() {
+                    visualGrid.querySelectorAll('.pm-vis-item').forEach(function(item) {
+                        var id  = parseInt(item.getAttribute('data-id'));
+                        var pos = adminSel.indexOf(id);
+                        var badge = item.querySelector('.pm-vis-badge');
+                        if (pos === -1) {
+                            item.style.border = '3px solid transparent';
+                            badge.style.display = 'none';
+                        } else {
+                            var isExtra = pos >= INCLUDED;
+                            var color = isExtra ? '#6366F1' : '#16A34A';
+                            item.style.border = '3px solid ' + color;
+                            badge.style.display = 'block';
+                            badge.style.background = color;
+                            badge.textContent = isExtra ? '★★' : '★';
+                        }
+                    });
+                    if (selCountEl) {
+                        var extra = Math.max(0, adminSel.length - INCLUDED);
+                        selCountEl.textContent = adminSel.length ? adminSel.length + ' selected' + (extra ? ' (' + extra + ' extra)' : '') : '';
+                    }
+                    if (saveSelBtn) saveSelBtn.disabled = !selDirty;
+                }
+
                 if (visualGrid && CODE) {
                     fetch(REST + '/admin-proofs-status', { headers: { 'X-WP-Nonce': NONCE } })
                     .then(function(r) { return r.json(); })
                     .then(function(d) {
                         if (!d.ok || !d.proofs) return;
                         visualGrid.innerHTML = '';
+
+                        // Seed current selections: included (1-star) first so
+                        // click-order star logic matches what's saved.
+                        d.proofs.filter(function(p) { return p.selected && p.star_rating === 1; })
+                                .forEach(function(p) { adminSel.push(p.id); });
+                        d.proofs.filter(function(p) { return p.selected && p.star_rating !== 1; })
+                                .forEach(function(p) { adminSel.push(p.id); });
+
                         d.proofs.forEach(function(proof) {
                             var item = document.createElement('div');
-                            item.style.cssText = 'position:relative; border-radius:6px; overflow:hidden; width:80px; height:80px; background:#F3F4F6; cursor:default;';
+                            item.className = 'pm-vis-item';
+                            item.setAttribute('data-id', proof.id);
+                            item.style.cssText = 'position:relative; border-radius:6px; overflow:hidden; width:80px; height:80px; background:#F3F4F6; cursor:pointer; border:3px solid transparent;';
 
                             var img = document.createElement('img');
                             img.src = proof.thumb_url;
                             img.style.cssText = 'width:80px; height:80px; object-fit:cover; display:block;';
                             item.appendChild(img);
 
-                            if (proof.selected) {
-                                // Add border color based on type
-                                var borderColor = proof.is_extra ? '#6366F1' : '#16A34A'; // purple for extra, green for included
-                                item.style.border = '3px solid ' + borderColor;
+                            var badge = document.createElement('div');
+                            badge.className = 'pm-vis-badge';
+                            badge.style.cssText = 'position:absolute; bottom:2px; right:2px; color:#fff; font-size:11px; padding:2px 5px; border-radius:3px; font-weight:bold; display:none;';
+                            item.appendChild(badge);
 
-                                // Add star badge at bottom
-                                var badge = document.createElement('div');
-                                var star = proof.star_rating === 1 ? '★' : '★★';
-                                badge.textContent = star;
-                                badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:' + borderColor + '; color:#fff; font-size:11px; padding:2px 5px; border-radius:3px; font-weight:bold;';
-                                item.appendChild(badge);
-                            }
+                            item.addEventListener('click', function() {
+                                var id = proof.id;
+                                var pos = adminSel.indexOf(id);
+                                if (pos === -1) adminSel.push(id);
+                                else adminSel.splice(pos, 1);
+                                selDirty = true;
+                                repaintVisualGrid();
+                            });
+
                             visualGrid.appendChild(item);
                         });
+
+                        repaintVisualGrid();
                         if (d.proofs.length > 0) {
                             visualGridSection.style.display = 'block';
                         }
                     })
                     .catch(function(){});
+                }
+
+                if (saveSelBtn) {
+                    saveSelBtn.addEventListener('click', function() {
+                        saveSelBtn.disabled = true;
+                        saveSelBtn.textContent = 'Saving...';
+                        fetch(REST + '/admin-select', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+                            body: JSON.stringify({ proof_ids: adminSel })
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            if (d.ok) {
+                                window.location.reload();
+                            } else {
+                                alert('Could not save: ' + (d.message || 'unknown error'));
+                                saveSelBtn.disabled = false;
+                                saveSelBtn.textContent = 'Save Selections';
+                            }
+                        })
+                        .catch(function() {
+                            alert('Network error while saving.');
+                            saveSelBtn.disabled = false;
+                            saveSelBtn.textContent = 'Save Selections';
+                        });
+                    });
+                }
+
+                if (clearSelBtn) {
+                    clearSelBtn.addEventListener('click', function() {
+                        if (adminSel.length === 0) return;
+                        if (!confirm('Clear ALL selections? This reopens the selection round for the client.')) return;
+                        adminSel = [];
+                        selDirty = true;
+                        repaintVisualGrid();
+                    });
                 }
 
                 // ── Download Selections as XMP ─────────

@@ -110,6 +110,13 @@ class TwellerFlow2_Culling {
             'permission_callback' => function() { return current_user_can( 'manage_options' ); },
         ));
 
+        // Admin sets/edits selections on the client's behalf
+        register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/admin-select', array(
+            'methods'             => 'POST',
+            'callback'            => array( __CLASS__, 'rest_admin_select' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+
         // Mark ready (admin version)
         register_rest_route( $ns, '/culling/(?P<code>[a-zA-Z0-9\-]+)/admin-ready', array(
             'methods'             => 'POST',
@@ -199,6 +206,14 @@ class TwellerFlow2_Culling {
         // photographer doesn't have to flip the switch in the dashboard first.
         if ( ! self::is_culling_enabled( $session->id ) ) {
             self::enable_culling( $session->id );
+        }
+
+        // Fresh round: proofs arriving into an EMPTY gallery after a previous
+        // submission means the old round was wiped — reset it so the client
+        // portal shows the selection view again instead of "already received".
+        if ( self::count_proofs( $session->id ) === 0
+             && get_option( 'tweller_culling_submitted_' . $session->id, false ) ) {
+            self::reset_culling_round( $session->id );
         }
 
         $files = $request->get_file_params();
@@ -384,7 +399,38 @@ class TwellerFlow2_Culling {
             return new WP_Error( 'no_selections', 'No photos selected', array( 'status' => 400 ) );
         }
 
-        // Validate selection count against package
+        $result = self::apply_selections( $session, $code, $proof_ids, 'Client submitted' );
+        $total_selected = $result['total'];
+        $extra_count    = $result['extra'];
+        $extra_cost_ttd = $result['extra_cost'];
+        $included       = $result['included'];
+
+        // Track activity
+        if ( class_exists( 'TwellerFlow2_Client_Activity' ) ) {
+            TwellerFlow2_Client_Activity::log(
+                $session->id, $code, 'culling_submitted',
+                $total_selected . ' photos selected' . ( $extra_count > 0 ? ' (+' . $extra_count . ' extra = $' . $extra_cost_ttd . ' TTD)' : '' )
+            );
+        }
+
+        // Send confirmation email to client
+        self::send_selection_email( $session, $total_selected, $included, $extra_count, $extra_cost_ttd );
+
+        return rest_ensure_response( array(
+            'ok'         => true,
+            'selected'   => $total_selected,
+            'extra'      => $extra_count,
+            'extra_cost' => $extra_cost_ttd,
+        ));
+    }
+
+    /**
+     * Persist a set of proof selections (in click order: the first
+     * package-included picks get 1 star, extras get 2), mark the round
+     * submitted, store upsell info, and advance the pipeline to "culled".
+     * Shared by the client portal submit and the admin editor.
+     */
+    private static function apply_selections( $session, $code, $proof_ids, $who = 'Client submitted' ) {
         $packages = get_option( 'tweller_flow_2_packages', array() );
         $pkg = $packages[ $session->package_type ] ?? array();
         $included = ( $pkg['images'] ?? 15 ) + self::FREEBIES;
@@ -394,7 +440,6 @@ class TwellerFlow2_Culling {
         $extra_count    = max( 0, $total_selected - $included );
         $extra_cost_ttd = $extra_count * self::UPSELL_PRICE_PER_PHOTO;
 
-        // Save selections
         global $wpdb;
         $sel_table   = $wpdb->prefix . self::TABLE_SELECTIONS;
         $proof_table = $wpdb->prefix . self::TABLE_PROOFS;
@@ -432,7 +477,7 @@ class TwellerFlow2_Culling {
         $current_idx = array_search( $session->current_stage, $stage_keys );
         $culled_idx  = array_search( 'culled', $stage_keys );
         if ( $current_idx !== false && $culled_idx !== false && $current_idx < $culled_idx ) {
-            TwellerFlow2_Session::set_stage( $session->id, 'culled', 'Client submitted ' . $total_selected . ' photo selections', false );
+            TwellerFlow2_Session::set_stage( $session->id, 'culled', $who . ' ' . $total_selected . ' photo selections', false );
         }
 
         // Store extra cost info
@@ -443,22 +488,50 @@ class TwellerFlow2_Culling {
             'count'       => $total_selected,
         ));
 
-        // Track activity
+        return array(
+            'total'      => $total_selected,
+            'extra'      => $extra_count,
+            'extra_cost' => $extra_cost_ttd,
+            'included'   => $included,
+        );
+    }
+
+    /**
+     * Admin edits selections on the client's behalf. Unlike the client
+     * endpoint this may overwrite an existing submission, and sending an
+     * empty list clears the selections (reopening the round for the client).
+     */
+    public static function rest_admin_select( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $proof_ids = $request->get_param( 'proof_ids' );
+        if ( ! is_array( $proof_ids ) ) {
+            $proof_ids = array();
+        }
+
+        if ( empty( $proof_ids ) ) {
+            // Clear everything — client can select again
+            self::reset_culling_round( $session->id );
+            return rest_ensure_response( array( 'ok' => true, 'selected' => 0, 'cleared' => true ) );
+        }
+
+        $result = self::apply_selections( $session, $code, $proof_ids, 'Admin set' );
+
         if ( class_exists( 'TwellerFlow2_Client_Activity' ) ) {
             TwellerFlow2_Client_Activity::log(
                 $session->id, $code, 'culling_submitted',
-                $total_selected . ' photos selected' . ( $extra_count > 0 ? ' (+' . $extra_count . ' extra = $' . $extra_cost_ttd . ' TTD)' : '' )
+                'Admin set ' . $result['total'] . ' photo selections'
             );
         }
 
-        // Send confirmation email to client
-        self::send_selection_email( $session, $total_selected, $included, $extra_count, $extra_cost_ttd );
-
         return rest_ensure_response( array(
-            'ok'         => true,
-            'selected'   => $total_selected,
-            'extra'      => $extra_count,
-            'extra_cost' => $extra_cost_ttd,
+            'ok'       => true,
+            'selected' => $result['total'],
+            'extra'    => $result['extra'],
         ));
     }
 
@@ -759,6 +832,21 @@ class TwellerFlow2_Culling {
         delete_option( 'tweller_culling_enabled_' . $session_id );
     }
 
+    /**
+     * Reset a culling round: wipe selections and the submitted/ready/upsell
+     * flags so the portal goes back to the selection view. Used when all
+     * proofs are removed or a fresh set is uploaded after a wipe.
+     */
+    public static function reset_culling_round( $session_id ) {
+        global $wpdb;
+        $sel_table = $wpdb->prefix . self::TABLE_SELECTIONS;
+        $wpdb->delete( $sel_table, array( 'session_id' => $session_id ) );
+
+        delete_option( 'tweller_culling_submitted_' . $session_id );
+        delete_option( 'tweller_culling_ready_' . $session_id );
+        delete_option( 'tweller_culling_upsell_' . $session_id );
+    }
+
     public static function set_password( $session_id, $password ) {
         $hash = wp_hash_password( $password );
         update_option( 'tweller_culling_pw_' . $session_id, $hash );
@@ -945,6 +1033,12 @@ class TwellerFlow2_Culling {
             self::enable_culling( $session->id );
         }
 
+        // Fresh round after a wipe: clear the stale "already submitted" state
+        if ( self::count_proofs( $session->id ) === 0
+             && get_option( 'tweller_culling_submitted_' . $session->id, false ) ) {
+            self::reset_culling_round( $session->id );
+        }
+
         $files = $request->get_file_params();
         if ( empty( $files['photo'] ) ) {
             return new WP_Error( 'no_file', 'No photo file provided', array( 'status' => 400 ) );
@@ -1125,6 +1219,11 @@ class TwellerFlow2_Culling {
         if ( file_exists( $thumb ) ) unlink( $thumb );
 
         $wpdb->delete( $table, array( 'id' => $proof_id ) );
+
+        // Last proof gone -> the round is over; reset so a re-upload starts fresh
+        if ( self::count_proofs( $proof->session_id ) === 0 ) {
+            self::reset_culling_round( $proof->session_id );
+        }
 
         return rest_ensure_response( array( 'ok' => true ) );
     }

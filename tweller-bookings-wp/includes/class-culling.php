@@ -1412,30 +1412,29 @@ class TwellerFlow2_Culling {
             'filename'     => 'selections-' . $code . '.zip',
             'zip_base64'   => base64_encode( $zip_data ),
             'count'        => count( $selections ),
-            'instruction'  => 'Download and extract XMP files into the same folder as your imported photos in Lightroom. Lightroom will read the star ratings.',
+            'instruction'  => 'Extract the .xmp files into the same folder as your RAW files, then in Lightroom select those photos and run Metadata > Read Metadata from Files.',
         ));
     }
 
     private static function generate_xmp( $filename, $star_rating ) {
-        // Lightroom XMP format with rating and label
-        $label = ( $star_rating === 1 ) ? 'Included' : 'Extra';
-        $color = ( $star_rating === 1 ) ? '2' : '6'; // 2=blue (included), 6=purple (extra)
+        // Lightroom sidecar: star rating + a standard colour label so LR
+        // shows real label colours (Blue = included, Purple = extra).
+        // The xpacket wrapper + padding is required for Adobe apps to
+        // reliably recognize the file as a valid XMP sidecar.
+        $label = ( intval( $star_rating ) === 1 ) ? 'Blue' : 'Purple';
 
-        $xmp = '<?xml version="1.0" encoding="UTF-8"?>' . "\n" .
-            '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 5.6-c140 79.160451, 2017/12/02-11:08:38        ">' . "\n" .
-            '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' . "\n" .
-            '    <rdf:Description rdf:about=""' . "\n" .
-            '      xmlns:xmp="http://ns.adobe.com/xap/1.0/"' . "\n" .
-            '      xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"' . "\n" .
-            '      xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/"' . "\n" .
-            '      xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"' . "\n" .
-            '      xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmp/2008-02-29/"' . "\n" .
-            '      xmp:Rating="' . intval( $star_rating ) . '"' . "\n" .
-            '      xmp:Label="' . esc_xml( $label ) . '"' . "\n" .
-            '      Iptc4xmpCore:IntellectualGenre="' . esc_xml( $label . ' Selection' ) . '">' . "\n" .
-            '    </rdf:Description>' . "\n" .
-            '  </rdf:RDF>' . "\n" .
-            '</x:xmpmeta>' . "\n";
+        $xmp = '<?xpacket begin="' . "\xEF\xBB\xBF" . '" id="W5M0MpCehiHzreSzNTczkc9d"?>' . "\n" .
+            '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Tweller Bookings WP">' . "\n" .
+            ' <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' . "\n" .
+            '  <rdf:Description rdf:about=""' . "\n" .
+            '    xmlns:xmp="http://ns.adobe.com/xap/1.0/"' . "\n" .
+            '    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"' . "\n" .
+            '   xmp:Rating="' . intval( $star_rating ) . '"' . "\n" .
+            '   xmp:Label="' . esc_xml( $label ) . '"/>' . "\n" .
+            ' </rdf:RDF>' . "\n" .
+            '</x:xmpmeta>' . "\n" .
+            str_repeat( ' ', 200 ) . "\n" .
+            '<?xpacket end="w"?>';
 
         return $xmp;
     }

@@ -659,8 +659,12 @@
                             <button id="pm-download-csv" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:11px;">⬇ CSV</button>
                         </div>
                     </div>
-                    <div style="background:#F5F3FF; border:1px solid #DDD6FE; border-radius:6px; padding:10px; margin-bottom:12px; font-size:11px; color:#5B21B6;">
-                        <strong>XMP for Lightroom:</strong> Download the XMP file, extract the .xmp files into the same folder as your original RAW files. Lightroom will automatically apply the star ratings to your originals.
+                    <div style="background:#F5F3FF; border:1px solid #DDD6FE; border-radius:6px; padding:10px; margin-bottom:12px; font-size:11px; color:#5B21B6; line-height:1.6;">
+                        <strong>XMP for Lightroom — 3 steps:</strong><br>
+                        1. Extract the .xmp files into the <strong>same folder as your RAW files</strong> (names must match, e.g. DSC_1234.CR2 ↔ DSC_1234.xmp).<br>
+                        2. In Lightroom, <strong>select all those photos</strong> in Grid view.<br>
+                        3. Go to <strong>Metadata &rarr; Read Metadata from Files</strong> and confirm. Restarting Lightroom does <em>not</em> pick up sidecars — this menu step is required for already-imported photos.<br>
+                        Selected photos get <span style="font-weight:600;">&#9733; + Blue label</span> (included) or <span style="font-weight:600;">&#9733;&#9733; + Purple label</span> (extra). Then filter by rating &ge; 1 star. <em>Note: sidecars only work for RAW files, not JPEGs.</em>
                     </div>
                     <div style="border:1px solid #E5E7EB; border-radius:8px; overflow:hidden;">
                         <table style="width:100%; border-collapse:collapse; font-size:12px;">
@@ -965,10 +969,11 @@
 
                         // Seed current selections: included (1-star) first so
                         // click-order star logic matches what's saved.
-                        d.proofs.filter(function(p) { return p.selected && p.star_rating === 1; })
-                                .forEach(function(p) { adminSel.push(p.id); });
-                        d.proofs.filter(function(p) { return p.selected && p.star_rating !== 1; })
-                                .forEach(function(p) { adminSel.push(p.id); });
+                        // (IDs arrive as strings from the API — normalize to ints.)
+                        d.proofs.filter(function(p) { return p.selected && parseInt(p.star_rating) === 1; })
+                                .forEach(function(p) { adminSel.push(parseInt(p.id)); });
+                        d.proofs.filter(function(p) { return p.selected && parseInt(p.star_rating) !== 1; })
+                                .forEach(function(p) { adminSel.push(parseInt(p.id)); });
 
                         d.proofs.forEach(function(proof) {
                             var item = document.createElement('div');
@@ -987,7 +992,7 @@
                             item.appendChild(badge);
 
                             item.addEventListener('click', function() {
-                                var id = proof.id;
+                                var id = parseInt(proof.id);
                                 var pos = adminSel.indexOf(id);
                                 if (pos === -1) adminSel.push(id);
                                 else adminSel.splice(pos, 1);

@@ -18,6 +18,10 @@ class TwellerFlow2_Culling {
 
     const FREEBIES = 0;
 
+    /** Proofs are heavily compressed previews, never delivery files */
+    const PROOF_MAX_EDGE = 1600;
+    const PROOF_QUALITY  = 60;
+
     public static function init() {
         add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
         add_shortcode( 'tweller_culling', array( __CLASS__, 'render_shortcode' ) );
@@ -184,8 +188,10 @@ class TwellerFlow2_Culling {
             return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
         }
 
+        // API-key uploads (Lightroom / watcher) auto-enable culling so the
+        // photographer doesn't have to flip the switch in the dashboard first.
         if ( ! self::is_culling_enabled( $session->id ) ) {
-            return new WP_Error( 'not_enabled', 'Culling not enabled for this session', array( 'status' => 400 ) );
+            self::enable_culling( $session->id );
         }
 
         $files = $request->get_file_params();
@@ -231,7 +237,11 @@ class TwellerFlow2_Culling {
             return new WP_Error( 'move_failed', 'Could not save file', array( 'status' => 500 ) );
         }
 
-        // Generate thumbnail (600px for proof grid)
+        // Compress to preview size and stamp the studio watermark —
+        // proofs are for selection only, never delivery quality.
+        self::process_proof_image( $dest );
+
+        // Generate thumbnail (600px for proof grid, inherits the watermark)
         $thumb_path = $thumbs_dir . '/' . $filename;
         self::create_thumbnail( $dest, $thumb_path, 600 );
 
@@ -520,6 +530,15 @@ class TwellerFlow2_Culling {
             update_option( 'tweller_culling_url_' . $session->id, $culling_url );
         }
 
+        // Move the session to the "culling" stage so the tracker shows
+        // "Select Photos for Editing" (email below handles notification)
+        $stage_keys  = TwellerFlow2_Database::get_stage_keys();
+        $current_idx = array_search( $session->current_stage, $stage_keys );
+        $culling_idx = array_search( 'culling', $stage_keys );
+        if ( $current_idx !== false && $culling_idx !== false && $current_idx < $culling_idx ) {
+            TwellerFlow2_Session::set_stage( $session->id, 'culling', 'Proofs uploaded — awaiting client selection', false );
+        }
+
         // Send culling email to client
         self::send_culling_email( $session );
 
@@ -681,26 +700,28 @@ class TwellerFlow2_Culling {
         $pkg_name = $pkg['name'] ?? ucfirst( $session->package_type );
         $included = $pkg['images'] ?? 15;
 
-        $subject = "Choose Your Photos — {$pkg_name} with Tweller Studios";
+        $first_name = trim( explode( ' ', trim( $session->client_name ) )[0] );
+        $subject = "Time to choose your photos, {$first_name} ✨";
         $body = "
-            <h2>Your Proofs Are Ready!</h2>
-            <p>Hi {$session->client_name},</p>
-            <p>Your photo proofs are ready for viewing! Browse through them and select the ones you'd like us to retouch.</p>
+            <h2 style='color:#101010; font-weight:600;'>Your proofs are ready</h2>
+            <p style='color:#3D3630;'>Hi {$session->client_name},</p>
+            <p style='color:#3D3630; line-height:1.7;'>The exciting part — your photo proofs are ready for viewing. Take your time browsing, and pick the ones you'd love us to retouch and finish for you.</p>
 
-            <div style='background:#f0f9ff; padding:20px; border-radius:8px; margin:20px 0; border:1px solid #bae6fd;'>
-                <h3 style='margin-top:0; color:#0369a1;'>Your Package</h3>
-                <p><strong>{$pkg_name}:</strong> {$included} retouched photos included + " . self::FREEBIES . " bonus free</p>
-                <p>Select up to <strong>" . ( $included + self::FREEBIES ) . "</strong> photos at no extra cost.</p>
-                <p><em>Want more? You can add extra photos during selection.</em></p>
-            </div>
+            " . TwellerFlow2_Notifications::email_card( 'Your Package', "
+                <p style='margin:6px 0; color:#3D3630;'><strong>{$pkg_name}:</strong> {$included} retouched photos included" . ( self::FREEBIES > 0 ? " + " . self::FREEBIES . " bonus free" : "" ) . "</p>
+                <p style='margin:6px 0; color:#3D3630;'>Select up to <strong>" . ( $included + self::FREEBIES ) . "</strong> photos at no extra cost.</p>
+                <p style='margin:6px 0; color:#8A8178;'><em>Want more? You can add extra photos during selection.</em></p>
+            " ) . "
 
             <div style='text-align:center; margin:30px 0;'>
-                <a href='{$culling_url}' style='display:inline-block; background:#6366F1; color:#fff; padding:16px 36px; border-radius:10px; text-decoration:none; font-size:18px; font-weight:600;'>Choose My Photos</a>
+                " . TwellerFlow2_Notifications::email_button( $culling_url, 'Choose My Photos' ) . "
             </div>
 
-            <div style='background:#fefce8; padding:16px 20px; border-radius:8px; margin:20px 0; border:1px solid #fde68a;'>
-                <p style='margin:0; font-size:14px; color:#854d0e;'><strong>Important:</strong> Once you submit your selections, they cannot be changed. Take your time browsing!</p>
-            </div>
+            " . TwellerFlow2_Notifications::email_card( 'Before You Start', "
+                <p style='margin:0; color:#3D3630; line-height:1.7;'>Once you submit your selections they can't be changed, so take your time — there's no rush.</p>
+            " ) . "
+
+            <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
         ";
 
         TwellerFlow2_Notifications::send_email( $session, $subject, $body );
@@ -813,6 +834,74 @@ class TwellerFlow2_Culling {
         );
     }
 
+    /**
+     * Turn an uploaded proof into a compressed, watermarked preview:
+     * downscale to PROOF_MAX_EDGE, re-encode at PROOF_QUALITY, and lay a
+     * subtle diagonal "Tweller Studios" watermark across the middle.
+     */
+    public static function process_proof_image( $path ) {
+        // 1) Downscale + recompress
+        $editor = wp_get_image_editor( $path );
+        if ( ! is_wp_error( $editor ) ) {
+            $size = $editor->get_size();
+            if ( max( $size['width'], $size['height'] ) > self::PROOF_MAX_EDGE ) {
+                if ( $size['width'] >= $size['height'] ) {
+                    $editor->resize( self::PROOF_MAX_EDGE, null, false );
+                } else {
+                    $editor->resize( null, self::PROOF_MAX_EDGE, false );
+                }
+            }
+            $editor->set_quality( self::PROOF_QUALITY );
+            $editor->save( $path );
+        }
+
+        // 2) Watermark (GD; skipped silently if GD or the asset is missing)
+        if ( ! function_exists( 'imagecreatefrompng' ) ) return;
+        $wm_file = TWELLER_FLOW_2_PLUGIN_DIR . 'public/img/watermark.png';
+        if ( ! file_exists( $wm_file ) ) return;
+
+        $info = @getimagesize( $path );
+        if ( ! $info ) return;
+
+        switch ( $info['mime'] ) {
+            case 'image/jpeg': $img = @imagecreatefromjpeg( $path ); break;
+            case 'image/png':  $img = @imagecreatefrompng( $path );  break;
+            case 'image/webp': $img = function_exists( 'imagecreatefromwebp' ) ? @imagecreatefromwebp( $path ) : null; break;
+            default: return;
+        }
+        if ( ! $img ) return;
+
+        $wm = @imagecreatefrompng( $wm_file );
+        if ( ! $wm ) { imagedestroy( $img ); return; }
+
+        $img_w = imagesx( $img );
+        $img_h = imagesy( $img );
+        $wm_w  = imagesx( $wm );
+        $wm_h  = imagesy( $wm );
+
+        // Scale the watermark to ~78% of the photo's width, centered
+        $target_w = (int) round( $img_w * 0.78 );
+        $target_h = (int) round( $wm_h * ( $target_w / $wm_w ) );
+        if ( $target_h > $img_h ) {
+            $target_h = (int) round( $img_h * 0.9 );
+            $target_w = (int) round( $wm_w * ( $target_h / $wm_h ) );
+        }
+        $dst_x = (int) round( ( $img_w - $target_w ) / 2 );
+        $dst_y = (int) round( ( $img_h - $target_h ) / 2 );
+
+        imagealphablending( $img, true );
+        imagecopyresampled( $img, $wm, $dst_x, $dst_y, 0, 0, $target_w, $target_h, $wm_w, $wm_h );
+
+        switch ( $info['mime'] ) {
+            case 'image/jpeg': imagejpeg( $img, $path, self::PROOF_QUALITY ); break;
+            case 'image/png':  imagepng( $img, $path, 8 ); break;
+            case 'image/webp': if ( function_exists( 'imagewebp' ) ) imagewebp( $img, $path, self::PROOF_QUALITY ); break;
+        }
+
+        imagedestroy( $img );
+        imagedestroy( $wm );
+    }
+
     private static function create_thumbnail( $source, $dest, $max_width = 600 ) {
         $editor = wp_get_image_editor( $source );
         if ( is_wp_error( $editor ) ) {
@@ -878,6 +967,9 @@ class TwellerFlow2_Culling {
         if ( ! move_uploaded_file( $file['tmp_name'], $dest ) ) {
             return new WP_Error( 'move_failed', 'Could not save file', array( 'status' => 500 ) );
         }
+
+        // Same treatment as watcher/LR proofs: compress + watermark
+        self::process_proof_image( $dest );
 
         $thumb_path = $thumbs_dir . '/' . $filename;
         self::create_thumbnail( $dest, $thumb_path, 600 );

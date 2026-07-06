@@ -184,6 +184,8 @@ exportServiceProvider.exportPresetFields = {
     { key = 'sessionCode',     default = '' },
     { key = 'localExportDir',  default = '' },
     { key = 'uploadToSite',    default = true },
+    { key = 'uploadTarget',    default = 'gallery' },  -- 'gallery' | 'culling'
+    { key = 'notifyCulling',   default = true },
     { key = 'advanceStage',    default = true },
     { key = 'galleryPassword', default = '' },
     -- New-session fields (for last-minute bookings)
@@ -192,6 +194,22 @@ exportServiceProvider.exportPresetFields = {
     { key = 'newSessionDate',  default = '' },
     { key = 'newPackage',      default = 'mini' },
 }
+
+--- Culling proofs only need to be selection previews — force small,
+--- light JPEGs so uploads are fast (the website compresses further
+--- and applies the studio watermark).
+function exportServiceProvider.updateExportSettings( exportSettings )
+    if exportSettings.uploadTarget == 'culling' then
+        exportSettings.LR_format                    = 'JPEG'
+        exportSettings.LR_jpeg_quality              = 0.6
+        exportSettings.LR_size_doConstrain          = true
+        exportSettings.LR_size_resizeType           = 'longEdge'
+        exportSettings.LR_size_maxWidth             = 2048
+        exportSettings.LR_size_maxHeight            = 2048
+        exportSettings.LR_size_units                = 'pixels'
+        exportSettings.LR_minimizeEmbeddedMetadata  = true
+    end
+end
 
 function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
     local bind = LrView.bind
@@ -373,10 +391,49 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
                     parts[#parts + 1] = 'Local'
                 end
                 if props.uploadToSite then
-                    parts[#parts + 1] = 'Website'
+                    if props.uploadTarget == 'culling' then
+                        parts[#parts + 1] = 'Culling proofs'
+                    else
+                        parts[#parts + 1] = 'Final gallery'
+                    end
                 end
                 return table.concat( parts, ' + ' )
             end,
+
+            f:row {
+                f:static_text { title = 'Upload as:', width = 120, alignment = 'right' },
+                f:popup_menu {
+                    value = bind 'uploadTarget',
+                    items = {
+                        { title = 'Final gallery (delivery)',            value = 'gallery' },
+                        { title = 'Culling proofs (client selection)',   value = 'culling' },
+                    },
+                    width_in_chars = 30,
+                    tooltip = 'Culling proofs go to the client photo-selection portal. The website compresses them and adds a subtle Tweller Studios watermark automatically.',
+                },
+            },
+            f:row {
+                f:static_text { title = '', width = 120 },
+                f:static_text {
+                    title = 'Culling proofs are compressed + watermarked by the website automatically.',
+                    text_color = LrColor( 0.5, 0.5, 0.5 ),
+                    visible = LrView.bind {
+                        key = 'uploadTarget',
+                        transform = function( value ) return value == 'culling' end,
+                    },
+                },
+            },
+            f:row {
+                f:static_text { title = '', width = 120 },
+                f:checkbox {
+                    value = bind 'notifyCulling',
+                    title = 'Email the client that their selection gallery is ready (after upload)',
+                    visible = LrView.bind {
+                        key = 'uploadTarget',
+                        transform = function( value ) return value == 'culling' end,
+                    },
+                },
+            },
 
             f:row {
                 f:static_text { title = 'Local Folder:', width = 120, alignment = 'right' },
@@ -408,6 +465,10 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
                 },
             },
             f:row {
+                visible = LrView.bind {
+                    key = 'uploadTarget',
+                    transform = function( value ) return value ~= 'culling' end,
+                },
                 f:static_text { title = '', width = 120 },
                 f:checkbox {
                     value = bind 'advanceStage',
@@ -415,6 +476,10 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
                 },
             },
             f:row {
+                visible = LrView.bind {
+                    key = 'uploadTarget',
+                    transform = function( value ) return value ~= 'culling' end,
+                },
                 f:static_text { title = 'Gallery Password:', width = 120, alignment = 'right' },
                 f:edit_field {
                     value          = bind 'galleryPassword',
@@ -440,6 +505,9 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     local sessionCode     = trim( propertyTable.sessionCode )
     local localDir        = trim( propertyTable.localExportDir )
     local uploadToSite    = propertyTable.uploadToSite
+    local uploadTarget    = propertyTable.uploadTarget or 'gallery'
+    local isCulling       = ( uploadTarget == 'culling' )
+    local notifyCulling   = propertyTable.notifyCulling
     local advanceStage    = propertyTable.advanceStage
     local galleryPassword = trim( propertyTable.galleryPassword )
 
@@ -509,9 +577,15 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
 
             -- 2. Upload to WordPress
             if uploadToSite and siteUrl ~= "" then
-                progressScope:setCaption( "Uploading " .. fileName .. " (" .. photoIndex .. "/" .. nPhotos .. ")" )
+                local kind = isCulling and "proof" or "photo"
+                progressScope:setCaption( "Uploading " .. kind .. " " .. fileName .. " (" .. photoIndex .. "/" .. nPhotos .. ")" )
 
-                local uploadUrl = base .. "/photo-upload"
+                local uploadUrl
+                if isCulling then
+                    uploadUrl = base .. "/culling/" .. sessionCode .. "/upload"
+                else
+                    uploadUrl = base .. "/photo-upload"
+                end
 
                 local fileContents = nil
                 local fh = io.open( renderedPath, "rb" )
@@ -524,9 +598,15 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
                     local boundary = "----TwellerBookings" .. tostring( math.random( 100000, 999999 ) )
                     local body = ""
 
-                    body = body .. "--" .. boundary .. "\r\n"
-                    body = body .. 'Content-Disposition: form-data; name="session_code"\r\n\r\n'
-                    body = body .. sessionCode .. "\r\n"
+                    if not isCulling then
+                        body = body .. "--" .. boundary .. "\r\n"
+                        body = body .. 'Content-Disposition: form-data; name="session_code"\r\n\r\n'
+                        body = body .. sessionCode .. "\r\n"
+                    else
+                        body = body .. "--" .. boundary .. "\r\n"
+                        body = body .. 'Content-Disposition: form-data; name="original_filename"\r\n\r\n'
+                        body = body .. fileName .. "\r\n"
+                    end
 
                     -- API key in body (Authorization header may be stripped by hosts)
                     if apiKey ~= "" then
@@ -535,8 +615,8 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
                         body = body .. apiKey .. "\r\n"
                     end
 
-                    -- Gallery password (only on first photo)
-                    if photoIndex == 1 and galleryPassword ~= "" then
+                    -- Gallery password (only on first photo, final gallery only)
+                    if not isCulling and photoIndex == 1 and galleryPassword ~= "" then
                         body = body .. "--" .. boundary .. "\r\n"
                         body = body .. 'Content-Disposition: form-data; name="gallery_password"\r\n\r\n'
                         body = body .. galleryPassword .. "\r\n"
@@ -587,10 +667,28 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     end
 
     -- Advance the session stage automatically after a successful upload:
+    --   - Culling proofs            -> mark selection gallery ready (optional client email)
     --   - "Mark delivered" checked  -> delivered (sends the delivery email)
     --   - otherwise                 -> uploaded  (gallery goes live, no email)
     local deliveredMsg = ""
-    if uploadToSite and uploadedCount > 0 and siteUrl ~= "" then
+    if isCulling and uploadToSite and uploadedCount > 0 and siteUrl ~= "" then
+        if notifyCulling then
+            progressScope:setCaption( "Notifying client (selection gallery ready)..." )
+            local readyUrl = base .. "/culling/" .. sessionCode .. "/ready"
+            local body = LrHttp.post( readyUrl, "api_key=" .. urlencode( apiKey ), {
+                { field = "Content-Type",  value = "application/x-www-form-urlencoded" },
+                { field = "Authorization", value = "Bearer " .. apiKey },
+            }, "POST", 30 )
+            if body and jsonBool( body, "ok" ) then
+                deliveredMsg = "\n\nSelection gallery is live — the client has been emailed to pick their photos."
+            else
+                deliveredMsg = "\n\nWarning: proofs uploaded, but could not mark the selection gallery ready: " .. tostring( body )
+                log( "Culling ready warning: " .. tostring( body ) )
+            end
+        else
+            deliveredMsg = "\n\nProofs uploaded. Client NOT notified — send the selection email from the dashboard when ready."
+        end
+    elseif uploadToSite and uploadedCount > 0 and siteUrl ~= "" then
         local targetStage = advanceStage and "delivered" or "uploaded"
         progressScope:setCaption( "Updating session status..." )
 

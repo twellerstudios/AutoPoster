@@ -443,3 +443,32 @@
     font-weight: 700;
     color: #6366F1;
 }
+
+/* ── Image protection: proofs are for selection, not saving ── */
+.tc-portal img {
+    pointer-events: none;           /* right-click/save targets the card, not the image */
+    -webkit-user-drag: none;
+    user-drag: none;
+    -webkit-touch-callout: none;    /* blocks iOS long-press "Save Image" */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.tc-portal {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Keep an invisible shield over each proof card */
+.tc-grid__item::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+}
+
+/* Nothing useful comes out of printing the portal */
+@media print {
+    .tc-portal img { visibility: hidden !important; }
+    .tc-portal::before { content: "Images are protected."; }
+}

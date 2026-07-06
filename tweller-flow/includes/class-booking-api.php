@@ -219,20 +219,8 @@ class TwellerFlow2_Booking_API {
 
         $session = TwellerFlow2_Session::get( $session_id );
 
-        // Send explicit 'Reserved' notification
-        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
-        $reserved_subj = "Action Required: Your Session is Reserved! - Tweller Studios";
-        $reserved_body = "Hi {$session->client_name},\n\n" .
-                         "Thank you for choosing Tweller Studios! Your desired date and time has been successfully reserved.\n\n" .
-                         "To officially confirm this booking, a downpayment or full payment is required via bank transfer.\n" .
-                         "Please access your secure client portal link below to view our banking details and upload your transfer screenshot:\n\n" .
-                         "🔗 $tracker_url\n\n" .
-                         "Note: Your deposit is currently pending payment. Your spot is held but not confirmed until we verify the screenshot.\n\n" .
-                         "Thanks,\nTweller Studios";
-                         
-        if ( ! empty( $session->client_email ) ) {
-            wp_mail( $session->client_email, $reserved_subj, $reserved_body );
-        }
+        // The single welcome email (payment details + calendar hold attached)
+        // is sent by TwellerFlow2_Session::create() — nothing extra here.
 
         return rest_ensure_response( array(
             'success' => true,
@@ -289,21 +277,43 @@ class TwellerFlow2_Booking_API {
             TwellerFlow2_Session::record_stage_history( $session->id, $session->current_stage, $session->current_stage_index, 'Client uploaded bank transfer receipt for verification.' );
 
             // Send Emails
-            $admin_email = get_option( 'admin_email' );
-            $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
-            
-            // To Admin
-            $admin_subj = "Receipt Uploaded: {$session->client_name}";
-            $admin_body = "Client {$session->client_name} uploaded their bank transfer receipt.\n\n" . 
-                          "Please review it in your Tweller Flow dashboard.\n" .
-                          admin_url('admin.php?page=tweller-flow-2-session&id=' . $session->id);
-            wp_mail( $admin_email, $admin_subj, $admin_body );
+            $tracker_url = TwellerFlow2_Notifications::get_tracker_url( $session->tracking_code );
+            $review_link = admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $session->id );
+
+            // To the studio (site admin + hello@)
+            $admin_recipients = array_unique( array_filter( array(
+                get_option( 'admin_email' ),
+                TwellerFlow2_Notifications::STUDIO_EMAIL,
+            ) ) );
+            $admin_subj = "Receipt Uploaded — {$session->client_name}";
+            $admin_body = "
+                <h2 style='color:#101010; font-weight:600;'>A payment receipt just arrived</h2>
+                <p style='color:#3D3630; line-height:1.7;'><strong>{$session->client_name}</strong> has uploaded their bank transfer receipt for verification.</p>
+                " . TwellerFlow2_Notifications::email_card( 'Payment Details',
+                    TwellerFlow2_Notifications::email_detail_row( 'Client', esc_html( $session->client_name ) ) .
+                    TwellerFlow2_Notifications::email_detail_row( 'Bank', esc_html( $bank_name ) ) .
+                    ( $ocr_data ? TwellerFlow2_Notifications::email_detail_row( 'Detected Amount', esc_html( $ocr_data ) ) : '' ) .
+                    ( $ocr_ref ? TwellerFlow2_Notifications::email_detail_row( 'Reference', esc_html( $ocr_ref ) ) : '' ) .
+                    TwellerFlow2_Notifications::email_detail_row( 'Shoot Code', $session->tracking_code )
+                ) . "
+                <div style='text-align:center; margin:28px 0;'>
+                    " . TwellerFlow2_Notifications::email_button( $review_link, 'Review in Tweller Bookings WP Dashboard' ) . "
+                </div>";
+            TwellerFlow2_Notifications::send_raw( $admin_recipients, $admin_subj, $admin_body );
 
             // To Client
             if ( ! empty($session->client_email) ) {
-                $client_subj = "Bank Transfer Receipt Received - Tweller Studios";
-                $client_body = "Hi {$session->client_name},\n\nWe have successfully received your bank transfer receipt. We will verify the payment and update your tracker within 1-2 business days.\n\nKeep an eye on your tracker: $tracker_url\n\nThanks,\nTweller Studios";
-                wp_mail( $session->client_email, $client_subj, $client_body );
+                $first_name  = trim( explode( ' ', trim( $session->client_name ) )[0] );
+                $client_subj = "We've received your receipt, {$first_name} — verifying now";
+                $client_body = "
+                    <h2 style='color:#101010; font-weight:600;'>Receipt received</h2>
+                    <p style='color:#3D3630;'>Hi {$session->client_name},</p>
+                    <p style='color:#3D3630; line-height:1.7;'>Thank you — your bank transfer receipt has arrived safely. We'll verify the payment and confirm your booking within <strong>1–2 business days</strong>. You don't need to do anything else for now.</p>
+                    <div style='text-align:center; margin:28px 0;'>
+                        " . TwellerFlow2_Notifications::email_button( $tracker_url, 'Track My Session' ) . "
+                    </div>
+                    <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>";
+                TwellerFlow2_Notifications::send_email( $session, $client_subj, $client_body );
             }
 
             return rest_ensure_response( array(

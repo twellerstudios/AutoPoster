@@ -277,9 +277,9 @@ class TwellerFlow2_Tracker_Shortcode {
                                 <label>Receipt Screenshot</label>
                                 <input type="file" id="tf2-receipt-file" accept="image/*" required class="tf2-tracker__receipt-file">
                                 
-                                <button type="submit" id="tf2-receipt-btn" class="tf2-tracker__btn tf2-tracker__btn--full">
+                                <button type="submit" id="tf2-receipt-btn" class="tf2-tracker__btn tf2-tracker__btn--full" style="display:flex; align-items:center; justify-content:center; gap:10px;">
+                                    <span id="tf2-receipt-spinner" style="display:none; width:18px; height:18px; border:2.5px solid rgba(255,255,255,0.25); border-radius:50%; border-top-color:#fff; animation:tf2-spin 0.7s linear infinite; flex-shrink:0;"></span>
                                     <span id="tf2-receipt-btn-text">Verify Receipt Upload</span>
-                                    <div id="tf2-receipt-spinner" style="display:none; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-radius:50%; border-top-color:#fff; animation:tf2-spin 1s ease-in-out infinite; margin-right:8px;"></div>
                                 </button>
                             </form>
                             <div id="tf2-receipt-status" class="tf2-tracker__receipt-status" style="display:none;"></div>

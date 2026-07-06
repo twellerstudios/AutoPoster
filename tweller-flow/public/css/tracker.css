@@ -923,3 +923,8 @@ body.page .page-hero {
 .tf2-tracker__receipt-form button:active {
     transform: scale(0.98);
 }
+
+/* Smooth receipt-upload spinner */
+@keyframes tf2-spin {
+    to { transform: rotate(360deg); }
+}

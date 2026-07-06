@@ -240,20 +240,26 @@
                 var data = await res.json();
                 
                 if (data.success) {
+                    if (spinner) spinner.style.display = 'none';
                     statusDiv.innerHTML = '<span style="color:green">Success! Your receipt is pending manual approval.</span>';
-                    btn.innerText = 'Uploaded Successfully';
+                    if (btnText) btnText.innerText = 'Uploaded Successfully';
+                    else btn.innerText = 'Uploaded Successfully';
                     fileInput.disabled = true;
                     sessionStorage.setItem('tf_receipt_uploaded', '1');
                     setTimeout(function(){ window.location.reload(); }, 1500);
                 } else {
+                    if (spinner) spinner.style.display = 'none';
                     statusDiv.innerHTML = '<span style="color:red">' + (data.message || 'Error uploading receipt.') + '</span>';
                     btn.disabled = false;
-                    btn.innerText = 'Try Again';
+                    if (btnText) btnText.innerText = 'Try Again';
+                    else btn.innerText = 'Try Again';
                 }
             } catch (err) {
+                if (spinner) spinner.style.display = 'none';
                 statusDiv.innerHTML = '<span style="color:red">Network error during upload.</span>';
                 btn.disabled = false;
-                btn.innerText = 'Try Again';
+                if (btnText) btnText.innerText = 'Try Again';
+                else btn.innerText = 'Try Again';
             }
         });
     }

@@ -121,10 +121,25 @@
     <div class="tf2-grid tf2-grid--sidebar">
         <!-- Left Column -->
         <div>
-            <?php $receipt = get_option( 'tf_receipt_' . $session->id ); ?>
+            <?php
+            $receipt        = get_option( 'tf_receipt_' . $session->id );
+            $receipt_status = $receipt['status'] ?? 'pending'; // pending | approved | rejected
+            $is_processed   = in_array( $receipt_status, array( 'approved', 'rejected' ), true );
+            ?>
             <?php if ( $receipt || $session->payment_status === 'verifying' ) : ?>
-                <div class="tf2-card tf2-mb-6" style="border:1px solid #C7D2FE; background:#EEF2FF;">
-                    <h2 style="color:#4F46E5; margin-top:0;">Receipt Verification</h2>
+                <details class="tf2-card tf2-mb-6" style="border:1px solid #C7D2FE; background:#EEF2FF; padding:0;" <?php echo $is_processed ? '' : 'open'; ?>>
+                    <summary style="cursor:pointer; padding:16px 20px; display:flex; align-items:center; gap:10px; list-style:none;">
+                        <h2 style="color:#4F46E5; margin:0; display:inline;">Receipt Verification</h2>
+                        <?php if ( $receipt_status === 'approved' ) : ?>
+                            <span style="background:#D1FAE5; color:#065F46; font-size:12px; font-weight:600; padding:3px 10px; border-radius:99px;">✓ Approved<?php echo ! empty( $receipt['processed_at'] ) ? ' — ' . esc_html( date( 'M j, Y', strtotime( $receipt['processed_at'] ) ) ) : ''; ?></span>
+                        <?php elseif ( $receipt_status === 'rejected' ) : ?>
+                            <span style="background:#FEE2E2; color:#991B1B; font-size:12px; font-weight:600; padding:3px 10px; border-radius:99px;">✕ Rejected<?php echo ! empty( $receipt['processed_at'] ) ? ' — ' . esc_html( date( 'M j, Y', strtotime( $receipt['processed_at'] ) ) ) : ''; ?></span>
+                        <?php else : ?>
+                            <span style="background:#FEF3C7; color:#92400E; font-size:12px; font-weight:600; padding:3px 10px; border-radius:99px;">Awaiting Review</span>
+                        <?php endif; ?>
+                        <span style="margin-left:auto; color:#6B7280; font-size:12px;">click to expand / collapse</span>
+                    </summary>
+                    <div style="padding:0 20px 20px;">
                     <?php if ( $receipt ) : ?>
                         <div style="background:#FFF; padding:12px; border-radius:6px; margin-bottom:12px; display:flex; gap:20px;">
                             <div>
@@ -151,28 +166,36 @@
                         <button type="button" class="tf2-btn tf2-btn--secondary tf2-btn--sm" onclick="document.getElementById('tf2-receipt-preview').style.display = document.getElementById('tf2-receipt-preview').style.display === 'none' ? 'block' : 'none';">Toggle Receipt Image</button>
                         
                         <hr style="border:none; border-top:1px solid #C7D2FE; margin:16px 0;">
-                        
+
+                        <?php if ( $is_processed ) : ?>
+                            <p style="color:#6B7280; font-size:13px; margin:0;">
+                                This receipt was <strong><?php echo esc_html( $receipt_status ); ?></strong><?php echo ! empty( $receipt['processed_at'] ) ? ' on ' . esc_html( date( 'F j, Y \a\t g:i A', strtotime( $receipt['processed_at'] ) ) ) : ''; ?>.
+                                The screenshot stays on file here for your records.
+                            </p>
+                        <?php else : ?>
                         <form method="post" style="display:flex; gap:10px; align-items:center;">
                             <?php wp_nonce_field( 'tweller_flow_2_verify_receipt' ); ?>
                             <input type="hidden" name="tweller_flow_2_verify_receipt" value="1">
                             <input type="hidden" name="session_id" value="<?php echo $session->id; ?>">
-                            
+
                             <select name="verify_action" style="padding:8px; border-radius:6px; font-size:13px; border:1px solid #D1D5DB; background:#FFF; color:#374151;">
                                 <option value="approve">Approve Receipt</option>
                                 <option value="reject">Reject Receipt (Resets to Pending)</option>
                             </select>
-                            
+
                             <div style="position:relative;">
                                 <span style="position:absolute; left:8px; top:8px; color:#6B7280; font-size:13px;">TTD</span>
                                 <input type="number" step="0.01" name="amount_paid" value="<?php echo esc_attr( $ocr_num ); ?>" style="padding:8px 8px 8px 36px; width:90px; border-radius:6px; font-size:13px; border:1px solid #D1D5DB; background:#FFF; color:#374151;" title="Edit the confirmed amount" required>
                             </div>
-                            
+
                             <button type="submit" class="tf2-btn tf2-btn--primary">Process Verification</button>
                         </form>
+                        <?php endif; ?>
                     <?php else: ?>
                         <p style="color:#6B7280; font-size:13px;">Payment is verifying but no receipt was found. Client may have bypassed standard upload or an error occurred.</p>
                     <?php endif; ?>
-                </div>
+                    </div>
+                </details>
             <?php endif; ?>
 
             <!-- Client Details (Editable) -->

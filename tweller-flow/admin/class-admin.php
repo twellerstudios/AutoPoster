@@ -217,26 +217,41 @@ class TwellerFlow2_Admin {
                     // Physically lock them into the Confirmed stage!
                     // Note: We won't trigger the generic notification email since we want the highly custom one
                     TwellerFlow2_Session::set_stage( $id, 'confirmed', 'Payment verified and booking confirmed.', false );
-                    delete_option( 'tf_receipt_' . $id );
-                    
-                    // Fire the updated Sequence 1 calendar invite
-                    if ( !empty($session->session_date) ) {
-                        TwellerFlow2_Notifications::send_calendar_invite( $session, 'CONFIRMED', 1 );
+
+                    // Keep the receipt on file (marked verified) so it stays
+                    // visible in the session detail screen.
+                    $receipt = get_option( 'tf_receipt_' . $id );
+                    if ( $receipt ) {
+                        $receipt['status']       = 'approved';
+                        $receipt['processed_at'] = current_time( 'mysql' );
+                        update_option( 'tf_receipt_' . $id, $receipt );
                     }
-                    
-                    if ( !empty($session->client_email) ) {
-                        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
-                        $confirmed_subj = "Booking Confirmed! 🎉 - Tweller Studios";
-                        $confirmed_body = "Hi {$session->client_name},\n\nWe have successfully verified your payment receipt and your booking is now officially CONFIRMED! We are thrilled to work with you.\n\nYou can always check the live status of your photo session here:\n$tracker_url\n\nThanks,\nTweller Studios";
-                        wp_mail( $session->client_email, $confirmed_subj, $confirmed_body );
-                    }
+
+                    // One confirmation email: verified payment + confirmed
+                    // calendar event attached (replaces the old two emails).
+                    TwellerFlow2_Notifications::send_confirmed_email( $session );
                 } elseif ( $action === 'reject' ) {
                     TwellerFlow2_Session::update( $id, array( 'payment_status' => 'pending' ) );
-                    delete_option( 'tf_receipt_' . $id );
-                    
+
+                    $receipt = get_option( 'tf_receipt_' . $id );
+                    if ( $receipt ) {
+                        $receipt['status']       = 'rejected';
+                        $receipt['processed_at'] = current_time( 'mysql' );
+                        update_option( 'tf_receipt_' . $id, $receipt );
+                    }
+
                     if ( !empty($session->client_email) ) {
-                        $tracker_url = get_option( 'tweller_flow_2_tracker_page', '' ) . '?code=' . $session->tracking_code;
-                        wp_mail( $session->client_email, "Action Required: Payment Verification Failed", "Hi {$session->client_name},\n\nWe had a problem verifying the bank transfer receipt you recently uploaded (it may have been the wrong image or the amount was incorrect).\n\nPlease click your tracker link to re-upload your correct receipt: $tracker_url\n\nThanks,\nTweller Studios" );
+                        $tracker_url = TwellerFlow2_Notifications::get_tracker_url( $session->tracking_code );
+                        $reject_body = "
+                            <h2 style='color:#101010; font-weight:600;'>We couldn't verify your receipt</h2>
+                            <p style='color:#3D3630;'>Hi {$session->client_name},</p>
+                            <p style='color:#3D3630; line-height:1.7;'>We ran into a problem verifying the bank transfer receipt you uploaded — it may have been the wrong image, or the amount didn't match. No worries at all; these things happen.</p>
+                            <p style='color:#3D3630; line-height:1.7;'>Please re-upload the correct receipt through your client portal and we'll take another look right away. Your date is still being held for you.</p>
+                            <div style='text-align:center; margin:28px 0;'>
+                                " . TwellerFlow2_Notifications::email_button( $tracker_url, 'Re-upload My Receipt' ) . "
+                            </div>
+                            <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>";
+                        TwellerFlow2_Notifications::send_email( $session, "Quick fix needed — we couldn't verify your receipt", $reject_body );
                     }
                 }
             }

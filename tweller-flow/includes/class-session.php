@@ -78,18 +78,12 @@ class TwellerFlow2_Session {
         if ( $session_id ) {
             self::record_stage_history( $session_id, 'booked', 0, 'Session created' );
 
+            // One welcome email only — it includes the payment details and
+            // carries the tentative calendar hold as an attachment.
             if ( empty( $data['skip_notifications'] ) ) {
                 TwellerFlow2_Notifications::on_stage_change( $session_id, 'booked' );
             }
             do_action( 'tweller_flow_2_session_created', $session_id, $data );
-
-            // Send tentative calendar hold if date is set
-            if ( empty( $data['skip_notifications'] ) ) {
-                $session = self::get( $session_id );
-                if ( $session && !empty($session->session_date) ) {
-                    TwellerFlow2_Notifications::send_calendar_invite( $session, 'TENTATIVE', 0 );
-                }
-            }
         }
 
         return $session_id;

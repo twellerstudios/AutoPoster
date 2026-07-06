@@ -624,4 +624,165 @@
             }
         }, { passive: true });
     }
+
+    // ── Lightbox controls fade away for an uninterrupted view ──
+    var lbIdleTimer = null;
+
+    function lbWake() {
+        if (!lightbox) return;
+        lightbox.classList.remove('tf2-lightbox--idle');
+        clearTimeout(lbIdleTimer);
+        lbIdleTimer = setTimeout(function() {
+            lightbox.classList.add('tf2-lightbox--idle');
+        }, 2500);
+    }
+
+    if (lightbox) {
+        ['mousemove', 'touchstart', 'click'].forEach(function(evt) {
+            lightbox.addEventListener(evt, lbWake, { passive: true });
+        });
+        // Waking also happens when the image changes (nav/keyboard/swipe all
+        // route through renderLightbox via prev/next)
+        var _renderLightbox = renderLightbox;
+        renderLightbox = function() {
+            _renderLightbox();
+            lbWake();
+        };
+    }
+
+    // ── Slideshow ──────────────────────────────────────
+    var ssBtn     = document.getElementById('tf2-gallery-slideshow');
+    var ssChooser = document.getElementById('tf2-ss-chooser');
+    var ssCancel  = document.getElementById('tf2-ss-cancel');
+    var ss        = document.getElementById('tf2-slideshow');
+    var ssLayerA  = document.getElementById('tf2-ss-layer-a');
+    var ssLayerB  = document.getElementById('tf2-ss-layer-b');
+    var ssClose   = document.getElementById('tf2-ss-close');
+    var ssPause   = document.getElementById('tf2-ss-pause');
+
+    var SS_INTERVAL = 6000;  // ms per photo
+    var ssTimer = null, ssIdleTimer = null;
+    var ssIndex = 0, ssFront = null, ssPaused = false;
+
+    if (ssBtn && ss) {
+        ssBtn.addEventListener('click', function() {
+            if (!photos.length) return;
+            ssChooser.style.display = 'flex';
+        });
+
+        if (ssCancel) ssCancel.addEventListener('click', function() {
+            ssChooser.style.display = 'none';
+        });
+        ssChooser.addEventListener('click', function(e) {
+            if (e.target === ssChooser) ssChooser.style.display = 'none';
+        });
+
+        ssChooser.querySelectorAll('.tf2-ss-chooser__option').forEach(function(opt) {
+            opt.addEventListener('click', function() {
+                ssChooser.style.display = 'none';
+                startSlideshow(opt.getAttribute('data-style') || 'fade');
+            });
+        });
+    }
+
+    function startSlideshow(style) {
+        trackActivity('slideshow_played', style);
+        ss.className = 'tf2-slideshow tf2-slideshow--' + style;
+        ss.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+
+        ssIndex = 0;
+        ssFront = null;
+        ssPaused = false;
+        ssLayerA.className = 'tf2-slideshow__layer';
+        ssLayerB.className = 'tf2-slideshow__layer';
+        ssLayerA.style.backgroundImage = '';
+        ssLayerB.style.backgroundImage = '';
+
+        showSlide(0);
+        scheduleNext();
+        ssWake();
+
+        // Native fullscreen where available (best on desktop)
+        try { if (ss.requestFullscreen) ss.requestFullscreen().catch(function(){}); } catch (e) {}
+    }
+
+    function showSlide(idx) {
+        ssIndex = ((idx % photos.length) + photos.length) % photos.length;
+        var incoming = (ssFront === ssLayerA) ? ssLayerB : ssLayerA;
+        var outgoing = ssFront;
+
+        var kb = 'tf2-kb-' + (Math.floor(Math.random() * 4) + 1);
+        incoming.className = 'tf2-slideshow__layer';
+        // Force style reset so the Ken Burns animation restarts cleanly
+        void incoming.offsetWidth;
+        incoming.style.backgroundImage = 'url("' + photos[ssIndex].url + '")';
+        incoming.classList.add('tf2-slideshow__layer--visible', kb);
+
+        if (outgoing) outgoing.classList.remove('tf2-slideshow__layer--visible');
+        ssFront = incoming;
+
+        // Preload the next image so the crossfade never stutters
+        var nxt = new Image();
+        nxt.src = photos[(ssIndex + 1) % photos.length].url;
+    }
+
+    function scheduleNext() {
+        clearTimeout(ssTimer);
+        if (ssPaused) return;
+        ssTimer = setTimeout(function() {
+            showSlide(ssIndex + 1);
+            scheduleNext();
+        }, SS_INTERVAL);
+    }
+
+    function stopSlideshow() {
+        clearTimeout(ssTimer);
+        ss.style.display = 'none';
+        document.body.style.overflow = '';
+        try { if (document.fullscreenElement) document.exitFullscreen().catch(function(){}); } catch (e) {}
+    }
+
+    function ssWake() {
+        ss.classList.remove('tf2-slideshow--idle');
+        clearTimeout(ssIdleTimer);
+        ssIdleTimer = setTimeout(function() {
+            ss.classList.add('tf2-slideshow--idle');
+        }, 2500);
+    }
+
+    if (ss) {
+        ['mousemove', 'touchstart'].forEach(function(evt) {
+            ss.addEventListener(evt, ssWake, { passive: true });
+        });
+
+        if (ssClose) ssClose.addEventListener('click', stopSlideshow);
+
+        if (ssPause) ssPause.addEventListener('click', function() {
+            ssPaused = !ssPaused;
+            ssPause.innerHTML = ssPaused
+                ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>'
+                : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+            if (!ssPaused) scheduleNext();
+            else clearTimeout(ssTimer);
+            ssWake();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (ss.style.display === 'none') return;
+            if (e.key === 'Escape') stopSlideshow();
+            if (e.key === ' ') { e.preventDefault(); ssPause.click(); }
+            if (e.key === 'ArrowRight') { showSlide(ssIndex + 1); scheduleNext(); ssWake(); }
+            if (e.key === 'ArrowLeft')  { showSlide(ssIndex - 1); scheduleNext(); ssWake(); }
+        });
+
+        // Leaving native fullscreen (Esc) also ends the show cleanly
+        document.addEventListener('fullscreenchange', function() {
+            if (!document.fullscreenElement && ss.style.display !== 'none') {
+                clearTimeout(ssTimer);
+                ss.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+        });
+    }
 })();

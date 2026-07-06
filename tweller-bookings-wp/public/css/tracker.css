@@ -928,3 +928,200 @@ body.page .page-hero {
 @keyframes tf2-spin {
     to { transform: rotate(360deg); }
 }
+
+/* ══════════════════════════════════════════════════════
+   Gallery-first layout: once photos are delivered the
+   hero leads the page and the pipeline compresses below
+   ══════════════════════════════════════════════════════ */
+.tf2-tracker--gallery-first {
+    display: flex;
+    flex-direction: column;
+}
+.tf2-tracker--gallery-first .tf2-gallery          { order: 1; }
+.tf2-tracker--gallery-first .tf2-tracker__header  { order: 2; margin-top: 34px; }
+.tf2-tracker--gallery-first .tf2-tracker__stages  { order: 3; }
+.tf2-tracker--gallery-first .tf2-tracker__footer  { order: 4; }
+
+/* Compress the pipeline once it's just a recap */
+.tf2-tracker--gallery-first .tf2-tracker__header .tf2-tracker__greeting {
+    font-size: 15px;
+}
+.tf2-tracker--gallery-first .tf2-tracker__stages {
+    transform-origin: top center;
+    opacity: 0.82;
+}
+.tf2-tracker--gallery-first .tf2-tracker__stage {
+    padding: 4px 0;
+}
+.tf2-tracker--gallery-first .tf2-tracker__stage-name {
+    font-size: 13px;
+}
+.tf2-tracker--gallery-first .tf2-tracker__stage-icon {
+    transform: scale(0.8);
+}
+.tf2-tracker--gallery-first .tf2-tracker__stage-dot {
+    transform: scale(0.8);
+}
+
+/* ══════════════════════════════════════════════════════
+   Slideshow
+   ══════════════════════════════════════════════════════ */
+.tf2-slideshow {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: #000;
+    overflow: hidden;
+}
+.tf2-slideshow__layer {
+    position: absolute;
+    inset: 0;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 1.4s ease-in-out;
+    will-change: opacity, transform;
+}
+.tf2-slideshow__layer--visible {
+    opacity: 1;
+}
+/* Cinematic mode: cover + slow drift */
+.tf2-slideshow--kenburns .tf2-slideshow__layer {
+    background-size: cover;
+}
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-1 { animation: tf2-kb-1 9s ease-in-out forwards; }
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-2 { animation: tf2-kb-2 9s ease-in-out forwards; }
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-3 { animation: tf2-kb-3 9s ease-in-out forwards; }
+.tf2-slideshow--kenburns .tf2-slideshow__layer--visible.tf2-kb-4 { animation: tf2-kb-4 9s ease-in-out forwards; }
+
+@keyframes tf2-kb-1 { from { transform: scale(1)    translate(0, 0); }        to { transform: scale(1.09) translate(1.5%, -1%); } }
+@keyframes tf2-kb-2 { from { transform: scale(1.09) translate(-1.5%, 1%); }   to { transform: scale(1)    translate(0, 0); } }
+@keyframes tf2-kb-3 { from { transform: scale(1)    translate(0, 0); }        to { transform: scale(1.09) translate(-1.5%, 1%); } }
+@keyframes tf2-kb-4 { from { transform: scale(1.08) translate(1%, 1%); }      to { transform: scale(1)    translate(-0.5%, -1%); } }
+
+.tf2-slideshow__close,
+.tf2-slideshow__pause {
+    position: absolute;
+    z-index: 5;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    line-height: 1;
+    opacity: 0.85;
+    transition: opacity 0.4s, background 0.2s;
+}
+.tf2-slideshow__close { top: 18px; right: 18px; }
+.tf2-slideshow__pause { bottom: 18px; right: 18px; }
+.tf2-slideshow__close:hover,
+.tf2-slideshow__pause:hover { background: rgba(255, 255, 255, 0.3); }
+
+/* controls melt away while watching */
+.tf2-slideshow--idle .tf2-slideshow__close,
+.tf2-slideshow--idle .tf2-slideshow__pause {
+    opacity: 0;
+}
+
+/* ── Style chooser ── */
+.tf2-ss-chooser {
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    background: rgba(10, 10, 10, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.tf2-ss-chooser__box {
+    background: #fff;
+    border-radius: 16px;
+    padding: 30px 34px;
+    max-width: 430px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+.tf2-ss-chooser__box h3 {
+    margin: 0 0 4px;
+    font-size: 20px;
+    color: #111;
+}
+.tf2-ss-chooser__box > p {
+    margin: 0 0 20px;
+    font-size: 13px;
+    color: #888;
+}
+.tf2-ss-chooser__options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.tf2-ss-chooser__option {
+    border: 1.5px solid #E5E1DA;
+    border-radius: 12px;
+    background: #FAF8F5;
+    padding: 18px 14px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.tf2-ss-chooser__option:hover {
+    border-color: #C9A227;
+    background: #FDF9F0;
+    transform: translateY(-1px);
+}
+.tf2-ss-chooser__option-title {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: #111;
+    margin-bottom: 6px;
+}
+.tf2-ss-chooser__option-desc {
+    display: block;
+    font-size: 12px;
+    color: #8A8178;
+    line-height: 1.5;
+}
+.tf2-ss-chooser__cancel {
+    border: none;
+    background: none;
+    color: #999;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+@media (max-width: 480px) {
+    .tf2-ss-chooser__options { grid-template-columns: 1fr; }
+}
+
+/* ══════════════════════════════════════════════════════
+   Lightbox arrows: faint, and they fade away while viewing
+   ══════════════════════════════════════════════════════ */
+.tf2-lightbox__nav {
+    opacity: 0.45;
+    transition: opacity 0.6s ease;
+}
+.tf2-lightbox__nav:hover {
+    opacity: 0.9;
+}
+.tf2-lightbox--idle .tf2-lightbox__nav,
+.tf2-lightbox--idle .tf2-lightbox__close,
+.tf2-lightbox--idle .tf2-lightbox__bar {
+    opacity: 0;
+    transition: opacity 0.8s ease;
+}
+.tf2-lightbox__close,
+.tf2-lightbox__bar {
+    transition: opacity 0.6s ease;
+}

@@ -172,7 +172,12 @@ class TwellerFlow2_Tracker_Shortcode {
             }
         })();
         </script>
-        <div class="tf2-tracker" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
+        <?php
+        // When the gallery is live, it takes over the page: hero first,
+        // pipeline compressed and moved below the photos.
+        $gallery_live = in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true );
+        ?>
+        <div class="tf2-tracker<?php echo $gallery_live ? ' tf2-tracker--gallery-first' : ''; ?>" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
             <div class="tf2-tracker__header">
                 <p class="tf2-tracker__greeting">Hi <?php echo esc_html( $session->client_name ); ?>! Here's the progress of your <strong><?php echo esc_html( $pkg_name ); ?></strong>.</p>
                 <div class="tf2-tracker__meta">
@@ -335,11 +340,44 @@ class TwellerFlow2_Tracker_Shortcode {
                             <span class="tf2-gallery__toolbar-name" id="tf2-gallery-toolbar-name"><?php echo esc_html( strtoupper( $session->client_name ) ); ?></span>
                         </div>
                         <div class="tf2-gallery__toolbar-right">
+                            <button id="tf2-gallery-slideshow" class="tf2-gallery__toolbar-action" type="button" title="Play Slideshow">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <span>Slideshow</span>
+                            </button>
                             <a id="tf2-gallery-download-all" class="tf2-gallery__toolbar-action" href="#" title="Download All">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 <span>Download All</span>
                             </a>
                         </div>
+                    </div>
+
+                    <!-- Slideshow style chooser -->
+                    <div class="tf2-ss-chooser" id="tf2-ss-chooser" style="display:none;">
+                        <div class="tf2-ss-chooser__box">
+                            <h3>Play Slideshow</h3>
+                            <p>Choose your viewing style</p>
+                            <div class="tf2-ss-chooser__options">
+                                <button type="button" class="tf2-ss-chooser__option" data-style="kenburns">
+                                    <span class="tf2-ss-chooser__option-title">Cinematic</span>
+                                    <span class="tf2-ss-chooser__option-desc">Slow, gentle motion with fading transitions</span>
+                                </button>
+                                <button type="button" class="tf2-ss-chooser__option" data-style="fade">
+                                    <span class="tf2-ss-chooser__option-title">Classic</span>
+                                    <span class="tf2-ss-chooser__option-desc">Still images with elegant crossfades</span>
+                                </button>
+                            </div>
+                            <button type="button" class="tf2-ss-chooser__cancel" id="tf2-ss-cancel">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Slideshow overlay -->
+                    <div class="tf2-slideshow" id="tf2-slideshow" style="display:none;">
+                        <div class="tf2-slideshow__layer" id="tf2-ss-layer-a"></div>
+                        <div class="tf2-slideshow__layer" id="tf2-ss-layer-b"></div>
+                        <button type="button" class="tf2-slideshow__close" id="tf2-ss-close" title="Exit slideshow">&times;</button>
+                        <button type="button" class="tf2-slideshow__pause" id="tf2-ss-pause" title="Pause">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        </button>
                     </div>
 
                     <!-- Masonry photo grid (populated by JS) -->

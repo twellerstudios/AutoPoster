@@ -63,19 +63,26 @@ end
 --- POST requests don't survive redirects (they get converted to GET and
 --- WordPress replies "no route"), so uploads must hit the final URL directly.
 local function resolveSiteUrl( siteUrl )
-    local body = LrHttp.get( siteUrl:gsub( "/+$", "" ) .. "/wp-json/", nil, 15 )
+    local entered = siteUrl:gsub( "/+$", "" )
+    local body = LrHttp.get( entered .. "/wp-json/", nil, 15 )
     if body then
         local url = body:match( '"url"%s*:%s*"([^"]-)"' )
         if url then
             url = url:gsub( '\\/', '/' ):gsub( "/+$", "" )
             if url:match( "^https?://" ) then
+                -- Never downgrade to http: WordPress sometimes reports an
+                -- http:// home URL even though the site serves https, and an
+                -- http POST gets redirected to https and turned into a GET.
+                if entered:match( "^https://" ) then
+                    url = url:gsub( "^http://", "https://" )
+                end
                 log( "Resolved canonical site URL: " .. url )
                 return url
             end
         end
     end
-    log( "Could not resolve canonical URL, using as entered: " .. siteUrl )
-    return siteUrl
+    log( "Could not resolve canonical URL, using as entered: " .. entered )
+    return entered
 end
 
 --- Parse a JSON array of session objects into popup items
@@ -382,65 +389,88 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
             },
         },
 
-        -- Export Options
+        -- Where the photos go
         {
-            title   = 'Gallery Upload Options',
+            title   = 'Send Photos To',
             synopsis = function( props )
-                local parts = {}
-                if props.localExportDir and props.localExportDir ~= '' then
-                    parts[#parts + 1] = 'Local'
+                local t = props.uploadTarget
+                local dest
+                if t == 'culling' then
+                    dest = 'Culling / selection portal'
+                elseif t == 'none' then
+                    dest = 'Local export only'
+                else
+                    dest = 'Final client gallery'
                 end
-                if props.uploadToSite then
-                    if props.uploadTarget == 'culling' then
-                        parts[#parts + 1] = 'Culling proofs'
-                    else
-                        parts[#parts + 1] = 'Final gallery'
-                    end
+                if props.localExportDir and props.localExportDir ~= '' and t ~= 'none' then
+                    dest = dest .. ' + local copy'
                 end
-                return table.concat( parts, ' + ' )
+                return dest
             end,
 
             f:row {
-                f:static_text { title = 'Upload as:', width = 120, alignment = 'right' },
+                f:static_text { title = 'Destination:', width = 120, alignment = 'right' },
                 f:popup_menu {
                     value = bind 'uploadTarget',
                     items = {
-                        { title = 'Final gallery (delivery)',            value = 'gallery' },
-                        { title = 'Culling proofs (client selection)',   value = 'culling' },
+                        { title = 'Final client gallery — finished, delivery-ready photos', value = 'gallery' },
+                        { title = 'Culling / selection portal — proofs the client picks from', value = 'culling' },
+                        { title = "Don't upload — export to this computer only",            value = 'none' },
                     },
-                    width_in_chars = 30,
-                    tooltip = 'Culling proofs go to the client photo-selection portal. The website compresses them and adds a subtle Tweller Studios watermark automatically.',
+                    width_in_chars = 42,
+                    tooltip = 'Final gallery = the finished album your client downloads.\nCulling portal = compressed, watermarked proofs your client uses to choose which photos get edited.',
+                },
+            },
+
+            f:separator { fill_horizontal = 1 },
+
+            -- ── Final gallery options ──
+            f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'gallery' end },
+                f:static_text { title = '', width = 120 },
+                f:checkbox {
+                    value = bind 'advanceStage',
+                    title = 'Mark session "delivered" when done (sends the delivery email to the client)',
                 },
             },
             f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'gallery' end },
+                f:static_text { title = 'Gallery Password:', width = 120, alignment = 'right' },
+                f:edit_field {
+                    value          = bind 'galleryPassword',
+                    width_in_chars = 20,
+                    tooltip        = 'Optional password to protect the client gallery (leave blank for none)',
+                },
+            },
+
+            -- ── Culling portal options ──
+            f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'culling' end },
                 f:static_text { title = '', width = 120 },
                 f:static_text {
-                    title = 'Culling proofs are compressed + watermarked by the website automatically.',
+                    title = 'Proofs are compressed and watermarked by the website automatically.\nThe client sees them in the selection portal — never in the final gallery.',
                     text_color = LrColor( 0.5, 0.5, 0.5 ),
-                    visible = LrView.bind {
-                        key = 'uploadTarget',
-                        transform = function( value ) return value == 'culling' end,
-                    },
+                    height_in_lines = 2,
                 },
             },
             f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'culling' end },
                 f:static_text { title = '', width = 120 },
                 f:checkbox {
                     value = bind 'notifyCulling',
                     title = 'Email the client that their selection gallery is ready (after upload)',
-                    visible = LrView.bind {
-                        key = 'uploadTarget',
-                        transform = function( value ) return value == 'culling' end,
-                    },
                 },
             },
 
+            f:separator { fill_horizontal = 1 },
+
+            -- ── Local copy (applies to every destination) ──
             f:row {
                 f:static_text { title = 'Local Folder:', width = 120, alignment = 'right' },
                 f:edit_field {
                     value          = bind 'localExportDir',
                     width_in_chars = 35,
-                    tooltip        = 'Local folder to also save exported photos (leave blank to skip)',
+                    tooltip        = 'Also save the exported photos to this folder (leave blank to skip)',
                 },
                 f:push_button {
                     title  = 'Browse...',
@@ -455,36 +485,6 @@ function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
                             propertyTable.localExportDir = dir[1]
                         end
                     end,
-                },
-            },
-            f:row {
-                f:static_text { title = '', width = 120 },
-                f:checkbox {
-                    value = bind 'uploadToSite',
-                    title = 'Upload photos to website gallery',
-                },
-            },
-            f:row {
-                visible = LrView.bind {
-                    key = 'uploadTarget',
-                    transform = function( value ) return value ~= 'culling' end,
-                },
-                f:static_text { title = '', width = 120 },
-                f:checkbox {
-                    value = bind 'advanceStage',
-                    title = 'Mark session "delivered" when done (sends the delivery email to the client)',
-                },
-            },
-            f:row {
-                visible = LrView.bind {
-                    key = 'uploadTarget',
-                    transform = function( value ) return value ~= 'culling' end,
-                },
-                f:static_text { title = 'Gallery Password:', width = 120, alignment = 'right' },
-                f:edit_field {
-                    value          = bind 'galleryPassword',
-                    width_in_chars = 20,
-                    tooltip        = 'Optional password to protect the client gallery (leave blank for none)',
                 },
             },
         },
@@ -504,8 +504,8 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     local apiKey          = trim( propertyTable.apiKey )
     local sessionCode     = trim( propertyTable.sessionCode )
     local localDir        = trim( propertyTable.localExportDir )
-    local uploadToSite    = propertyTable.uploadToSite
     local uploadTarget    = propertyTable.uploadTarget or 'gallery'
+    local uploadToSite    = ( uploadTarget ~= 'none' )
     local isCulling       = ( uploadTarget == 'culling' )
     local notifyCulling   = propertyTable.notifyCulling
     local advanceStage    = propertyTable.advanceStage
@@ -514,10 +514,12 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     -- Validate. On failure, skip all renditions so Lightroom shows our
     -- message instead of a generic "failed to export" error.
     local validationError = nil
-    if sessionCode == "" then
+    if uploadToSite and sessionCode == "" then
         validationError = "Please pick a session or create one first (Session section)."
-    elseif siteUrl == "" and uploadToSite then
+    elseif uploadToSite and siteUrl == "" then
         validationError = "Please enter your website URL to upload photos."
+    elseif not uploadToSite and localDir == "" then
+        validationError = "Destination is set to local-only, but no Local Folder is chosen."
     end
 
     if validationError then
@@ -538,7 +540,8 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
     -- Create local export subfolder: localDir/SESSION_CODE/
     local localSessionDir = nil
     if localDir ~= "" then
-        localSessionDir = LrPathUtils.child( localDir, sessionCode )
+        local subfolder = sessionCode ~= "" and sessionCode or os.date( "%Y-%m-%d Export" )
+        localSessionDir = LrPathUtils.child( localDir, subfolder )
         LrFileUtils.createAllDirectories( localSessionDir )
     end
 
@@ -718,23 +721,42 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
         end
     end
 
-    -- Summary dialog
-    local summary = uploadedCount .. " of " .. nPhotos .. " photos exported successfully."
-    if localSessionDir then
-        summary = summary .. "\n\nLocal: " .. localSessionDir
-    end
+    -- Summary dialog — say what actually happened, where.
+    local summary
     if uploadToSite then
-        summary = summary .. "\nUploaded to: " .. siteUrl .. " (session " .. sessionCode .. ")"
-    end
-    if failedCount > 0 then
-        summary = summary .. "\n\n" .. failedCount .. " photo(s) failed."
-        if firstError then
-            summary = summary .. "\nReason: " .. firstError
+        local destName = isCulling and "the culling / selection portal" or "the final client gallery"
+        if uploadedCount == 0 then
+            summary = "Upload FAILED — none of the " .. nPhotos .. " photos reached " .. destName .. "."
+        elseif failedCount > 0 then
+            summary = uploadedCount .. " of " .. nPhotos .. " photos uploaded to " .. destName .. " — " .. failedCount .. " failed."
+        else
+            summary = "All " .. uploadedCount .. " photos uploaded to " .. destName .. "."
         end
+        if uploadedCount > 0 then
+            summary = summary .. "\nWebsite: " .. siteUrl .. "  (session " .. sessionCode .. ")"
+        end
+    else
+        summary = nPhotos - failedCount .. " photos exported to this computer."
+    end
+
+    if localSessionDir then
+        summary = summary .. "\n\nLocal copy: " .. localSessionDir
+    end
+
+    if failedCount > 0 and firstError then
+        summary = summary .. "\n\nReason: " .. firstError
     end
     summary = summary .. deliveredMsg
 
-    LrDialogs.message( "Tweller Bookings Export Complete", summary, "info" )
+    local dialogTitle, dialogStyle
+    if uploadToSite and uploadedCount == 0 then
+        dialogTitle, dialogStyle = "Tweller Bookings — Upload Failed", "critical"
+    elseif failedCount > 0 then
+        dialogTitle, dialogStyle = "Tweller Bookings — Completed With Errors", "warning"
+    else
+        dialogTitle, dialogStyle = "Tweller Bookings — Export Complete", "info"
+    end
+    LrDialogs.message( dialogTitle, summary, dialogStyle )
 end
 
 return exportServiceProvider

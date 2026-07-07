@@ -114,5 +114,49 @@ var TwellerWD = (function () {
         return /\.(jpe?g)$/i.test(name);
     }
 
-    return { detect: detect, list: list, fetchHead: fetchHead, fetchFile: fetchFile, isJpeg: isJpeg, HOST: HOST };
+    /**
+     * Probe a handful of candidate endpoints/paths and report exactly what
+     * came back from each. The WD's real API varies by firmware and model —
+     * rather than guess again, this collects hard evidence (status + first
+     * bytes of body) so the right one can be picked with certainty.
+     */
+    async function diagnose() {
+        var candidates = [
+            '/',
+            '/api/2.1/rest/dir_contents?path=/&format=json',
+            '/api/2.1/rest/ls?path=/&format=json',
+            '/api/1.0/rest/dir_contents?path=/&format=json',
+            '/sd0/',
+            '/sd1/',
+            '/Internal Storage/',
+            '/DCIM/',
+            '/nas/',
+            '/Volumes/'
+        ];
+
+        var results = [];
+        for (var i = 0; i < candidates.length; i++) {
+            var path = candidates[i];
+            var url = HOST + path;
+            var entry = { path: path, url: url, status: null, snippet: '', error: '' };
+            try {
+                if (isNative()) {
+                    var http = window.Capacitor.Plugins.CapacitorHttp;
+                    var res = await http.get({ url: url, responseType: 'text', readTimeout: 6000, connectTimeout: 5000 });
+                    entry.status = res.status;
+                    entry.snippet = String(res.data || '').slice(0, 300);
+                } else {
+                    var r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+                    entry.status = r.status;
+                    entry.snippet = (await r.text()).slice(0, 300);
+                }
+            } catch (e) {
+                entry.error = e.message || String(e);
+            }
+            results.push(entry);
+        }
+        return results;
+    }
+
+    return { detect: detect, list: list, fetchHead: fetchHead, fetchFile: fetchFile, isJpeg: isJpeg, diagnose: diagnose, HOST: HOST };
 })();

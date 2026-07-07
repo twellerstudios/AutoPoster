@@ -178,11 +178,39 @@
                 '<button class="btn btn--dark" id="btn-wd">Scan WD Wireless Pro (192.168.60.1)</button>' +
                 '<button class="btn btn--ghost" id="btn-phone">Pick from this phone</button>' +
                 '<input type="file" id="file-input" accept="image/jpeg,image/jpg" multiple style="display:none;">' +
+                '<div class="field" style="margin-top:12px;"><label>Or jump to a folder path on the WD</label>' +
+                    '<div style="display:flex; gap:8px;">' +
+                        '<input type="text" id="wd-path-input" placeholder="/DCIM/100MSDCF" style="flex:1;">' +
+                        '<button class="btn btn--ghost btn--sm" id="wd-path-go" style="width:auto; flex-shrink:0;">Go</button>' +
+                    '</div>' +
+                '</div>' +
+                '<button class="btn btn--ghost btn--sm" id="btn-wd-diag" style="margin-top:6px;">Diagnose WD connection</button>' +
             '</div>'
         );
         view.appendChild(card);
         var groupsHost = el('<div id="groups-host"></div>');
         view.appendChild(groupsHost);
+
+        card.querySelector('#wd-path-go').addEventListener('click', async function () {
+            var p = card.querySelector('#wd-path-input').value.trim();
+            if (!p) return;
+            if (p.charAt(0) !== '/') p = '/' + p;
+            try {
+                await renderWdBrowser(groupsHost, p);
+            } catch (e) {
+                toast('Could not open that path: ' + e.message, 5000);
+            }
+        });
+
+        card.querySelector('#btn-wd-diag').addEventListener('click', async function () {
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Probing WD endpoints...';
+            var results = await TwellerWD.diagnose();
+            btn.disabled = false;
+            btn.textContent = 'Diagnose WD connection';
+            renderWdDiagnostics(groupsHost, results);
+        });
 
         card.querySelector('#btn-phone').addEventListener('click', function () {
             card.querySelector('#file-input').click();
@@ -221,6 +249,29 @@
         });
     }
 
+    function renderWdDiagnostics(host, results) {
+        host.innerHTML = '';
+        var card = el(
+            '<div class="card"><h2>WD connection diagnostics</h2>' +
+            '<p class="hint">None of these paths are confirmed to match your drive\'s firmware — this just shows exactly what each one returns. ' +
+            'Screenshot this and send it over so the right one can be wired up for good.</p></div>'
+        );
+        results.forEach(function (r) {
+            var statusLabel = r.error ? 'ERROR' : (r.status + '');
+            var ok = !r.error && r.status >= 200 && r.status < 300;
+            card.appendChild(el(
+                '<div class="grp">' +
+                    '<div class="grp__head"><span class="grp__title" style="font-size:12.5px;">' + esc(r.path) + '</span>' +
+                        '<span class="grp__time" style="color:' + (ok ? '#16A34A' : '#DC2626') + ';">' + esc(statusLabel) + '</span></div>' +
+                    '<div style="font-size:11px; color:#8A8178; word-break:break-all; white-space:pre-wrap; max-height:80px; overflow:auto;">' +
+                        esc(r.error || r.snippet || '(empty body)') +
+                    '</div>' +
+                '</div>'
+            ));
+        });
+        host.appendChild(card);
+    }
+
     async function renderWdBrowser(host, path) {
         host.innerHTML = '<div class="card"><div class="spin"></div></div>';
         var listing = await TwellerWD.list(path);
@@ -238,6 +289,14 @@
             row.addEventListener('click', function () { renderWdBrowser(host, (path.replace(/\/+$/, '') || '') + '/' + d); });
             card.appendChild(row);
         });
+
+        if (!listing.dirs.length && !listing.files.length) {
+            card.appendChild(el(
+                '<p class="empty">No folders or files found at this path via the endpoints this app knows about.<br>' +
+                'Try a specific path above (e.g. the folder your file manager app shows for the SD card), or tap ' +
+                '<strong>Diagnose WD connection</strong> below to see raw responses.</p>'
+            ));
+        }
 
         var jpegs = listing.files.filter(function (f) { return TwellerWD.isJpeg(f.name); });
         if (jpegs.length) {

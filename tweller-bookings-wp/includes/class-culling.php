@@ -976,7 +976,10 @@ class TwellerFlow2_Culling {
                 }
             }
             $editor->set_quality( self::PROOF_QUALITY );
-            $editor->save( $path );
+            $saved = $editor->save( $path );
+            if ( is_wp_error( $saved ) ) {
+                error_log( '[Tweller Bookings] Proof resize/save failed for ' . $path . ': ' . $saved->get_error_message() );
+            }
         }
 
         // 2) Watermark (GD; skipped silently if GD or the asset is missing)
@@ -1029,15 +1032,34 @@ class TwellerFlow2_Culling {
     private static function create_thumbnail( $source, $dest, $max_width = 600 ) {
         $editor = wp_get_image_editor( $source );
         if ( is_wp_error( $editor ) ) {
-            copy( $source, $dest );
+            @copy( $source, $dest );
             return;
         }
+
         $size = $editor->get_size();
-        if ( $size['width'] > $max_width ) {
-            $editor->resize( $max_width, null, false );
+        // Compare against the longest edge, not just width — a portrait
+        // photo (width < max_width, height > max_width) was skipping the
+        // resize and then still hitting whatever made save() fail below.
+        if ( max( $size['width'], $size['height'] ) > $max_width ) {
+            if ( $size['width'] >= $size['height'] ) {
+                $editor->resize( $max_width, null, false );
+            } else {
+                $editor->resize( null, $max_width, false );
+            }
         }
         $editor->set_quality( 75 );
-        $editor->save( $dest );
+        $saved = $editor->save( $dest );
+
+        // save() can fail without throwing (bad path, engine quirk with a
+        // given source, disk issue) and this went unchecked — the proof
+        // grid was then pointing at a thumbnail that never got written,
+        // rendering as a broken/blank image even though the full photo
+        // (a different file) was perfectly fine. Guarantee the URL never
+        // 404s by falling back to the full processed image.
+        if ( is_wp_error( $saved ) || ! file_exists( $dest ) || filesize( $dest ) === 0 ) {
+            error_log( '[Tweller Bookings] Thumbnail save failed for ' . $source . ( is_wp_error( $saved ) ? ': ' . $saved->get_error_message() : ' (no error, empty output)' ) );
+            @copy( $source, $dest );
+        }
     }
 
     // ── Admin: Upload Proof ────────────────────────────

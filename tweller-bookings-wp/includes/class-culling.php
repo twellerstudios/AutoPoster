@@ -667,9 +667,29 @@ class TwellerFlow2_Culling {
         wp_enqueue_style( 'tweller-flow-2-culling' );
         wp_enqueue_script( 'tweller-flow-2-culling' );
 
+        // The "edited preview" look: CSS-filter approximation of the studio's
+        // Lightroom preset, tunable in Settings > Edited Preview.
+        $preset = get_option( 'tweller_flow_2_culling_preset', array() );
+        $preset = wp_parse_args( $preset, array(
+            'brightness' => 1.06,
+            'contrast'   => 1.12,
+            'saturate'   => 1.16,
+            'warmth'     => 0.12,
+            'hue'        => -3,
+        ) );
+        $preset_filter = sprintf(
+            'brightness(%s) contrast(%s) saturate(%s) sepia(%s) hue-rotate(%sdeg)',
+            floatval( $preset['brightness'] ),
+            floatval( $preset['contrast'] ),
+            floatval( $preset['saturate'] ),
+            floatval( $preset['warmth'] ),
+            floatval( $preset['hue'] )
+        );
+
         wp_localize_script( 'tweller-flow-2-culling', 'twellerCulling', array(
-            'apiUrl' => rest_url( 'tweller-flow-2/v1/culling/' ),
-            'nonce'  => wp_create_nonce( 'wp_rest' ),
+            'apiUrl'       => rest_url( 'tweller-flow-2/v1/culling/' ),
+            'nonce'        => wp_create_nonce( 'wp_rest' ),
+            'presetFilter' => $preset_filter,
         ));
 
         $code = isset( $_GET['code'] ) ? sanitize_text_field( $_GET['code'] ) : '';

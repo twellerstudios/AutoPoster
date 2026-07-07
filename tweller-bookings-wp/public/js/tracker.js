@@ -128,9 +128,46 @@
             });
         }
 
+        // Two-step flow: 1) read the receipt (OCR) and show the detected
+        // amount for the client to confirm/correct, 2) upload on confirm.
+        var receiptStage = 'scan';       // 'scan' -> 'confirm'
+        var pendingFile = null;
+        var pendingRef = null;
+
+        function getConfirmPanel() {
+            var panel = document.getElementById('tf2-receipt-confirm');
+            if (panel) return panel;
+            panel = document.createElement('div');
+            panel.id = 'tf2-receipt-confirm';
+            panel.style.cssText = 'display:none; background:#FAF7F2; border:1px solid #E7DCC5; border-left:3px solid #C9A227; border-radius:10px; padding:14px 16px; margin:12px 0;';
+            panel.innerHTML =
+                '<p style="margin:0 0 8px; font-weight:600; font-size:14px;">Confirm your transfer amount</p>' +
+                '<p id="tf2-receipt-confirm-note" style="margin:0 0 10px; font-size:12.5px; color:#6B7280;"></p>' +
+                '<div style="display:flex; align-items:center; gap:8px;">' +
+                    '<span style="font-weight:600; font-size:14px;">TTD $</span>' +
+                    '<input type="number" step="0.01" min="0" id="tf2-receipt-amount" style="width:130px; padding:8px 10px; border:1px solid #D1D5DB; border-radius:8px; font-size:15px; font-weight:600;">' +
+                '</div>';
+            receiptForm.insertBefore(panel, document.getElementById('tf2-receipt-btn'));
+            return panel;
+        }
+
+        function resetReceiptFlow(btn, btnText) {
+            receiptStage = 'scan';
+            pendingFile = null;
+            var panel = document.getElementById('tf2-receipt-confirm');
+            if (panel) panel.style.display = 'none';
+            if (btnText) btnText.innerText = 'Verify Receipt Upload';
+            else btn.innerText = 'Verify Receipt Upload';
+        }
+
+        // Going back to change the file restarts the flow
+        document.getElementById('tf2-receipt-file').addEventListener('change', function() {
+            resetReceiptFlow(document.getElementById('tf2-receipt-btn'), document.getElementById('tf2-receipt-btn-text'));
+        });
+
         receiptForm.addEventListener('submit', async function(e) {
             e.preventDefault();
-            
+
             var btn = document.getElementById('tf2-receipt-btn');
             var btnText = document.getElementById('tf2-receipt-btn-text');
             var spinner = document.getElementById('tf2-receipt-spinner');
@@ -141,15 +178,24 @@
             if (!fileInput.files || fileInput.files.length === 0) return;
             var file = fileInput.files[0];
 
+            // ── Step 2: client confirmed the amount -> upload ──
+            if (receiptStage === 'confirm' && pendingFile) {
+                var amountInput = document.getElementById('tf2-receipt-amount');
+                var confirmedAmount = parseFloat(amountInput && amountInput.value ? amountInput.value : '0');
+                doReceiptUpload(pendingFile, confirmedAmount > 0 ? 'TTD ' + confirmedAmount.toFixed(2) : '', pendingRef, true,
+                    btn, btnText, spinner, statusDiv, codeInput, fileInput);
+                return;
+            }
+
             btn.disabled = true;
             if (btnText && spinner) {
-                btnText.innerText = 'Please wait...';
+                btnText.innerText = 'Reading receipt...';
                 spinner.style.display = 'block';
             } else {
-                btn.innerText = 'Please wait...';
+                btn.innerText = 'Reading receipt...';
             }
             statusDiv.style.display = 'block';
-            statusDiv.innerText = 'Please wait...';
+            statusDiv.innerText = 'Reading your receipt...';
 
             let extractedAmount = null;
             let extractedRef = null;
@@ -209,18 +255,55 @@
                 }
             }
 
-            if (btnText) btnText.innerText = 'Uploading...';
-            else btn.innerText = 'Uploading...';
+            // ── Step 1 done: show the detected amount and ask to confirm ──
+            if (spinner) spinner.style.display = 'none';
+            receiptStage = 'confirm';
+            pendingFile = file;
+            pendingRef = extractedRef;
+
+            var panel = getConfirmPanel();
+            var note = document.getElementById('tf2-receipt-confirm-note');
+            var amountField = document.getElementById('tf2-receipt-amount');
+
+            if (extractedAmount) {
+                var num = parseFloat(String(extractedAmount).replace(/[^\d.]/g, ''));
+                amountField.value = isNaN(num) ? '' : num.toFixed(2);
+                note.textContent = 'We automatically read this amount from your receipt. Please check it matches your transfer, correct it if needed, then submit.';
+            } else {
+                amountField.value = '';
+                note.textContent = "We couldn't read the amount from your receipt automatically. Please type the amount you transferred, then submit.";
+            }
+            panel.style.display = 'block';
+            statusDiv.style.display = 'none';
+
+            btn.disabled = false;
+            if (btnText) btnText.innerText = 'Confirm & Submit Receipt';
+            else btn.innerText = 'Confirm & Submit Receipt';
+            amountField.focus();
+        });
+
+        async function doReceiptUpload(file, amountStr, refStr, clientConfirmed, btn, btnText, spinner, statusDiv, codeInput, fileInput) {
+            btn.disabled = true;
+            if (btnText && spinner) {
+                btnText.innerText = 'Uploading...';
+                spinner.style.display = 'block';
+            } else {
+                btn.innerText = 'Uploading...';
+            }
+            statusDiv.style.display = 'block';
             statusDiv.innerText = 'Uploading...';
 
             var formData = new FormData();
             formData.append('receipt', file);
             formData.append('tracking_code', codeInput.value);
-            if (extractedAmount) {
-                formData.append('ocr_amounts', extractedAmount);
+            if (amountStr) {
+                formData.append('ocr_amounts', amountStr);
             }
-            if (extractedRef) {
-                formData.append('ocr_reference', extractedRef);
+            if (clientConfirmed) {
+                formData.append('amount_confirmed', '1');
+            }
+            if (refStr) {
+                formData.append('ocr_reference', refStr);
             }
             var sendingBank = bankSelect ? bankSelect.value : '';
             if (sendingBank === 'Other' && bankOther) {
@@ -230,7 +313,7 @@
 
             // Standard fetch upload since it isn't hitting /track, its hitting /upload-receipt
             var uploadUrl = twellerFlow2Tracker.apiUrl.replace('/track/', '/upload-receipt');
-            
+
             try {
                 var res = await fetch(uploadUrl, {
                     method: 'POST',
@@ -238,30 +321,32 @@
                     headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce }
                 });
                 var data = await res.json();
-                
+
                 if (data.success) {
                     if (spinner) spinner.style.display = 'none';
                     statusDiv.innerHTML = '<span style="color:green">Success! Your receipt is pending manual approval.</span>';
                     if (btnText) btnText.innerText = 'Uploaded Successfully';
                     else btn.innerText = 'Uploaded Successfully';
                     fileInput.disabled = true;
+                    var panel = document.getElementById('tf2-receipt-confirm');
+                    if (panel) panel.style.display = 'none';
                     sessionStorage.setItem('tf_receipt_uploaded', '1');
                     setTimeout(function(){ window.location.reload(); }, 1500);
                 } else {
                     if (spinner) spinner.style.display = 'none';
                     statusDiv.innerHTML = '<span style="color:red">' + (data.message || 'Error uploading receipt.') + '</span>';
                     btn.disabled = false;
-                    if (btnText) btnText.innerText = 'Try Again';
-                    else btn.innerText = 'Try Again';
+                    if (btnText) btnText.innerText = 'Confirm & Submit Receipt';
+                    else btn.innerText = 'Confirm & Submit Receipt';
                 }
             } catch (err) {
                 if (spinner) spinner.style.display = 'none';
                 statusDiv.innerHTML = '<span style="color:red">Network error during upload.</span>';
                 btn.disabled = false;
-                if (btnText) btnText.innerText = 'Try Again';
-                else btn.innerText = 'Try Again';
+                if (btnText) btnText.innerText = 'Confirm & Submit Receipt';
+                else btn.innerText = 'Confirm & Submit Receipt';
             }
-        });
+        }
     }
 
     // ── Gallery ────────────────────────────────────────

@@ -262,11 +262,12 @@ class TwellerFlow2_Booking_API {
             
             // Save dedicated receipt option
             update_option( 'tf_receipt_' . $session->id, array(
-                'url'  => $movefile['url'],
-                'ocr'  => $ocr_data,
-                'ref'  => $ocr_ref,
-                'bank' => $bank_name,
-                'date' => current_time('mysql')
+                'url'       => $movefile['url'],
+                'ocr'       => $ocr_data,
+                'confirmed' => ! empty( $_POST['amount_confirmed'] ),
+                'ref'       => $ocr_ref,
+                'bank'      => $bank_name,
+                'date'      => current_time('mysql')
             ));
 
             // Set to verifying

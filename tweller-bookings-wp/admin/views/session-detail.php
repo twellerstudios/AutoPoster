@@ -155,6 +155,9 @@
                             <div>
                                 <strong style="display:block; font-size:12px; color:#6B7280; text-transform:uppercase;">AI Detected Amount</strong>
                                 <span style="font-size:16px; font-weight:700; color:#10B981;"><?php echo esc_html($receipt['ocr'] ?: 'None detected'); ?></span>
+                                <?php if ( ! empty( $receipt['confirmed'] ) ) : ?>
+                                    <span style="display:inline-block; background:#D1FAE5; color:#065F46; font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px; margin-left:4px;">✓ Confirmed by client</span>
+                                <?php endif; ?>
                                 <?php $ocr_num = preg_replace('/[^0-9.]/', '', $receipt['ocr']); ?>
                             </div>
                         </div>

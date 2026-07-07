@@ -437,6 +437,17 @@ class TwellerFlow2_Admin {
                 TwellerFlow2_Photo_Automation::save_settings( $_POST );
             }
 
+            // Culling edited-preview preset
+            if ( isset( $_POST['preset_brightness'] ) ) {
+                update_option( 'tweller_flow_2_culling_preset', array(
+                    'brightness' => floatval( $_POST['preset_brightness'] ),
+                    'contrast'   => floatval( $_POST['preset_contrast'] ?? 1.12 ),
+                    'saturate'   => floatval( $_POST['preset_saturate'] ?? 1.16 ),
+                    'warmth'     => floatval( $_POST['preset_warmth'] ?? 0.12 ),
+                    'hue'        => floatval( $_POST['preset_hue'] ?? -3 ),
+                ) );
+            }
+
             // Google Contacts sync
             if ( isset( $_POST['google_client_id'] ) ) {
                 update_option( TwellerFlow2_Google_Contacts::OPT_CONFIG, array(

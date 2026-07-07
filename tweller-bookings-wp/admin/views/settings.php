@@ -185,6 +185,49 @@
             </div>
         </div>
 
+        <!-- Culling edited-preview look -->
+        <div class="tf2-card tf2-mb-6">
+            <div class="tf2-settings-section">
+                <h3>Edited Preview (Culling Portal)</h3>
+                <p class="tf2-description">
+                    The before/after slider clients see when choosing photos. Tune these until the "after" side matches
+                    your Lightroom preset's look — open any culling gallery in another tab to check as you adjust.
+                </p>
+                <?php
+                $cp = wp_parse_args( get_option( 'tweller_flow_2_culling_preset', array() ), array(
+                    'brightness' => 1.06, 'contrast' => 1.12, 'saturate' => 1.16, 'warmth' => 0.12, 'hue' => -3,
+                ) );
+                ?>
+                <div class="tf2-row" style="max-width:640px; flex-wrap:wrap; gap:12px;">
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Brightness</label>
+                        <input type="number" step="0.01" min="0.5" max="2" name="preset_brightness" value="<?php echo esc_attr( $cp['brightness'] ); ?>">
+                        <div class="tf2-field__hint">1 = unchanged, 1.1 = brighter</div>
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Contrast</label>
+                        <input type="number" step="0.01" min="0.5" max="2" name="preset_contrast" value="<?php echo esc_attr( $cp['contrast'] ); ?>">
+                        <div class="tf2-field__hint">1 = unchanged</div>
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Saturation</label>
+                        <input type="number" step="0.01" min="0" max="2" name="preset_saturate" value="<?php echo esc_attr( $cp['saturate'] ); ?>">
+                        <div class="tf2-field__hint">1 = unchanged</div>
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Warmth</label>
+                        <input type="number" step="0.01" min="0" max="1" name="preset_warmth" value="<?php echo esc_attr( $cp['warmth'] ); ?>">
+                        <div class="tf2-field__hint">0 = none, 0.2 = golden</div>
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Hue shift (deg)</label>
+                        <input type="number" step="1" min="-30" max="30" name="preset_hue" value="<?php echo esc_attr( $cp['hue'] ); ?>">
+                        <div class="tf2-field__hint">Small negative = warmer tone</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Google Contacts sync -->
         <div class="tf2-card tf2-mb-6">
             <div class="tf2-settings-section">

@@ -214,19 +214,65 @@
 
         var lb = document.getElementById('tc-lightbox');
         if (!lb) {
+            var hasPreset = typeof twellerCulling !== 'undefined' && twellerCulling.presetFilter;
             lb = document.createElement('div');
             lb.id = 'tc-lightbox';
             lb.className = 'tc-lightbox';
             lb.innerHTML =
                 '<button type="button" class="tc-lightbox__close" title="Close">&times;</button>' +
                 '<button type="button" class="tc-lightbox__nav tc-lightbox__nav--prev" title="Previous">&#8249;</button>' +
-                '<img alt="" draggable="false">' +
+                '<div class="tc-lb-stage">' +
+                    '<img class="tc-lb-img tc-lb-img--before" alt="" draggable="false">' +
+                    ( hasPreset ?
+                        '<img class="tc-lb-img tc-lb-img--after" alt="" draggable="false" style="filter:' + twellerCulling.presetFilter + ';">' +
+                        '<div class="tc-lb-divider"><div class="tc-lb-handle">&#8596;</div></div>' +
+                        '<span class="tc-lb-label tc-lb-label--before">UNEDITED</span>' +
+                        '<span class="tc-lb-label tc-lb-label--after">&#10024; EDITED PREVIEW</span>'
+                    : '' ) +
+                '</div>' +
                 '<button type="button" class="tc-lightbox__nav tc-lightbox__nav--next" title="Next">&#8250;</button>' +
                 '<div class="tc-lightbox__footer">' +
                     '<span class="tc-lightbox__counter"></span>' +
                     '<button type="button" class="tc-lightbox__select"></button>' +
-                '</div>';
+                '</div>' +
+                ( hasPreset ? '<p class="tc-lb-hint">Drag the slider — see how your photo transforms with our editing. Only selected photos get the full treatment.</p>' : '' );
             portal.appendChild(lb);
+
+            // ── Before/after compare slider ──
+            if (hasPreset) {
+                var stage = lb.querySelector('.tc-lb-stage');
+                var afterImg = lb.querySelector('.tc-lb-img--after');
+                var divider = lb.querySelector('.tc-lb-divider');
+
+                function setSplit(pct) {
+                    pct = Math.max(2, Math.min(98, pct));
+                    afterImg.style.clipPath = 'inset(0 0 0 ' + pct + '%)';
+                    divider.style.left = pct + '%';
+                }
+                setSplit(50);
+
+                var dragging = false;
+                function posFromEvent(e) {
+                    var rect = stage.getBoundingClientRect();
+                    var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+                    return (x / rect.width) * 100;
+                }
+                stage.addEventListener('pointerdown', function(e) {
+                    dragging = true;
+                    setSplit(posFromEvent(e));
+                    e.preventDefault();
+                });
+                window.addEventListener('pointermove', function(e) {
+                    if (dragging) setSplit(posFromEvent(e));
+                });
+                window.addEventListener('pointerup', function() { dragging = false; });
+                stage.addEventListener('touchmove', function(e) {
+                    setSplit(posFromEvent(e));
+                    e.preventDefault();
+                }, { passive: false });
+
+                lb._setSplit = setSplit;
+            }
 
             lb.querySelector('.tc-lightbox__close').addEventListener('click', closeLightbox);
             lb.querySelector('.tc-lightbox__nav--prev').addEventListener('click', function() { openLightbox(lightboxIndex - 1); });
@@ -262,7 +308,9 @@
         var proof = proofs[lightboxIndex];
         if (!proof) return;
 
-        lb.querySelector('img').src = proof.url || proof.thumb_url;
+        var src = proof.url || proof.thumb_url;
+        lb.querySelectorAll('.tc-lb-img').forEach(function(im) { im.src = src; });
+        if (lb._setSplit) lb._setSplit(50);
         lb.querySelector('.tc-lightbox__counter').textContent = (lightboxIndex + 1) + ' / ' + proofs.length;
         lb.querySelector('.tc-lightbox__nav--prev').style.visibility = lightboxIndex > 0 ? 'visible' : 'hidden';
         lb.querySelector('.tc-lightbox__nav--next').style.visibility = lightboxIndex < proofs.length - 1 ? 'visible' : 'hidden';

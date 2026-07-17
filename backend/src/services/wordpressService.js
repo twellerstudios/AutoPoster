@@ -158,4 +158,39 @@ async function testConnection(wpConfig) {
   return { ok: true, user: response.data.name, roles: response.data.roles };
 }
 
-module.exports = { publishPost, uploadImage, testConnection };
+/**
+ * Get the count of installed plugins on a WordPress site.
+ * @returns {Promise<{count: number, plugins: Array}>} Plugin count and list
+ */
+async function getPluginCount(wpConfig) {
+  const { url, username, appPassword } = wpConfig;
+  const credentials = Buffer.from(`${username}:${appPassword}`).toString('base64');
+
+  try {
+    const response = await axios.get(
+      `${url.replace(/\/$/, '')}/wp-json/wp/v2/plugins`,
+      {
+        headers: {
+          Authorization: `Basic ${credentials}`,
+        },
+        timeout: 30000,
+      }
+    );
+
+    return {
+      count: response.data.length,
+      plugins: response.data.map(p => ({
+        name: p.plugin,
+        status: p.status,
+      })),
+    };
+  } catch (err) {
+    // If plugins endpoint is not available, return 0
+    if (err.response?.status === 404) {
+      return { count: 0, plugins: [] };
+    }
+    throw err;
+  }
+}
+
+module.exports = { publishPost, uploadImage, testConnection, getPluginCount };

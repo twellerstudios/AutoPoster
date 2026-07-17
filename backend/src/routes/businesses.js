@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const { config } = require('../config');
-const { testConnection } = require('../services/wordpressService');
+const { testConnection, getPluginCount } = require('../services/wordpressService');
 
 // List all businesses (safe — no credentials exposed)
 router.get('/', (req, res) => {
@@ -30,6 +30,22 @@ router.get('/:id/test', async (req, res) => {
   } catch (err) {
     const detail = err.response?.data || err.message;
     res.status(502).json({ ok: false, error: 'Connection failed', detail });
+  }
+});
+
+// Get plugin count for a business
+router.get('/:id/plugins', async (req, res) => {
+  const business = config.businesses[req.params.id];
+  if (!business) {
+    return res.status(404).json({ error: 'Business not found' });
+  }
+
+  try {
+    const result = await getPluginCount(business.wordpress);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    const detail = err.response?.data || err.message;
+    res.status(502).json({ ok: false, error: 'Failed to retrieve plugins', detail });
   }
 });
 

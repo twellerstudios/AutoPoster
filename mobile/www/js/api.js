@@ -126,7 +126,20 @@ var TwellerApi = (function () {
 
     async function fetchPrintOrders(status) {
         var url = base() + '/prints/orders?' + keyParam() + (status ? '&status=' + encodeURIComponent(status) : '');
-        return getJson(url);
+        var data = await getJson(url);
+        if (!status) {
+            try {
+                localStorage.setItem('tb_orders_cache', JSON.stringify({ at: Date.now(), data: data }));
+            } catch (e) {}
+        }
+        return data;
+    }
+
+    function cachedPrintOrders() {
+        try {
+            var raw = localStorage.getItem('tb_orders_cache');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
     }
 
     async function setPrintOrderStatus(id, status, notify) {
@@ -278,6 +291,7 @@ var TwellerApi = (function () {
         deleteGalleryPhotos: deleteGalleryPhotos,
         setGalleryCover: setGalleryCover,
         fetchPrintOrders: fetchPrintOrders,
+        cachedPrintOrders: cachedPrintOrders,
         setPrintOrderStatus: setPrintOrderStatus,
         fetchOverview: fetchOverview,
         cachedOverview: cachedOverview,

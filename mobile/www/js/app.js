@@ -210,7 +210,7 @@
     function renderRoot(name) {
         navStack = [];
         setActiveTab(name);
-        ({ home: renderHome, clients: renderClients, queue: renderQueue, settings: renderSettings })[name]();
+        ({ home: renderHome, clients: renderClients, prints: renderPrints, queue: renderQueue, settings: renderSettings })[name]();
         window.scrollTo(0, 0);
     }
 
@@ -383,20 +383,6 @@
             up.appendChild(el('<p class="empty">No upcoming shoots on the calendar.</p>'));
         }
         wrap.appendChild(up);
-
-        // Print store
-        var prints = el(
-            '<div class="card"><div class="card__title">Print store</div>' +
-                '<div class="row"><span class="avatar avatar--sm" style="background:var(--gold-soft); color:var(--gold-deep);">🖨</span>' +
-                '<span class="row__body"><div class="row__name">Print orders</div>' +
-                '<div class="row__meta">Prints, canvas &amp; Zno photobooks</div></span>' +
-                '<span class="row__chev">' + ICONS.chev + '</span></div>' +
-            '</div>'
-        );
-        prints.querySelector('.row').addEventListener('click', function () {
-            push(function () { renderPrintOrders(); });
-        });
-        wrap.appendChild(prints);
 
         var all = el('<button class="btn btn--ghost">View all clients</button>');
         all.addEventListener('click', function () { renderRoot('clients'); });
@@ -1464,10 +1450,19 @@
     // ═════════════════════════════════════════════════════════════
 
     var ORDER_STATUSES = ['new', 'confirmed', 'printing', 'ready', 'completed', 'cancelled'];
-    var ORDER_PILL = { new: 'gold', confirmed: 'blue', printing: 'purple', ready: 'green', completed: 'gray', cancelled: 'red' };
+    var ORDER_META = {
+        new:       { label: 'Awaiting payment',  pill: 'gold' },
+        confirmed: { label: 'Payment confirmed', pill: 'blue' },
+        printing:  { label: 'Printing',          pill: 'purple' },
+        ready:     { label: 'Ready for pickup',  pill: 'green' },
+        completed: { label: 'Completed',         pill: 'gray' },
+        cancelled: { label: 'Cancelled',         pill: 'red' }
+    };
+    function orderMeta(st) { return ORDER_META[st] || { label: st || '—', pill: 'gray' }; }
 
     function orderPill(status) {
-        return '<span class="pill pill--' + (ORDER_PILL[status] || 'gray') + '">' + esc(status || '—') + '</span>';
+        var m = orderMeta(status);
+        return '<span class="pill pill--' + m.pill + '">' + esc(m.label) + '</span>';
     }
 
     function orderItems(order) {
@@ -1478,39 +1473,77 @@
         return Array.isArray(items) ? items : [];
     }
 
-    async function renderPrintOrders() {
-        var myScreen = currentScreen();
-        view.innerHTML = '';
-        view.appendChild(topbar('Print orders'));
-        view.appendChild(el('<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>'));
+    async function refreshPrintsBadge(data) {
+        if (!data) {
+            var cache = TwellerApi.cachedPrintOrders();
+            data = cache && cache.data;
+            // Also refresh from the network quietly
+            TwellerApi.fetchPrintOrders().then(function (fresh) {
+                paintPrintsBadge(fresh);
+            }).catch(function () {});
+        }
+        paintPrintsBadge(data);
+    }
 
-        var orders = [];
-        var error = null;
+    function paintPrintsBadge(data) {
+        var badge = document.getElementById('prints-badge');
+        if (!badge || !data) return;
+        var n = 0;
+        if (data.counts && data.counts.new !== undefined) n = parseInt(data.counts.new, 10) || 0;
+        else n = (data.orders || []).filter(function (o) { return o.status === 'new'; }).length;
+        badge.style.display = n ? '' : 'none';
+        badge.textContent = n;
+    }
+
+    async function renderPrints() {
+        // Cache-first: show the last orders instantly, refresh behind
+        var cache = TwellerApi.cachedPrintOrders();
+        if (cache && cache.data) {
+            paintPrints(cache.data, true);
+        } else {
+            view.innerHTML =
+                '<div class="screen">' +
+                    '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Print Store</div></header>' +
+                    '<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>' +
+                '</div>';
+        }
+
         try {
             var data = await TwellerApi.fetchPrintOrders();
-            orders = data.orders || (Array.isArray(data) ? data : []);
-        } catch (e) { error = e; }
-        if (currentScreen() !== myScreen) return;
+            paintPrintsBadge(data);
+            if (activeTabName() === 'prints' && !navStack.length) paintPrints(data, false);
+        } catch (e) {
+            if (!cache && activeTabName() === 'prints' && !navStack.length) {
+                view.innerHTML = '';
+                view.appendChild(el(
+                    '<div class="screen"><header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Print Store</div></header>' +
+                    '<div class="wrap"><div class="card"><p class="empty">Could not load print orders.<br>' + esc(e.message) +
+                    '<br><br>Make sure the website plugin is up to date.</p></div></div></div>'
+                ));
+            }
+        }
+    }
+
+    function paintPrints(data, isStale) {
+        var orders = data.orders || (Array.isArray(data) ? data : []);
+        var pendingNew = data.counts && data.counts.new !== undefined
+            ? parseInt(data.counts.new, 10) || 0
+            : orders.filter(function (o) { return o.status === 'new'; }).length;
 
         var screen = el('<div class="screen"></div>');
-        screen.appendChild(topbar('Print orders'));
+        screen.appendChild(el(
+            '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Print Store</div>' +
+            '<div class="hdr__sub">' + orders.length + ' orders' +
+            (pendingNew ? ' · <strong style="color:var(--gold-deep);">' + pendingNew + ' awaiting payment</strong>' : '') +
+            (isStale ? ' · refreshing…' : '') + '</div></header>'
+        ));
         var wrap = el('<div class="wrap"></div>');
         screen.appendChild(wrap);
-
-        if (error) {
-            wrap.appendChild(el(
-                '<div class="card"><p class="empty">Could not load print orders.<br>' + esc(error.message) +
-                '<br><br>Make sure the website plugin is up to date (3.14.0+).</p></div>'
-            ));
-            view.innerHTML = '';
-            view.appendChild(screen);
-            return;
-        }
 
         var filter = '';
         var chips = el('<div class="chips"></div>');
         [''].concat(ORDER_STATUSES).forEach(function (st) {
-            var c = el('<button class="chip' + (st === '' ? ' chip--on' : '') + '">' + esc(st || 'All') + '</button>');
+            var c = el('<button class="chip' + (st === '' ? ' chip--on' : '') + '">' + esc(st ? orderMeta(st).label : 'All') + '</button>');
             c.addEventListener('click', function () {
                 filter = st;
                 chips.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('chip--on'); });
@@ -1528,15 +1561,17 @@
             var rows = orders.filter(function (o) { return !filter || o.status === filter; });
             listCard.innerHTML = '';
             if (!rows.length) {
-                listCard.appendChild(el('<p class="empty">No ' + (filter || '') + ' print orders yet.<br>Orders from galleries and the public print page land here.</p>'));
+                listCard.appendChild(el('<p class="empty">No print orders here yet.<br>Orders from client galleries and the public print page land in this tab.</p>'));
                 return;
             }
             rows.forEach(function (o) {
                 var items = orderItems(o);
+                var hasReceipt = !!o.receipt_url;
                 var row = el(
                     '<div class="row">' +
                         '<span class="avatar avatar--sm">' + esc(initials(o.customer_name)) + '</span>' +
-                        '<span class="row__body"><div class="row__name">' + esc(o.customer_name || o.order_ref) + '</div>' +
+                        '<span class="row__body"><div class="row__name">' + esc(o.customer_name || o.order_ref) +
+                        (hasReceipt && o.status === 'new' ? ' <span class="pill pill--red" style="font-size:10px;">Receipt in — verify</span>' : '') + '</div>' +
                         '<div class="row__meta">' + esc(o.order_ref) + ' · ' + items.length + ' item' + (items.length === 1 ? '' : 's') +
                         ' · ' + esc(money(o.subtotal)) + '</div></span>' +
                         '<span class="row__end">' + orderPill(o.status) + '</span>' +
@@ -1607,19 +1642,71 @@
         itemsCard.appendChild(copyBtn);
         wrap.appendChild(itemsCard);
 
+        // Payment
+        var payCard = el('<div class="card"><div class="card__title">Payment</div></div>');
+        var txnId = o.transaction_id || (o.payment && o.payment.transaction_id) || '';
+        if (txnId) {
+            payCard.appendChild(el(
+                '<div class="kv"><span class="kv__k">Paid by card (WiPay)</span><span class="kv__v" style="font-size:12px;">' + esc(txnId) + '</span></div>'
+            ));
+        }
+        if (o.receipt_url) {
+            payCard.appendChild(el(
+                '<div class="kv"><span class="kv__k">Bank transfer receipt</span><span class="kv__v"><a href="' + esc(o.receipt_url) + '" target="_blank">View ↗</a></span></div>'
+            ));
+            if (o.receipt_confirmed_amount || o.receipt_ocr) {
+                var claimed = parseFloat(o.receipt_confirmed_amount || 0) || 0;
+                var mismatch = claimed && Math.abs(claimed - parseFloat(o.subtotal || 0)) > 0.5;
+                payCard.appendChild(el(
+                    '<div class="kv"><span class="kv__k">Amount on receipt</span><span class="kv__v"' +
+                    (mismatch ? ' style="color:var(--red);"' : '') + '>' +
+                    esc(claimed ? money(claimed) : o.receipt_ocr || '') + (mismatch ? ' ≠ ' + esc(money(o.subtotal)) : '') + '</span></div>'
+                ));
+            }
+        }
+        if (!txnId && !o.receipt_url) {
+            payCard.appendChild(el('<p class="hint" style="margin:0;">Nothing received yet — the customer can pay by card or upload a transfer receipt from their order page.</p>'));
+        }
+        if (o.status === 'new') {
+            var confirmBtn = el('<button class="btn" style="margin-top:12px;">✓ Confirm payment</button>');
+            confirmBtn.addEventListener('click', async function () {
+                if (!confirm('Confirm you received ' + money(o.subtotal) + ' for ' + o.order_ref + '? The customer is emailed that printing starts.')) return;
+                confirmBtn.disabled = true;
+                try {
+                    await TwellerApi.setPrintOrderStatus(o.id, 'confirmed', true);
+                    o.status = 'confirmed';
+                    toast('Payment confirmed.');
+                    refreshPrintsBadge();
+                    renderPrintOrderDetail(o);
+                } catch (e) {
+                    confirmBtn.disabled = false;
+                    toast('Could not update: ' + e.message, 5000);
+                }
+            });
+            payCard.appendChild(confirmBtn);
+        }
+        if (o.portal_url) {
+            var portalBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:8px;">Open customer order page ' + ICONS.link + '</button>');
+            portalBtn.addEventListener('click', function () { openExternal(o.portal_url); });
+            payCard.appendChild(portalBtn);
+        }
+        wrap.appendChild(payCard);
+
         // Status control
         var stCard = el('<div class="card"><div class="card__title">Status — currently ' + orderPill(o.status) + '</div></div>');
         var notifyToggle = el('<label class="toggle"><input type="checkbox" checked><span>Email the customer about this update</span></label>');
         stCard.appendChild(notifyToggle);
         ORDER_STATUSES.forEach(function (st) {
             if (st === o.status) return;
-            var b = el('<button class="btn btn--ghost btn--sm" style="margin-right:8px;">Mark ' + esc(st) + '</button>');
+            var label = st === 'confirmed' ? '✓ Confirm payment' : 'Mark ' + orderMeta(st).label.toLowerCase();
+            var b = el('<button class="btn btn--ghost btn--sm" style="margin-right:8px;">' + esc(label) + '</button>');
             b.addEventListener('click', async function () {
                 b.disabled = true;
                 try {
                     await TwellerApi.setPrintOrderStatus(o.id, st, notifyToggle.querySelector('input').checked);
                     o.status = st;
-                    toast('Order marked ' + st + '.');
+                    toast('Order updated: ' + orderMeta(st).label + '.');
+                    refreshPrintsBadge();
                     renderPrintOrderDetail(o);
                 } catch (e) {
                     b.disabled = false;
@@ -1865,4 +1952,5 @@
 
     renderRoot('home');
     refreshBadge();
+    refreshPrintsBadge();
 })();

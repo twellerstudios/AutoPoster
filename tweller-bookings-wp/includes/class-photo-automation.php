@@ -41,6 +41,211 @@ class TwellerFlow2_Photo_Automation {
             'callback' => array( __CLASS__, 'rest_create_session' ),
             'permission_callback' => array( __CLASS__, 'verify_api_key' ),
         ));
+
+        // Mobile app: pipeline overview for the dashboard
+        register_rest_route( 'tweller-flow-2/v1', '/automation/overview', array(
+            'methods'  => 'GET',
+            'callback' => array( __CLASS__, 'rest_overview' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+
+        // Mobile app: full session detail — info, timeline, culling, gallery
+        register_rest_route( 'tweller-flow-2/v1', '/automation/session/(?P<code>[a-zA-Z0-9\-]+)', array(
+            'methods'  => 'GET',
+            'callback' => array( __CLASS__, 'rest_session_detail' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+
+        // Mobile app: update editable session fields (payment status, notes)
+        register_rest_route( 'tweller-flow-2/v1', '/automation/session/(?P<code>[a-zA-Z0-9\-]+)/update', array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'rest_session_update' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+    }
+
+    /**
+     * Dashboard payload for the mobile app: how many sessions sit at each
+     * stage, who's shooting next, and which sessions are waiting on the
+     * photographer (selections in, receipt to verify).
+     */
+    public static function rest_overview( $request ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        $stage_counts = TwellerFlow2_Session::get_stage_counts();
+
+        $today = current_time( 'Y-m-d' );
+        $upcoming = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, tracking_code, client_name, package_type, session_date, session_time, location, current_stage
+             FROM $table WHERE session_date >= %s AND current_stage NOT IN ('delivered')
+             ORDER BY session_date ASC, session_time ASC LIMIT 5",
+            $today
+        ));
+
+        // Sessions needing the photographer's attention
+        $attention = array();
+        $active = $wpdb->get_results(
+            "SELECT id, tracking_code, client_name, package_type, session_date, current_stage, payment_status
+             FROM $table WHERE current_stage != 'delivered' ORDER BY session_date DESC LIMIT 50"
+        );
+        foreach ( $active as $s ) {
+            $reasons = array();
+            if ( $s->payment_status === 'verifying' ) {
+                $reasons[] = 'Receipt to verify';
+            }
+            if ( get_option( 'tweller_culling_submitted_' . $s->id, false )
+                 && ! in_array( $s->current_stage, array( 'edited', 'exporting', 'exported', 'uploading', 'uploaded' ), true ) ) {
+                $reasons[] = 'Selections in — ready to edit';
+            }
+            if ( $s->current_stage === 'culling' && class_exists( 'TwellerFlow2_Culling' )
+                 && ! get_option( 'tweller_culling_submitted_' . $s->id, false ) ) {
+                $reasons[] = 'Client choosing photos';
+            }
+            if ( $reasons ) {
+                $attention[] = array(
+                    'tracking_code' => $s->tracking_code,
+                    'client_name'   => $s->client_name,
+                    'session_date'  => $s->session_date,
+                    'current_stage' => $s->current_stage,
+                    'reasons'       => $reasons,
+                );
+            }
+        }
+
+        return rest_ensure_response( array(
+            'ok'            => true,
+            'stage_counts'  => $stage_counts,
+            'active_count'  => TwellerFlow2_Session::count_active(),
+            'total_count'   => array_sum( $stage_counts ),
+            'upcoming'      => $upcoming ?: array(),
+            'attention'     => $attention,
+        ));
+    }
+
+    /**
+     * Everything the mobile session screen shows: the full session row,
+     * stage timeline, culling + gallery status, selections, receipt info.
+     */
+    public static function rest_session_detail( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $stages_conf = TwellerFlow2_Database::get_stages();
+        $stage_keys  = TwellerFlow2_Database::get_stage_keys();
+        $stages = array();
+        foreach ( $stage_keys as $i => $key ) {
+            $stages[] = array(
+                'key'    => $key,
+                'label'  => $stages_conf[ $key ]['label'] ?? ucfirst( $key ),
+                'notify' => ! empty( $stages_conf[ $key ]['notify'] ),
+            );
+        }
+
+        $timeline = array();
+        foreach ( TwellerFlow2_Session::get_history( $session->id ) as $h ) {
+            $timeline[] = array(
+                'stage'       => $h->stage,
+                'stage_index' => (int) $h->stage_index,
+                'label'       => $stages_conf[ $h->stage ]['label'] ?? ucfirst( $h->stage ),
+                'timestamp'   => $h->timestamp,
+                'notes'       => $h->notes,
+            );
+        }
+
+        $culling    = null;
+        $selections = array();
+        if ( class_exists( 'TwellerFlow2_Culling' ) ) {
+            $culling = TwellerFlow2_Culling::get_summary( $session->id );
+            if ( ! empty( $culling['submitted'] ) ) {
+                foreach ( TwellerFlow2_Culling::get_selections( $session->id ) as $sel ) {
+                    $selections[] = array(
+                        'filename' => $sel->filename,
+                        'star'     => (int) $sel->star_rating,
+                    );
+                }
+            }
+        }
+
+        $gallery = null;
+        if ( class_exists( 'TwellerFlow2_Gallery' ) ) {
+            $info = TwellerFlow2_Gallery::get_gallery_info( $session->id, $session->tracking_code );
+            $gallery = array(
+                'photo_count'   => $info['photo_count'],
+                'total_size_mb' => $info['total_size_mb'],
+                'has_password'  => $info['has_password'],
+            );
+        }
+
+        $receipt     = get_option( 'tf_receipt_' . $session->id, null );
+        $receipt_out = null;
+        if ( is_array( $receipt ) ) {
+            $receipt_out = array(
+                'url'       => $receipt['url'] ?? '',
+                'ocr'       => $receipt['ocr'] ?? '',
+                'confirmed' => ! empty( $receipt['confirmed'] ),
+                'bank'      => $receipt['bank'] ?? '',
+                'date'      => $receipt['date'] ?? '',
+            );
+        }
+
+        $tracker_page = get_option( 'tweller_flow_2_tracker_page', '' );
+        $links = array(
+            'tracker' => $tracker_page ? $tracker_page . ( strpos( $tracker_page, '?' ) !== false ? '&' : '?' ) . 'code=' . $session->tracking_code : '',
+            'culling' => class_exists( 'TwellerFlow2_Culling' ) ? TwellerFlow2_Culling::get_culling_page_url( $session->tracking_code ) : '',
+            'gallery' => $session->gallery_url,
+        );
+
+        return rest_ensure_response( array(
+            'ok'         => true,
+            'session'    => $session,
+            'stages'     => $stages,
+            'timeline'   => $timeline,
+            'culling'    => $culling,
+            'selections' => $selections,
+            'gallery'    => $gallery,
+            'receipt'    => $receipt_out,
+            'links'      => $links,
+        ));
+    }
+
+    /** Update the fields the mobile app can edit. */
+    public static function rest_session_update( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $update  = array();
+        $changed = array();
+
+        $payment = sanitize_text_field( $request->get_param( 'payment_status' ) ?? '' );
+        if ( $payment && in_array( $payment, array( 'pending', 'verifying', 'deposit', 'paid' ), true ) ) {
+            $update['payment_status'] = $payment;
+            $changed[] = 'payment: ' . $payment;
+        }
+
+        $notes = $request->get_param( 'notes' );
+        if ( $notes !== null ) {
+            $update['notes'] = sanitize_textarea_field( $notes );
+            $changed[] = 'notes';
+        }
+
+        if ( empty( $update ) ) {
+            return new WP_Error( 'nothing_to_update', 'No editable fields provided', array( 'status' => 400 ) );
+        }
+
+        TwellerFlow2_Session::update( $session->id, $update );
+        TwellerFlow2_Session::record_stage_history(
+            $session->id, $session->current_stage, $session->current_stage_index,
+            '[Mobile] Updated ' . implode( ', ', $changed )
+        );
+
+        return rest_ensure_response( array( 'ok' => true, 'updated' => array_keys( $update ) ) );
     }
 
     /**
@@ -173,41 +378,51 @@ class TwellerFlow2_Photo_Automation {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
 
-        $date  = sanitize_text_field( $request->get_param( 'date' ) ?? '' );
-        $range = sanitize_text_field( $request->get_param( 'range' ) ?? '' );
+        $date   = sanitize_text_field( $request->get_param( 'date' ) ?? '' );
+        $range  = sanitize_text_field( $request->get_param( 'range' ) ?? '' );
+        $search = sanitize_text_field( $request->get_param( 'search' ) ?? '' );
+        $stage  = sanitize_text_field( $request->get_param( 'stage' ) ?? '' );
 
-        if ( $range === 'recent' ) {
+        // Columns the mobile app + Lightroom picker need (extra fields are
+        // ignored by older clients).
+        $cols = "id, tracking_code, client_name, client_email, client_phone,
+                 package_type, session_date, session_time, location, members_count,
+                 current_stage, current_stage_index, folder_name, photo_count,
+                 payment_status, deposit_amount, total_amount, estimated_delivery,
+                 notes, created_at, updated_at";
+
+        if ( $range === 'all' || $search || $stage ) {
+            // Mobile client manager: every session, filterable.
+            $where  = '1=1';
+            $values = array();
+            if ( $stage ) {
+                $where   .= ' AND current_stage = %s';
+                $values[] = $stage;
+            }
+            if ( $search ) {
+                $like    = '%' . $wpdb->esc_like( $search ) . '%';
+                $where  .= ' AND (client_name LIKE %s OR client_email LIKE %s OR tracking_code LIKE %s)';
+                array_push( $values, $like, $like, $like );
+            }
+            $sql = "SELECT $cols FROM $table WHERE $where ORDER BY session_date DESC, id DESC LIMIT 300";
+            $sessions = $wpdb->get_results( $values ? $wpdb->prepare( $sql, $values ) : $sql );
+        } elseif ( $range === 'recent' ) {
             // Lightroom session picker: the latest sessions, newest first.
             // No date window and no stage filter — a session created moments
             // ago from Lightroom (or already delivered) must always appear.
             $sessions = $wpdb->get_results(
-                "SELECT id, tracking_code, client_name, client_email, client_phone,
-                        package_type, session_date, session_time, location, members_count,
-                        current_stage, folder_name, photo_count
-                 FROM $table
-                 ORDER BY session_date DESC, id DESC
-                 LIMIT 30"
+                "SELECT $cols FROM $table ORDER BY session_date DESC, id DESC LIMIT 30"
             );
         } elseif ( $date ) {
             $sessions = $wpdb->get_results( $wpdb->prepare(
-                "SELECT id, tracking_code, client_name, client_email, client_phone,
-                        package_type, session_date, session_time, location, members_count,
-                        current_stage, folder_name, photo_count
-                 FROM $table
-                 WHERE session_date = %s
-                 ORDER BY session_time ASC",
+                "SELECT $cols FROM $table WHERE session_date = %s ORDER BY session_time ASC",
                 $date
             ));
         } else {
             // Return all non-delivered sessions
             $sessions = $wpdb->get_results(
-                "SELECT id, tracking_code, client_name, client_email, client_phone,
-                        package_type, session_date, session_time, location, members_count,
-                        current_stage, folder_name, photo_count
-                 FROM $table
-                 WHERE current_stage != 'delivered'
-                 ORDER BY session_date DESC
-                 LIMIT 50"
+                "SELECT $cols FROM $table WHERE current_stage != 'delivered'
+                 ORDER BY session_date DESC LIMIT 50"
             );
         }
 

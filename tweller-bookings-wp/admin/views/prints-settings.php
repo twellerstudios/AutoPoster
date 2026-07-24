@@ -60,6 +60,31 @@
             </div>
         </div>
 
+        <!-- ══════════ STOREFRONT ══════════ -->
+        <div class="tf2-card tf2-mb-6">
+            <h2 style="margin-top:0;">Storefront</h2>
+            <p class="tf2-description">The hero section at the top of the public print shop page.</p>
+            <div class="tf2-form">
+                <div class="tf2-field">
+                    <label>Hero headline</label>
+                    <input type="text" name="prints_hero_headline" value="<?php echo esc_attr( $settings['hero_headline'] ); ?>" style="max-width:640px;" placeholder="Your memories, beautifully printed.">
+                </div>
+                <div class="tf2-field">
+                    <label>Hero subheadline</label>
+                    <input type="text" name="prints_hero_subheadline" value="<?php echo esc_attr( $settings['hero_subheadline'] ); ?>" style="max-width:640px;" placeholder="Museum-grade prints, gallery canvases and handcrafted Zno albums — delivered across Trinidad &amp; Tobago.">
+                </div>
+                <div class="tf2-field">
+                    <label>Hero intro (optional)</label>
+                    <textarea name="prints_hero_intro" rows="2" style="max-width:640px;" placeholder="An optional extra line under the subheadline."><?php echo esc_textarea( $settings['hero_intro'] ); ?></textarea>
+                </div>
+                <div class="tf2-field">
+                    <label>Hero background image URL (optional)</label>
+                    <input type="url" name="prints_hero_bg_url" value="<?php echo esc_attr( $settings['hero_bg_url'] ); ?>" style="max-width:640px;" placeholder="https://…  (leave empty for the solid black hero)">
+                    <p class="tf2-description">A wide photo works best — it's darkened automatically so the text stays readable.</p>
+                </div>
+            </div>
+        </div>
+
         <!-- ══════════ STORE SETTINGS ══════════ -->
         <div class="tf2-card tf2-mb-6">
             <h2 style="margin-top:0;">Store Settings</h2>
@@ -77,7 +102,7 @@
                 <div class="tf2-field">
                     <label>Bank transfer payment instructions</label>
                     <textarea name="prints_payment_instructions" rows="5" style="max-width:640px;" placeholder="Leave empty to reuse the booking banking details from Settings."><?php echo esc_textarea( $settings['payment_instructions'] ); ?></textarea>
-                    <p class="tf2-description">Shown on the order-success screen and in the confirmation email. Empty = reuse the booking banking info.</p>
+                    <p class="tf2-description">Shown on the customer's order portal (with the receipt uploader) and on the order-success screen. Empty = reuse the booking banking info.</p>
                 </div>
             </div>
         </div>

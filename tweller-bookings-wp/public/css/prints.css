@@ -109,6 +109,16 @@ body.tf2p-noscroll {
     background: #2A2A2A;
 }
 
+.tf2p-btn--ghost {
+    background: transparent;
+    color: var(--tf2p-black);
+    border: 1px solid var(--tf2p-gray-300);
+}
+
+.tf2p-btn--ghost:hover {
+    border-color: var(--tf2p-black);
+}
+
 .tf2p-btn--full {
     width: 100%;
 }
@@ -639,7 +649,6 @@ body.tf2p-noscroll {
     text-align: left;
     background: #FDFAF1;
     border: 1px solid #F2E3B3;
-    border-left: 3px solid var(--tf2p-gold);
     border-radius: 10px;
     padding: 14px 16px;
     margin-bottom: 14px;
@@ -826,4 +835,741 @@ body.tf2p-noscroll {
     .tf2-prints__grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
     .tf2-prints__tile-btn span { display: none; }
     .tf2-prints__tile-btn { padding: 8px 10px; }
+}
+
+/* Buttons rendered as links (storefront CTAs, portal pay button) */
+
+a.tf2p-btn {
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
+/* ── Storefront homepage ([tweller_prints], no order param) ── */
+
+.tf2-shop {
+    max-width: 1020px;
+}
+
+.tf2-shop__hero {
+    text-align: center;
+    padding: 56px 24px 60px;
+    background: var(--tf2p-black);
+    border-radius: 22px;
+    margin-bottom: 44px;
+    background-size: cover;
+    background-position: center;
+}
+
+.tf2-shop__hero .tf2-prints__eyebrow {
+    color: var(--tf2p-gold);
+}
+
+.tf2-shop__headline {
+    margin: 6px auto 14px;
+    max-width: 620px;
+    font-size: 40px;
+    line-height: 1.12;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--tf2p-white);
+    font-family: var(--tf2p-font);
+}
+
+.tf2-shop__sub {
+    margin: 0 auto;
+    max-width: 540px;
+    font-size: 15.5px;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.tf2-shop__intro {
+    margin: 12px auto 0;
+    max-width: 540px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.tf2-shop__cta {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 28px;
+}
+
+.tf2-shop__cta .tf2p-btn--ghost {
+    color: var(--tf2p-white);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.tf2-shop__cta .tf2p-btn--ghost:hover {
+    border-color: var(--tf2p-gold);
+    color: var(--tf2p-gold-light);
+}
+
+.tf2-shop__cat {
+    margin: 0 0 6px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--tf2p-black);
+    font-family: var(--tf2p-font);
+}
+
+.tf2-shop__cat-blurb {
+    margin: 0 0 18px;
+    font-size: 13.5px;
+    color: var(--tf2p-gray-500);
+    line-height: 1.6;
+    max-width: 560px;
+}
+
+.tf2-shop__group {
+    margin-bottom: 44px;
+}
+
+.tf2-shop__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.tf2-shop-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--tf2p-white);
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 16px;
+    overflow: hidden;
+    text-decoration: none;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s;
+}
+
+.tf2-shop-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--tf2p-gray-300);
+    box-shadow: 0 14px 34px rgba(16, 16, 16, 0.12);
+}
+
+.tf2-shop-card__art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 170px;
+    padding: 20px;
+    background:
+        radial-gradient(circle at 32% 22%, rgba(201, 162, 39, 0.08), transparent 55%),
+        linear-gradient(180deg, #F7F5F0, #EFEBE2);
+}
+
+.tf2-shop-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 14px 16px 16px;
+}
+
+.tf2-shop-card__name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tf2p-black);
+    letter-spacing: -0.01em;
+}
+
+.tf2-shop-card__meta {
+    font-size: 12.5px;
+    color: var(--tf2p-gray-500);
+}
+
+/* Pure-CSS product mockups (no external images) */
+
+.tf2-mock {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.tf2-mock__scene {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(circle at 68% 26%, #E7C55C 0 10%, transparent 11%),
+        linear-gradient(to top, #8A8178 0 34%, transparent 34%),
+        linear-gradient(180deg, #EAE3D3, #CFC6B2);
+}
+
+/* Framed print: dark frame + white mat + shadow */
+
+.tf2-mock__frame {
+    display: block;
+    background: #1A1A1A;
+    padding: 5px;
+    max-width: 120px;
+    max-height: 130px;
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: 0 14px 26px rgba(16, 16, 16, 0.28), 0 3px 8px rgba(16, 16, 16, 0.16);
+}
+
+.tf2-mock__mat {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #FFFFFF;
+    padding: 12%;
+    box-sizing: border-box;
+}
+
+/* Wrapped canvas: photo face + darker wrapped edge */
+
+.tf2-mock--canvas .tf2-mock__canvas {
+    position: relative;
+    display: block;
+    max-width: 130px;
+    max-height: 120px;
+    width: 100%;
+    box-shadow: 12px 14px 26px rgba(16, 16, 16, 0.28);
+}
+
+.tf2-mock--canvas .tf2-mock__scene {
+    position: relative;
+    z-index: 1;
+}
+
+.tf2-mock__canvas-edge {
+    position: absolute;
+    top: 4px;
+    right: -9px;
+    bottom: -4px;
+    width: 9px;
+    background: linear-gradient(180deg, #7C755F, #57513F);
+    transform: skewY(38deg);
+    transform-origin: top left;
+}
+
+/* Open layflat photobook: two pages + spine shadow */
+
+.tf2-mock--book .tf2-mock__book {
+    position: relative;
+    display: flex;
+    width: 150px;
+    height: 96px;
+    filter: drop-shadow(0 14px 18px rgba(16, 16, 16, 0.24));
+}
+
+.tf2-mock__page {
+    flex: 1;
+    background: linear-gradient(180deg, #FFFFFF, #F1EDE4);
+    border: 1px solid #E2DCCE;
+    box-sizing: border-box;
+}
+
+.tf2-mock__page--left {
+    border-radius: 6px 2px 2px 6px;
+    transform: perspective(300px) rotateY(9deg);
+    transform-origin: right center;
+    background:
+        linear-gradient(270deg, rgba(16, 16, 16, 0.10), transparent 26%),
+        linear-gradient(180deg, #FFFFFF, #F1EDE4);
+}
+
+.tf2-mock__page--right {
+    border-radius: 2px 6px 6px 2px;
+    transform: perspective(300px) rotateY(-9deg);
+    transform-origin: left center;
+    padding: 8px;
+    background:
+        linear-gradient(90deg, rgba(16, 16, 16, 0.10), transparent 26%),
+        linear-gradient(180deg, #FFFFFF, #F1EDE4);
+}
+
+.tf2-mock__page-photo {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(circle at 66% 28%, #E7C55C 0 12%, transparent 13%),
+        linear-gradient(to top, #8A8178 0 32%, transparent 32%),
+        linear-gradient(180deg, #EAE3D3, #CFC6B2);
+}
+
+.tf2-mock__spine {
+    width: 3px;
+    background: linear-gradient(180deg, #C9C2B1, #A79F8B);
+    flex-shrink: 0;
+}
+
+/* How it works */
+
+.tf2-shop__how {
+    margin-bottom: 48px;
+}
+
+.tf2-shop__steps {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin: 18px 0 0;
+    padding: 0;
+    counter-reset: none;
+}
+
+.tf2-shop__step {
+    background: var(--tf2p-white);
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tf2-shop__step strong {
+    font-size: 14.5px;
+    color: var(--tf2p-black);
+    letter-spacing: -0.01em;
+}
+
+.tf2-shop__step span:not(.tf2-shop__step-num) {
+    font-size: 13px;
+    color: var(--tf2p-gray-500);
+    line-height: 1.6;
+}
+
+.tf2-shop__step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--tf2p-gold);
+    color: var(--tf2p-black);
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+}
+
+.tf2-shop__start {
+    scroll-margin-top: 24px;
+}
+
+/* Scroll reveals — only active once JS adds .tf2-shop--anim, so the
+   storefront is never hidden if scripts fail to load. */
+
+.tf2-shop--anim .tf2-reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.tf2-shop--anim .tf2-reveal--in {
+    opacity: 1;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tf2-shop--anim .tf2-reveal { opacity: 1; transform: none; transition: none; }
+}
+
+@media (max-width: 560px) {
+    .tf2-shop__hero { padding: 40px 18px 44px; border-radius: 18px; }
+    .tf2-shop__headline { font-size: 29px; }
+    .tf2-shop__cta .tf2p-btn { width: 100%; }
+    .tf2-shop__grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .tf2-shop-card__art { height: 130px; }
+}
+
+/* ── Customer order portal (?order=…&t=…) ─────────── */
+
+.tf2-portal {
+    max-width: 560px;
+    padding-bottom: 60px;
+}
+
+.tf2-portal__head {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.tf2-portal__title {
+    margin: 4px 0 8px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--tf2p-black);
+    font-family: var(--tf2p-font);
+}
+
+.tf2-portal__ref {
+    display: inline-block;
+    margin: 0 0 8px;
+    background: var(--tf2p-black);
+    color: var(--tf2p-gold);
+    border-radius: 100px;
+    padding: 7px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+.tf2-portal__placed {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--tf2p-gray-500);
+}
+
+.tf2-portal__card {
+    background: var(--tf2p-white);
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(16, 16, 16, 0.04);
+}
+
+.tf2-portal__label {
+    margin: 0 0 14px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--tf2p-gray-500);
+}
+
+.tf2-portal__invalid {
+    text-align: center;
+    padding: 34px 22px;
+}
+
+.tf2-portal__invalid h2 {
+    margin: 0 0 10px;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+    font-family: var(--tf2p-font);
+}
+
+.tf2-portal__invalid p {
+    font-size: 14px;
+    color: var(--tf2p-gray-500);
+    line-height: 1.7;
+    margin: 0 0 18px;
+}
+
+/* Banners (WiPay return, cancelled) */
+
+.tf2-portal__banner {
+    border-radius: 12px;
+    padding: 13px 16px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+    border: 1px solid;
+}
+
+.tf2-portal__banner--success {
+    background: #F0FAF4;
+    border-color: #BBE5C8;
+    color: #14532D;
+}
+
+.tf2-portal__banner--error {
+    background: #FEF2F2;
+    border-color: #FECACA;
+    color: #B91C1C;
+}
+
+.tf2-portal__banner--warn {
+    background: #FDF6E3;
+    border-color: #F2E3B3;
+    color: #92700C;
+}
+
+/* Status timeline */
+
+.tf2-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tf2-timeline__step {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 0 0 20px 0;
+}
+
+.tf2-timeline__step:last-child {
+    padding-bottom: 0;
+}
+
+.tf2-timeline__step::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 22px;
+    bottom: 2px;
+    width: 2px;
+    background: var(--tf2p-gray-200);
+}
+
+.tf2-timeline__step:last-child::before {
+    display: none;
+}
+
+.tf2-timeline__step--done::before {
+    background: var(--tf2p-gold);
+}
+
+.tf2-timeline__dot {
+    position: relative;
+    z-index: 1;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tf2p-white);
+    border: 2px solid var(--tf2p-gray-300);
+    color: var(--tf2p-black);
+    box-sizing: border-box;
+}
+
+.tf2-timeline__step--done .tf2-timeline__dot {
+    background: var(--tf2p-gold);
+    border-color: var(--tf2p-gold);
+}
+
+.tf2-timeline__step--current .tf2-timeline__dot {
+    border-color: var(--tf2p-gold);
+    box-shadow: 0 0 0 4px rgba(201, 162, 39, 0.18);
+}
+
+.tf2-timeline__step--current .tf2-timeline__dot::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--tf2p-gold);
+}
+
+.tf2-timeline__text {
+    font-size: 14px;
+    padding-top: 2px;
+    color: var(--tf2p-gray-500);
+}
+
+.tf2-timeline__step--done .tf2-timeline__text {
+    color: var(--tf2p-gray-700);
+}
+
+.tf2-timeline__step--current .tf2-timeline__text {
+    color: var(--tf2p-black);
+    font-weight: 700;
+}
+
+.tf2-portal__reviewnote {
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: #92700C;
+    background: #FDF6E3;
+    border: 1px solid #F2E3B3;
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+
+/* Items */
+
+.tf2-portal__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--tf2p-gray-100);
+}
+
+.tf2-portal__item-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--tf2p-gray-100);
+    display: block;
+}
+
+.tf2-portal__item-thumb--blank {
+    display: block;
+}
+
+.tf2-portal__item-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tf2-portal__item-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--tf2p-black);
+}
+
+.tf2-portal__item-file {
+    font-size: 11.5px;
+    color: var(--tf2p-gray-500);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tf2-portal__item-price {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tf2p-gray-700);
+    white-space: nowrap;
+}
+
+.tf2-portal__total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 14px;
+    font-size: 14px;
+    color: var(--tf2p-gray-700);
+}
+
+.tf2-portal__total strong {
+    font-size: 17px;
+    color: var(--tf2p-black);
+    letter-spacing: -0.02em;
+}
+
+/* Payment */
+
+.tf2-portal__due {
+    font-size: 14px;
+    color: var(--tf2p-gray-700);
+    margin: 0 0 16px;
+}
+
+.tf2-portal__due strong {
+    font-size: 18px;
+    color: var(--tf2p-black);
+    letter-spacing: -0.02em;
+    margin-left: 6px;
+}
+
+.tf2-portal__paysub {
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--tf2p-gray-500);
+    margin: 8px 0 0;
+    line-height: 1.5;
+}
+
+.tf2-portal__divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0 14px;
+    color: var(--tf2p-gray-500);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.tf2-portal__divider::before,
+.tf2-portal__divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--tf2p-gray-200);
+}
+
+.tf2-portal__bank {
+    margin: 0 0 16px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--tf2p-gray-700);
+    font-family: var(--tf2p-font);
+    background: var(--tf2p-gray-100);
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+
+.tf2-portal__received {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #F0FAF4;
+    border: 1px solid #BBE5C8;
+    color: #14532D;
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.tf2-portal__receipt-preview {
+    display: block;
+    width: 100%;
+    max-height: 260px;
+    object-fit: contain;
+    background: var(--tf2p-gray-100);
+    border-radius: 12px;
+    margin: 14px 0 10px;
+}
+
+.tf2-portal__receipt-note {
+    font-size: 13px;
+    color: var(--tf2p-gray-700);
+    line-height: 1.6;
+    margin: 0 0 10px;
+}
+
+#tf2pp-receipt-flow .tf2p-field {
+    margin-bottom: 12px;
+}
+
+.tf2-portal__note {
+    font-size: 13.5px;
+    color: var(--tf2p-gray-700);
+    line-height: 1.7;
+    margin: 0 0 8px;
+}
+
+.tf2-portal__note:last-child {
+    margin-bottom: 0;
+}
+
+.tf2-portal__help {
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--tf2p-gray-500);
+    margin-top: 22px;
+    line-height: 1.7;
+}
+
+.tf2-portal__help a {
+    color: var(--tf2p-gray-700);
 }

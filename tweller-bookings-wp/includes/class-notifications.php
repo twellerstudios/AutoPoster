@@ -13,9 +13,14 @@ class TwellerFlow2_Notifications {
     const C_BLACK  = '#101010';
     const C_GOLD   = '#C9A227';
     const C_GOLD_L = '#E7C55C';
-    const C_IVORY  = '#FAF7F2';
+    const C_IVORY  = '#FAF9F6'; // page background
+    const C_CARD   = '#FFFFFF'; // content card
+    const C_BORDER = '#ECE9E2'; // hairline borders
     const C_TEXT   = '#3D3630';
     const C_MUTED  = '#8A8178';
+
+    /** System font stack used across all email markup */
+    const FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
     public static function configure_smtp( $phpmailer ) {
         $smtp = get_option( 'tweller_flow_2_smtp', array() );
@@ -95,25 +100,46 @@ class TwellerFlow2_Notifications {
 
     // ── Reusable branded building blocks ─────────────────
 
+    /**
+     * Primary (solid gold, dark text) or secondary (quiet outline) button.
+     * Inline-styled anchor + .tf2e-btn class so the wrapper's media query
+     * can stretch it full-width on small screens.
+     */
     public static function email_button( $url, $label, $solid = true ) {
+        $base = 'display:inline-block; padding:14px 34px; border-radius:8px; font-family:' . self::FONT_STACK . '; font-size:14px; font-weight:700; text-decoration:none; letter-spacing:0.3px; line-height:1.3;';
         if ( $solid ) {
-            $style = 'display:inline-block; background:' . self::C_GOLD . '; color:' . self::C_BLACK . '; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:700; letter-spacing:0.5px;';
+            $style = $base . ' background:' . self::C_GOLD . '; color:' . self::C_BLACK . ';';
         } else {
-            $style = 'display:inline-block; background:transparent; color:' . self::C_GOLD . '; padding:12px 28px; border:1.5px solid ' . self::C_GOLD . '; border-radius:8px; text-decoration:none; font-weight:600; letter-spacing:0.5px;';
+            $style = $base . ' background:' . self::C_CARD . '; color:' . self::C_BLACK . '; border:1px solid #D8D2C6; font-weight:600;';
         }
-        return "<a href='{$url}' style='{$style}'>{$label}</a>";
+        return "<a href='{$url}' class='tf2e-btn' style='{$style}'>{$label}</a>";
     }
 
+    /**
+     * Quiet section card: soft ivory panel, hairline border, small
+     * uppercase letterspaced gray label. No accent bars.
+     */
     public static function email_card( $title, $inner ) {
         return "
-            <div style='background:" . self::C_IVORY . "; border:1px solid #EDE5D8; border-left:3px solid " . self::C_GOLD . "; padding:22px 24px; border-radius:10px; margin:22px 0;'>
-                <h3 style='margin:0 0 12px; color:" . self::C_BLACK . "; font-size:15px; letter-spacing:1.5px; text-transform:uppercase;'>{$title}</h3>
-                {$inner}
-            </div>";
+            <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='margin:24px 0; border-collapse:separate;'>
+                <tr>
+                    <td style='background:" . self::C_IVORY . "; border:1px solid " . self::C_BORDER . "; border-radius:12px; padding:22px 24px;'>
+                        <p style='margin:0 0 14px; font-family:" . self::FONT_STACK . "; font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:" . self::C_MUTED . ";'>{$title}</p>
+                        {$inner}
+                    </td>
+                </tr>
+            </table>";
     }
 
+    /** Two-column label / value row for inside email cards */
     public static function email_detail_row( $label, $value ) {
-        return "<p style='margin:6px 0; color:" . self::C_TEXT . ";'><span style='color:" . self::C_MUTED . ";'>{$label}:</span> <strong>{$value}</strong></p>";
+        return "
+            <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'>
+                <tr>
+                    <td style='padding:5px 12px 5px 0; font-family:" . self::FONT_STACK . "; font-size:13px; color:" . self::C_MUTED . "; white-space:nowrap; vertical-align:top;'>{$label}</td>
+                    <td align='right' style='padding:5px 0; font-family:" . self::FONT_STACK . "; font-size:13.5px; color:" . self::C_BLACK . "; font-weight:600; vertical-align:top;'>{$value}</td>
+                </tr>
+            </table>";
     }
 
     public static function session_details_card( $session, $pkg_name ) {
@@ -159,7 +185,7 @@ class TwellerFlow2_Notifications {
 
                     " . self::email_card( 'Securing Your Booking', "
                         <p style='margin:6px 0; color:" . self::C_TEXT . "; line-height:1.7;'>To officially confirm your session, kindly make a deposit of <strong>TTD $" . number_format( $session->total_amount / 2, 2 ) . "</strong> (50%) by bank transfer. The remaining balance is due on the day of your session.</p>
-                        <pre style='background:#fff; border:1px solid #EDE5D8; padding:16px; border-radius:8px; white-space:pre-wrap; color:" . self::C_TEXT . "; font-size:14px;'>{$banking}</pre>
+                        <pre style='background:#fff; border:1px solid " . self::C_BORDER . "; padding:16px; border-radius:8px; white-space:pre-wrap; color:" . self::C_TEXT . "; font-size:14px; font-family:" . self::FONT_STACK . ";'>{$banking}</pre>
                         <p style='margin:6px 0; color:" . self::C_TEXT . "; line-height:1.7;'>Once you've made the transfer, simply upload a screenshot of your receipt through your client portal below — we'll verify it and confirm your booking right away. Until then, your date is held for you.</p>
                     " ) . "
 
@@ -288,35 +314,61 @@ class TwellerFlow2_Notifications {
         return 'https://wa.me/' . $phone . '?text=' . urlencode( $message );
     }
 
-    /** Black & gold branded email shell — matches the booking site */
+    /**
+     * Branded email shell — clean Stripe-style system in the studio's
+     * black & gold. Table-based, inline styles, no accent bars:
+     * black header band with the TWELLER / STUDIOS wordmark, white
+     * content card on an ivory page, muted footer.
+     */
     public static function wrap_email_html( $body, $client_name = '' ) {
+        $font = self::FONT_STACK;
         return '<!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                @media only screen and (max-width: 620px) {
+                    .tf2e-shell  { padding: 14px 10px !important; }
+                    .tf2e-header { padding: 28px 22px !important; }
+                    .tf2e-body   { padding: 28px 22px !important; }
+                    .tf2e-footer { padding: 22px 18px !important; }
+                    .tf2e-btn    { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; }
+                }
+            </style>
         </head>
-        <body style="margin:0; padding:0; background:#EEEAE3; font-family: Georgia, \'Times New Roman\', serif;">
-            <div style="max-width:600px; margin:0 auto;">
-                <div style="height:24px;"></div>
-                <div style="background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 2px 16px rgba(16,16,16,0.08);">
-                    <div style="background:' . self::C_BLACK . '; padding:36px 30px 30px; text-align:center;">
-                        <h1 style="color:' . self::C_GOLD . '; margin:0; font-size:26px; letter-spacing:6px; font-weight:400;">TWELLER STUDIOS</h1>
-                        <p style="color:' . self::C_GOLD_L . '; margin:10px 0 0; font-size:11px; letter-spacing:3px; text-transform:uppercase; opacity:0.8;">Photography &amp; Film</p>
-                        <div style="width:60px; height:2px; background:' . self::C_GOLD . '; margin:18px auto 0;"></div>
-                    </div>
-                    <div style="padding:34px 40px; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;">
-                        ' . $body . '
-                    </div>
-                    <div style="background:' . self::C_BLACK . '; padding:26px 40px; text-align:center;">
-                        <p style="color:' . self::C_GOLD . '; font-size:13px; letter-spacing:1px; margin:0 0 8px;">Capturing Moments That Last</p>
-                        <p style="margin:0;"><a href="https://twellerstudios.com" style="color:#B8AFA3; font-size:12px; text-decoration:none;">twellerstudios.com</a>
-                        <span style="color:#4A443C;">&nbsp;•&nbsp;</span>
-                        <a href="mailto:' . self::STUDIO_EMAIL . '" style="color:#B8AFA3; font-size:12px; text-decoration:none;">' . self::STUDIO_EMAIL . '</a></p>
-                    </div>
-                </div>
-                <div style="height:24px;"></div>
-            </div>
+        <body style="margin:0; padding:0; background:' . self::C_IVORY . '; -webkit-text-size-adjust:100%; font-family:' . $font . ';">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:' . self::C_IVORY . ';">
+                <tr>
+                    <td align="center" class="tf2e-shell" style="padding:32px 16px;">
+                        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; border-collapse:separate;">
+                            <tr>
+                                <td class="tf2e-header" style="background:' . self::C_BLACK . '; border-radius:12px 12px 0 0; padding:34px 40px 30px; text-align:center;">
+                                    <div style="font-family:' . $font . '; color:#FFFFFF; font-size:21px; font-weight:600; letter-spacing:9px;">TWELLER</div>
+                                    <div style="font-family:' . $font . '; color:' . self::C_GOLD . '; font-size:11px; font-weight:600; letter-spacing:6px; text-transform:uppercase; margin-top:7px;">Studios</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="tf2e-body" style="background:' . self::C_CARD . '; border:1px solid ' . self::C_BORDER . '; border-top:none; border-radius:0 0 12px 12px; padding:36px 40px; font-family:' . $font . '; font-size:15px; color:' . self::C_TEXT . '; line-height:1.7;">
+                                    ' . $body . '
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="tf2e-footer" style="padding:26px 24px; text-align:center;">
+                                    <p style="margin:0 0 6px; font-family:' . $font . '; color:#9B958A; font-size:12px; letter-spacing:0.4px;">Tweller Studios &middot; Photography &amp; Film &middot; Trinidad &amp; Tobago</p>
+                                    <p style="margin:0; font-family:' . $font . ';">
+                                        <a href="https://twellerstudios.com" style="color:' . self::C_MUTED . '; font-size:12px; text-decoration:none;">twellerstudios.com</a>
+                                        <span style="color:#D8D2C6;">&nbsp;&middot;&nbsp;</span>
+                                        <a href="mailto:' . self::STUDIO_EMAIL . '" style="color:' . self::C_MUTED . '; font-size:12px; text-decoration:none;">' . self::STUDIO_EMAIL . '</a>
+                                        <span style="color:#D8D2C6;">&nbsp;&middot;&nbsp;</span>
+                                        <a href="https://instagram.com/twellerstudios" style="color:' . self::C_MUTED . '; font-size:12px; text-decoration:none;">@twellerstudios</a>
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
         </body>
         </html>';
     }

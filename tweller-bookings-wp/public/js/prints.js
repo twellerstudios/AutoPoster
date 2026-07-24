@@ -240,7 +240,7 @@
                     '<input type="text" name="website" id="tf2p-hp" value="" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute; left:-9999px; height:1px; width:1px; opacity:0;">' +
                     '<p class="tf2p-error" id="tf2p-checkout-error" style="display:none;"></p>' +
                     '<button type="submit" class="tf2p-btn tf2p-btn--gold tf2p-btn--full" id="tf2p-checkout-btn">Place Order</button>' +
-                    '<p class="tf2p-payhint">Payment is by bank transfer — details arrive with your order confirmation.</p>' +
+                    '<p class="tf2p-payhint">Pay after checkout from your order page — by card (via WiPay) or bank transfer.</p>' +
                 '</form>' +
             '</div>' +
             '<div class="tf2p-success" id="tf2p-success" style="display:none;">' +
@@ -772,9 +772,34 @@
         var payWrap = document.getElementById('tf2p-success-pay');
         var payText = document.getElementById('tf2p-success-pay-text');
         var noteEl  = document.getElementById('tf2p-success-note');
+        var portalBtn = document.getElementById('tf2p-success-portal');
 
         if (body) body.style.display = 'none';
         if (refEl) refEl.textContent = data.order_ref;
+
+        // Main CTA: the tokenized order portal (pay + track there)
+        if (!portalBtn && success) {
+            portalBtn = document.createElement('a');
+            portalBtn.id = 'tf2p-success-portal';
+            portalBtn.className = 'tf2p-btn tf2p-btn--gold tf2p-btn--full';
+            portalBtn.style.marginBottom = '10px';
+            portalBtn.textContent = 'View your order / Make payment';
+            var doneBtn = document.getElementById('tf2p-success-done');
+            if (doneBtn && doneBtn.parentNode) {
+                doneBtn.parentNode.insertBefore(portalBtn, doneBtn);
+            } else {
+                success.appendChild(portalBtn);
+            }
+        }
+        if (portalBtn) {
+            if (data.portal_url) {
+                portalBtn.href = data.portal_url;
+                portalBtn.style.display = '';
+            } else {
+                portalBtn.style.display = 'none';
+            }
+        }
+
         if (payWrap && payText) {
             if (data.payment_instructions) {
                 payText.textContent = data.payment_instructions;
@@ -925,6 +950,194 @@
         if (cartbar) cartbar.style.display = 'none';
     }
 
+    // ── Storefront scroll reveals (optional, no libs) ──
+
+    function initReveals() {
+        var app = document.getElementById('tf2-prints-app');
+        var nodes = document.querySelectorAll('.tf2-reveal');
+        if (!app || !nodes.length) return;
+        if (typeof window.IntersectionObserver === 'undefined') return;
+        // Content stays visible unless we can animate it in
+        app.className += ' tf2-shop--anim';
+        var io = new IntersectionObserver(function(entries) {
+            for (var j = 0; j < entries.length; j++) {
+                if (entries[j].isIntersecting) {
+                    entries[j].target.classList.add('tf2-reveal--in');
+                    io.unobserve(entries[j].target);
+                }
+            }
+        }, { threshold: 0.12 });
+        for (var k = 0; k < nodes.length; k++) io.observe(nodes[k]);
+    }
+
+    // ── Customer order portal: receipt + client-side OCR ──
+    // Same approach as the booking receipt flow (Tesseract.js from CDN,
+    // labeled-amount regex first, currency/decimal fallback).
+
+    function ocrExtract(text) {
+        var out = { amount: null, ref: null };
+        if (!text) return out;
+
+        var labeled = text.match(/(?:transfer\s+amount|amount)[\s:]*(?:TTD|\$)?\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i);
+        if (labeled && labeled[1]) {
+            out.amount = parseFloat(labeled[1].replace(/[^\d.]/g, ''));
+        } else {
+            var amounts = [];
+            var m = text.match(/(?:TTD|\$)\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi);
+            var fb = text.match(/\b\d{1,3}(?:,\d{3})*\.\d{2}\b/g);
+            var i;
+            if (m) {
+                for (i = 0; i < m.length; i++) amounts.push(parseFloat(m[i].replace(/[^\d.]/g, '')));
+            } else if (fb) {
+                for (i = 0; i < fb.length; i++) amounts.push(parseFloat(fb[i].replace(/,/g, '')));
+            }
+            var best = 0;
+            for (i = 0; i < amounts.length; i++) {
+                if (!isNaN(amounts[i]) && amounts[i] > best) best = amounts[i];
+            }
+            if (best > 0) out.amount = best;
+        }
+
+        var refMatch = text.match(/(?:ref(?:erence)?\s*(?:no\.?|#|number)?|transaction\s*(?:id|no\.?|#)?|trx\s*(?:id|no\.?|#)?)\s*[:\-#]?\s*([a-z0-9]{6,15})/i);
+        if (refMatch && refMatch[1]) out.ref = refMatch[1].toUpperCase();
+        return out;
+    }
+
+    function runReceiptOcr(file, cb) {
+        if (!window.Tesseract) { cb(null, null); return; }
+        var worker = null;
+        try {
+            window.Tesseract.createWorker('eng')
+                .then(function(w) {
+                    worker = w;
+                    return w.recognize(file);
+                })
+                .then(function(ret) {
+                    var text = ret && ret.data ? ret.data.text : '';
+                    if (worker) { try { worker.terminate(); } catch (e) {} }
+                    var got = ocrExtract(text);
+                    cb(got.amount, got.ref);
+                })
+                ['catch'](function() {
+                    if (worker) { try { worker.terminate(); } catch (e) {} }
+                    cb(null, null);
+                });
+        } catch (err) {
+            cb(null, null);
+        }
+    }
+
+    function initPortal() {
+        var pick   = document.getElementById('tf2pp-receipt-pick');
+        var input  = document.getElementById('tf2pp-receipt-input');
+        var flow   = document.getElementById('tf2pp-receipt-flow');
+        if (!pick || !input || !flow) return;
+
+        var preview  = document.getElementById('tf2pp-receipt-preview');
+        var note     = document.getElementById('tf2pp-receipt-note');
+        var amount   = document.getElementById('tf2pp-receipt-amount');
+        var errEl    = document.getElementById('tf2pp-receipt-error');
+        var submit   = document.getElementById('tf2pp-receipt-submit');
+        var doneEl   = document.getElementById('tf2pp-receipt-done');
+
+        var pendingFile = null;
+        var pendingRef  = null;
+        var busy = false;
+
+        function showError(msg) {
+            if (!errEl) return;
+            errEl.textContent = msg || '';
+            errEl.style.display = msg ? '' : 'none';
+        }
+
+        pick.addEventListener('click', function() { input.click(); });
+
+        input.addEventListener('change', function() {
+            if (!input.files || !input.files.length) return;
+            var file = input.files[0];
+            if (!/^image\//.test(file.type)) {
+                showError('Please choose an image (a screenshot or photo of your receipt).');
+                return;
+            }
+            if (file.size > 15 * 1024 * 1024) {
+                showError('Receipt images must be under 15MB.');
+                return;
+            }
+            showError('');
+            pendingFile = file;
+            pendingRef = null;
+
+            if (preview) {
+                try { preview.src = URL.createObjectURL(file); } catch (e) {}
+            }
+            flow.style.display = '';
+            if (doneEl) doneEl.style.display = 'none';
+            pick.textContent = 'Choose a different image';
+            if (note) note.textContent = 'Reading your receipt…';
+            if (amount) amount.value = '';
+            if (submit) submit.disabled = true;
+
+            runReceiptOcr(file, function(readAmount, readRef) {
+                pendingRef = readRef;
+                if (submit) submit.disabled = false;
+                if (!amount || !note) return;
+                if (readAmount && readAmount > 0) {
+                    amount.value = readAmount.toFixed(2);
+                    note.textContent = 'We read TT$' + readAmount.toFixed(2) + ' from your receipt — confirm or correct it below, then submit.';
+                } else {
+                    amount.value = '';
+                    note.textContent = "We couldn't read the amount automatically. Please type the amount you transferred, then submit.";
+                }
+                try { amount.focus(); } catch (e) {}
+            });
+        });
+
+        if (submit) {
+            submit.addEventListener('click', function() {
+                if (busy || !pendingFile) return;
+                var val = parseFloat(amount && amount.value ? amount.value : '0');
+                if (isNaN(val) || val <= 0) {
+                    showError('Please enter the amount you transferred.');
+                    return;
+                }
+                showError('');
+                busy = true;
+                submit.disabled = true;
+                var oldLabel = submit.textContent;
+                submit.textContent = 'Uploading…';
+
+                var fd = new FormData();
+                fd.append('receipt', pendingFile, pendingFile.name || 'receipt.jpg');
+                fd.append('order', cfg.orderRef || '');
+                fd.append('t', cfg.portalToken || '');
+                fd.append('ocr_amounts', 'TTD ' + val.toFixed(2));
+                fd.append('confirmed_amount', val.toFixed(2));
+                if (pendingRef) fd.append('ocr_reference', pendingRef);
+
+                fetch(cfg.restUrl + 'portal-receipt', { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        busy = false;
+                        if (data && data.ok) {
+                            flow.style.display = 'none';
+                            pick.style.display = 'none';
+                            if (doneEl) doneEl.style.display = '';
+                        } else {
+                            submit.disabled = false;
+                            submit.textContent = oldLabel;
+                            showError((data && data.message) ? data.message : 'Something went wrong. Please try again.');
+                        }
+                    })
+                    ['catch'](function() {
+                        busy = false;
+                        submit.disabled = false;
+                        submit.textContent = oldLabel;
+                        showError('Network error. Please check your connection and try again.');
+                    });
+            });
+        }
+    }
+
     // ── Internal UI sync ───────────────────────────────
 
     function updateInternalUI() {
@@ -968,15 +1181,29 @@
 
     // ── Boot ───────────────────────────────────────────
 
+    if (cfg.mode === 'portal') {
+        // Order portal: only the receipt flow — no store overlay.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initPortal);
+        } else {
+            initPortal();
+        }
+        return;
+    }
+
     loadCart();
     buildOverlay();
     loadProducts(null);
 
     if (mode === 'public') {
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initPublicPage);
+            document.addEventListener('DOMContentLoaded', function() {
+                initPublicPage();
+                initReveals();
+            });
         } else {
             initPublicPage();
+            initReveals();
         }
     }
 

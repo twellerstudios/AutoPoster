@@ -316,6 +316,15 @@ class TwellerFlow2_WiPay {
     /** The public page a customer should land back on for an entity. */
     private static function entity_url( $type, $ref ) {
         if ( $type === 'print' ) {
+            // Land back on the customer's own tokenized order portal so the
+            // payment banner shows against their order, not the storefront.
+            if ( $ref !== '' && class_exists( 'TwellerFlow2_Prints' ) ) {
+                $order = TwellerFlow2_Prints::get_order_by_ref( $ref );
+                if ( $order ) {
+                    $portal = TwellerFlow2_Prints::portal_url( $order );
+                    if ( $portal ) return $portal;
+                }
+            }
             $url = get_option( 'tweller_flow_2_prints_page', '' );
             if ( ! $url && class_exists( 'TwellerFlow2_Prints' ) ) {
                 $url = TwellerFlow2_Prints::get_prints_page_url();

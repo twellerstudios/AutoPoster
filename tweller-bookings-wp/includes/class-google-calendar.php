@@ -1,0 +1,264 @@
+<?php
+/**
+ * Google Calendar sync — booked sessions appear on the studio's primary
+ * Google Calendar. Events are YELLOW while a session is only reserved
+ * (payment pending / verifying / deposit) and turn BLUE once fully paid.
+ *
+ * Reuses the OAuth machinery in TwellerFlow2_Google_Contacts. Requires the
+ * 'https://www.googleapis.com/auth/calendar.events' scope — accounts that
+ * connected before calendar sync existed must reconnect Google once.
+ */
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+class TwellerFlow2_Google_Calendar {
+
+    const EVENT_OPT_PREFIX = 'tweller_gcal_event_'; // + session_id => Google event id
+
+    const API_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+
+    const COLOR_RESERVED = '5'; // Banana (yellow)
+    const COLOR_PAID     = '9'; // Blueberry (blue)
+
+    const TIMEZONE = 'America/Port_of_Spain';
+
+    public static function init() {
+        add_action( 'tweller_flow_2_session_created', array( __CLASS__, 'on_session_created' ), 20, 2 );
+        add_action( 'tweller_flow_2_payment_updated', array( __CLASS__, 'on_payment_updated' ) );
+        add_action( 'tweller_flow_2_session_deleted', array( __CLASS__, 'on_session_deleted' ) );
+        add_action( 'tweller_flow_2_google_calendar_sync', array( __CLASS__, 'sync_session' ) );
+    }
+
+    // ── State helpers ──────────────────────────────────
+
+    /** Calendar sync toggle — defaults to on for already-connected accounts. */
+    public static function is_enabled() {
+        $config = TwellerFlow2_Google_Contacts::get_config();
+        if ( ! array_key_exists( 'calendar_enabled', (array) $config ) ) {
+            return true;
+        }
+        return ! empty( $config['calendar_enabled'] );
+    }
+
+    /** Connected, calendar scope granted, and the toggle is on. */
+    public static function is_ready() {
+        return self::is_enabled()
+            && TwellerFlow2_Google_Contacts::is_connected()
+            && TwellerFlow2_Google_Contacts::is_calendar_authorized();
+    }
+
+    // ── Hooks ──────────────────────────────────────────
+
+    /** New booking — create the (yellow) hold on the calendar right away. */
+    public static function on_session_created( $session_id, $data ) {
+        if ( ! self::is_enabled() || ! TwellerFlow2_Google_Contacts::is_connected() ) return;
+        self::sync_inline_with_retry( $session_id );
+    }
+
+    /** Payment status changed — flip color (and pick up date/time edits). */
+    public static function on_payment_updated( $session_id ) {
+        if ( ! self::is_enabled() || ! TwellerFlow2_Google_Contacts::is_connected() ) return;
+        self::sync_inline_with_retry( $session_id );
+    }
+
+    /** Session deleted — remove its calendar event. */
+    public static function on_session_deleted( $session_id ) {
+        self::delete_event( $session_id );
+    }
+
+    /** Run inline (WP-Cron is unreliable) with a single cron retry on failure. */
+    private static function sync_inline_with_retry( $session_id ) {
+        $ok = self::sync_session( $session_id );
+        if ( ! $ok && ! wp_next_scheduled( 'tweller_flow_2_google_calendar_sync', array( $session_id ) ) ) {
+            wp_schedule_single_event( time() + 300, 'tweller_flow_2_google_calendar_sync', array( $session_id ) );
+        }
+    }
+
+    // ── Sync ───────────────────────────────────────────
+
+    /**
+     * Create-or-update the calendar event for a session on the connected
+     * account's primary calendar. Logs every outcome.
+     *
+     * @return bool True on success (or nothing to do), false on failure.
+     */
+    public static function sync_session( $session_id ) {
+        $session = TwellerFlow2_Session::get( $session_id );
+        if ( ! $session ) {
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, 'Session not found.' );
+            return false;
+        }
+
+        if ( empty( $session->session_date ) ) {
+            $msg = 'Session has no date yet — calendar event skipped.';
+            TwellerFlow2_Google_Contacts::set_sync_status( $session_id, 'calendar', true, $msg );
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, true, $msg );
+            return true;
+        }
+
+        if ( ! TwellerFlow2_Google_Contacts::is_connected() ) {
+            $msg = 'Google account not connected.';
+            TwellerFlow2_Google_Contacts::set_sync_status( $session_id, 'calendar', false, $msg );
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, $msg );
+            return false;
+        }
+
+        if ( ! TwellerFlow2_Google_Contacts::is_calendar_authorized() ) {
+            $msg = 'Calendar permission missing — click "Reconnect Google" in Settings to grant calendar access.';
+            TwellerFlow2_Google_Contacts::set_sync_status( $session_id, 'calendar', false, $msg );
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, $msg );
+            return false;
+        }
+
+        $token = TwellerFlow2_Google_Contacts::get_access_token();
+        if ( ! $token ) {
+            $msg = 'Could not get a Google access token — check Client ID/Secret and reconnect the Google account.';
+            TwellerFlow2_Google_Contacts::set_sync_status( $session_id, 'calendar', false, $msg );
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, $msg );
+            return false;
+        }
+
+        $event    = self::build_event( $session );
+        $event_id = get_option( self::EVENT_OPT_PREFIX . $session->id, '' );
+        $is_paid  = ( $session->payment_status === 'paid' );
+
+        if ( $event_id ) {
+            // Update the existing event (color / time / details)
+            $response = wp_remote_request( self::API_BASE . '/' . rawurlencode( $event_id ), array(
+                'method'  => 'PATCH',
+                'timeout' => 10,
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ),
+                'body' => wp_json_encode( $event ),
+            ) );
+
+            // Event was deleted from the calendar by hand — recreate it.
+            if ( ! is_wp_error( $response ) && intval( wp_remote_retrieve_response_code( $response ) ) === 404 ) {
+                delete_option( self::EVENT_OPT_PREFIX . $session->id );
+                $event_id = '';
+            }
+        }
+
+        if ( ! $event_id ) {
+            $response = wp_remote_post( self::API_BASE, array(
+                'timeout' => 10,
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ),
+                'body' => wp_json_encode( $event ),
+            ) );
+        }
+
+        if ( is_wp_error( $response ) ) {
+            $msg = 'Request failed: ' . $response->get_error_message();
+            TwellerFlow2_Google_Contacts::set_sync_status( $session_id, 'calendar', false, $msg );
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, $msg );
+            return false;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $raw  = wp_remote_retrieve_body( $response );
+        $body = json_decode( $raw, true );
+
+        if ( ! empty( $body['id'] ) ) {
+            update_option( self::EVENT_OPT_PREFIX . $session->id, sanitize_text_field( $body['id'] ), false );
+            $msg = ( $event_id ? 'Event updated' : 'Event created' )
+                . ( $is_paid ? ' (blue — paid)' : ' (yellow — reserved)' )
+                . ' for ' . $session->session_date
+                . ( $session->session_time ? ' ' . $session->session_time : '' ) . '.';
+            TwellerFlow2_Google_Contacts::set_sync_status( $session_id, 'calendar', true, $msg );
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, true, $msg );
+            return true;
+        }
+
+        $msg = 'Google Calendar API error — HTTP ' . intval( $code ) . ': ' . mb_substr( $raw, 0, 300 );
+        TwellerFlow2_Google_Contacts::set_sync_status( $session_id, 'calendar', false, $msg );
+        TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, $msg );
+        error_log( '[Tweller Bookings] Google calendar sync failed for session ' . $session_id . ': ' . $msg );
+        return false;
+    }
+
+    /** Build the Google Calendar event payload for a session. */
+    private static function build_event( $session ) {
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $pkg_name = $packages[ $session->package_type ]['name'] ?? ucfirst( (string) $session->package_type );
+
+        $admin_link = admin_url( 'admin.php?page=tweller-flow-2-session&id=' . intval( $session->id ) );
+
+        $description = 'Shoot code: ' . $session->tracking_code;
+        if ( ! empty( $session->client_phone ) ) {
+            $description .= "\nPhone: " . $session->client_phone;
+        }
+        if ( ! empty( $session->location ) ) {
+            $description .= "\nLocation: " . $session->location;
+        }
+        $description .= "\nPayment: " . $session->payment_status;
+        $description .= "\nManage: " . $admin_link;
+
+        $event = array(
+            'summary'     => "\xF0\x9F\x93\xB8 " . $session->client_name . ' — ' . $pkg_name,
+            'description' => $description,
+            'colorId'     => ( $session->payment_status === 'paid' ) ? self::COLOR_PAID : self::COLOR_RESERVED,
+        );
+        if ( ! empty( $session->location ) ) {
+            $event['location'] = $session->location;
+        }
+
+        if ( ! empty( $session->session_time ) ) {
+            $start_ts = strtotime( $session->session_date . ' ' . $session->session_time );
+            $haystack = strtolower( $session->package_type . ' ' . $pkg_name );
+            $hours    = ( strpos( $haystack, 'wedding' ) !== false || strpos( $haystack, 'event' ) !== false ) ? 2 : 1;
+            $event['start'] = array(
+                'dateTime' => date( 'Y-m-d\TH:i:s', $start_ts ),
+                'timeZone' => self::TIMEZONE,
+            );
+            $event['end'] = array(
+                'dateTime' => date( 'Y-m-d\TH:i:s', $start_ts + $hours * HOUR_IN_SECONDS ),
+                'timeZone' => self::TIMEZONE,
+            );
+        } else {
+            // No time set — hold the whole day
+            $event['start'] = array( 'date' => $session->session_date );
+            $event['end']   = array( 'date' => date( 'Y-m-d', strtotime( $session->session_date . ' +1 day' ) ) );
+        }
+
+        return $event;
+    }
+
+    /** Delete the calendar event for a session (used when a session is deleted). */
+    public static function delete_event( $session_id ) {
+        $event_id = get_option( self::EVENT_OPT_PREFIX . $session_id, '' );
+        if ( empty( $event_id ) ) return true;
+
+        delete_option( self::EVENT_OPT_PREFIX . $session_id );
+
+        $token = TwellerFlow2_Google_Contacts::get_access_token();
+        if ( ! $token ) {
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, 'Could not delete event — no Google access token.' );
+            return false;
+        }
+
+        $response = wp_remote_request( self::API_BASE . '/' . rawurlencode( $event_id ), array(
+            'method'  => 'DELETE',
+            'timeout' => 10,
+            'headers' => array( 'Authorization' => 'Bearer ' . $token ),
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false, 'Event delete failed: ' . $response->get_error_message() );
+            return false;
+        }
+
+        $code = intval( wp_remote_retrieve_response_code( $response ) );
+        if ( $code === 204 || $code === 200 || $code === 404 || $code === 410 ) {
+            TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, true, 'Calendar event removed.' );
+            return true;
+        }
+
+        TwellerFlow2_Google_Contacts::log_event( 'calendar', $session_id, false,
+            'Event delete failed — HTTP ' . $code . ': ' . mb_substr( wp_remote_retrieve_body( $response ), 0, 300 ) );
+        return false;
+    }
+}

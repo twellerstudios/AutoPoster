@@ -182,6 +182,9 @@ class TwellerFlow2_Session {
         $history_table  = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
         $notif_table    = $wpdb->prefix . TWELLER_FLOW_2_TABLE_NOTIFICATIONS;
 
+        // Let integrations clean up (e.g. Google Calendar event removal)
+        do_action( 'tweller_flow_2_session_deleted', $id );
+
         $wpdb->delete( $history_table, array( 'session_id' => $id ) );
         $wpdb->delete( $notif_table, array( 'session_id' => $id ) );
         return $wpdb->delete( $sessions_table, array( 'id' => $id ) );

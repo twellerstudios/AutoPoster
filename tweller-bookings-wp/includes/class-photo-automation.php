@@ -62,6 +62,181 @@ class TwellerFlow2_Photo_Automation {
             'callback' => array( __CLASS__, 'rest_session_update' ),
             'permission_callback' => array( __CLASS__, 'verify_api_key' ),
         ));
+
+        // Mobile app: delete a session and every file that belongs to it
+        register_rest_route( 'tweller-flow-2/v1', '/automation/session/(?P<code>[a-zA-Z0-9\-]+)/delete', array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'rest_session_delete' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+
+        // Mobile app: manage the delivery gallery (list / delete photos / cover)
+        register_rest_route( 'tweller-flow-2/v1', '/automation/gallery/(?P<code>[a-zA-Z0-9\-]+)', array(
+            'methods'  => 'GET',
+            'callback' => array( __CLASS__, 'rest_gallery_list' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+        register_rest_route( 'tweller-flow-2/v1', '/automation/gallery/(?P<code>[a-zA-Z0-9\-]+)/photo-delete', array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'rest_gallery_photo_delete' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+        register_rest_route( 'tweller-flow-2/v1', '/automation/gallery/(?P<code>[a-zA-Z0-9\-]+)/cover', array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'rest_gallery_cover' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+    }
+
+    /** Delete a session plus its gallery photos, culling proofs and options. */
+    public static function rest_session_delete( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $confirm = sanitize_text_field( $request->get_param( 'confirm' ) ?? '' );
+        if ( $confirm !== 'DELETE' ) {
+            return new WP_Error( 'confirm_required', 'Pass confirm=DELETE to delete a session', array( 'status' => 400 ) );
+        }
+
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        global $wpdb;
+
+        // Gallery files + rows
+        if ( class_exists( 'TwellerFlow2_Gallery' ) ) {
+            self::delete_dir( TwellerFlow2_Gallery::get_gallery_dir( $code ) );
+            $wpdb->delete( $wpdb->prefix . 'tweller_gallery_photos', array( 'session_id' => $session->id ) );
+            delete_option( 'tweller_gallery_pw_' . $session->id );
+            delete_option( 'tweller_gallery_cover_' . $session->id );
+            delete_option( 'tweller_gallery_cover_pos_' . $session->id );
+        }
+
+        // Culling proofs + selections + flags
+        if ( class_exists( 'TwellerFlow2_Culling' ) ) {
+            self::delete_dir( TwellerFlow2_Culling::get_proof_dir( $code ) );
+            $wpdb->delete( $wpdb->prefix . 'tweller_culling_proofs', array( 'session_id' => $session->id ) );
+            $wpdb->delete( $wpdb->prefix . 'tweller_culling_selections', array( 'session_id' => $session->id ) );
+            delete_option( 'tweller_culling_enabled_' . $session->id );
+            delete_option( 'tweller_culling_submitted_' . $session->id );
+            delete_option( 'tweller_culling_ready_' . $session->id );
+            delete_option( 'tweller_culling_upsell_' . $session->id );
+            delete_option( 'tweller_culling_pw_' . $session->id );
+        }
+
+        delete_option( 'tf_receipt_' . $session->id );
+
+        // Session row + stage history + notifications (also fires the
+        // session-deleted action other integrations listen to)
+        TwellerFlow2_Session::delete( $session->id );
+        do_action( 'tweller_flow_2_session_deleted', $session->id, $session );
+
+        return rest_ensure_response( array( 'ok' => true, 'deleted' => $code ) );
+    }
+
+    /** Recursively delete an uploads directory (guarded to wp uploads). */
+    private static function delete_dir( $dir ) {
+        $uploads = wp_upload_dir();
+        if ( ! $dir || strpos( $dir, $uploads['basedir'] ) !== 0 || ! is_dir( $dir ) ) return;
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ( $files as $f ) {
+            $f->isDir() ? @rmdir( $f->getRealPath() ) : @unlink( $f->getRealPath() );
+        }
+        @rmdir( $dir );
+    }
+
+    /** Gallery listing for the app — not stage-gated like the client route. */
+    public static function rest_gallery_list( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session || ! class_exists( 'TwellerFlow2_Gallery' ) ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $photos      = TwellerFlow2_Gallery::get_photos( $session->id );
+        $gallery_url = TwellerFlow2_Gallery::get_gallery_url( $code );
+        $list = array();
+        foreach ( $photos as $p ) {
+            $list[] = array(
+                'id'        => (int) $p->id,
+                'filename'  => $p->filename,
+                'url'       => $gallery_url . '/' . $p->filename,
+                'thumb_url' => $gallery_url . '/thumbs/' . $p->filename,
+            );
+        }
+
+        return rest_ensure_response( array(
+            'ok'      => true,
+            'photos'  => $list,
+            'count'   => count( $list ),
+            'cover'   => TwellerFlow2_Gallery::get_cover( $session ),
+            'stage'   => $session->current_stage,
+        ));
+    }
+
+    /** Delete one or more gallery photos (files + rows). */
+    public static function rest_gallery_photo_delete( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $ids = $request->get_param( 'photo_ids' );
+        if ( ! is_array( $ids ) ) {
+            $ids = array_filter( array_map( 'trim', explode( ',', (string) $request->get_param( 'photo_ids' ) ) ) );
+        }
+        if ( empty( $ids ) ) {
+            return new WP_Error( 'no_ids', 'photo_ids required', array( 'status' => 400 ) );
+        }
+
+        global $wpdb;
+        $table       = $wpdb->prefix . 'tweller_gallery_photos';
+        $gallery_dir = TwellerFlow2_Gallery::get_gallery_dir( $code );
+        $deleted     = 0;
+
+        foreach ( $ids as $photo_id ) {
+            $photo_id = intval( $photo_id );
+            $photo = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM $table WHERE id = %d AND session_id = %d", $photo_id, $session->id
+            ));
+            if ( ! $photo ) continue;
+            @unlink( $gallery_dir . '/' . $photo->filename );
+            @unlink( $gallery_dir . '/thumbs/' . $photo->filename );
+            $wpdb->delete( $table, array( 'id' => $photo_id ) );
+            $deleted++;
+        }
+
+        return rest_ensure_response( array( 'ok' => true, 'deleted' => $deleted ) );
+    }
+
+    /** Set the gallery cover photo and/or focal position from the app. */
+    public static function rest_gallery_cover( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $photo_id = intval( $request->get_param( 'photo_id' ) ?? 0 );
+        $pos_x    = $request->get_param( 'pos_x' );
+        $pos_y    = $request->get_param( 'pos_y' );
+
+        if ( $photo_id ) {
+            update_option( 'tweller_gallery_cover_' . $session->id, $photo_id );
+        }
+        if ( $pos_x !== null && $pos_y !== null ) {
+            $pos_x = max( 0, min( 100, floatval( $pos_x ) ) );
+            $pos_y = max( 0, min( 100, floatval( $pos_y ) ) );
+            update_option( 'tweller_gallery_cover_pos_' . $session->id, round( $pos_x, 1 ) . ',' . round( $pos_y, 1 ) );
+        }
+
+        TwellerFlow2_Gallery::generate_og_image( $session );
+
+        return rest_ensure_response( array( 'ok' => true, 'cover' => TwellerFlow2_Gallery::get_cover( $session ) ) );
     }
 
     /**
@@ -120,7 +295,23 @@ class TwellerFlow2_Photo_Automation {
             'total_count'   => array_sum( $stage_counts ),
             'upcoming'      => $upcoming ?: array(),
             'attention'     => $attention,
+            'booking_url'   => self::get_booking_page_url(),
+            'packages'      => self::get_packages_list(),
         ));
+    }
+
+    /** Packages as a flat list for the app's New Booking form. */
+    public static function get_packages_list() {
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $out = array();
+        foreach ( (array) $packages as $key => $pkg ) {
+            $out[] = array(
+                'key'   => $key,
+                'name'  => $pkg['name'] ?? ucfirst( (string) $key ),
+                'price' => floatval( $pkg['price'] ?? 0 ),
+            );
+        }
+        return $out;
     }
 
     /**
@@ -245,7 +436,30 @@ class TwellerFlow2_Photo_Automation {
             '[Mobile] Updated ' . implode( ', ', $changed )
         );
 
+        if ( isset( $update['payment_status'] ) ) {
+            // Calendar sync flips the event color when payment lands
+            do_action( 'tweller_flow_2_payment_updated', $session->id );
+        }
+
         return rest_ensure_response( array( 'ok' => true, 'updated' => array_keys( $update ) ) );
+    }
+
+    /** Resolve (and cache) the public booking page URL. */
+    public static function get_booking_page_url() {
+        $url = get_option( 'tweller_flow_2_booking_page', '' );
+        if ( $url ) return $url;
+
+        $existing = get_posts( array(
+            'post_type'   => 'page',
+            'post_status' => 'publish',
+            's'           => '[tweller_booking]',
+            'numberposts' => 1,
+        ) );
+        if ( ! empty( $existing ) ) {
+            $url = get_permalink( $existing[0]->ID );
+            update_option( 'tweller_flow_2_booking_page', $url );
+        }
+        return $url;
     }
 
     /**
@@ -259,6 +473,18 @@ class TwellerFlow2_Photo_Automation {
         $session_date = sanitize_text_field( $request->get_param( 'session_date' ) ?? '' );
         $package_type = sanitize_text_field( $request->get_param( 'package_type' ) ?? 'mini' );
 
+        // Extended fields used by the mobile app's New Booking form
+        $client_phone   = sanitize_text_field( $request->get_param( 'client_phone' ) ?? '' );
+        $session_time   = sanitize_text_field( $request->get_param( 'session_time' ) ?? '' );
+        $location       = sanitize_text_field( $request->get_param( 'location' ) ?? '' );
+        $members_count  = intval( $request->get_param( 'members_count' ) ?? 1 );
+        $total_amount   = floatval( $request->get_param( 'total_amount' ) ?? 0 );
+        $deposit_amount = floatval( $request->get_param( 'deposit_amount' ) ?? 0 );
+        $payment_status = sanitize_text_field( $request->get_param( 'payment_status' ) ?? '' );
+        $notes          = sanitize_textarea_field( $request->get_param( 'notes' ) ?? '' );
+        $send_email     = ! empty( $request->get_param( 'send_email' ) );
+        $from_mobile    = ! empty( $request->get_param( 'source_mobile' ) );
+
         if ( ! $client_name ) {
             return new WP_Error( 'missing_params', 'client_name is required', array( 'status' => 400 ) );
         }
@@ -267,6 +493,9 @@ class TwellerFlow2_Photo_Automation {
             $session_date = date( 'Y-m-d', strtotime( $session_date ) );
         } else {
             $session_date = current_time( 'Y-m-d' );
+        }
+        if ( ! in_array( $payment_status, array( 'pending', 'verifying', 'deposit', 'paid' ), true ) ) {
+            $payment_status = $from_mobile ? 'pending' : 'paid';
         }
 
         // Reuse an existing session for the same client + date
@@ -289,11 +518,17 @@ class TwellerFlow2_Photo_Automation {
         $session_id = TwellerFlow2_Session::create( array(
             'client_name'        => $client_name,
             'client_email'       => $client_email,
+            'client_phone'       => $client_phone,
             'package_type'       => $package_type,
             'session_date'       => $session_date,
-            'payment_status'     => 'paid',
-            'notes'              => 'Created from Lightroom plugin',
-            'skip_notifications' => true,
+            'session_time'       => $session_time,
+            'location'           => $location,
+            'members_count'      => max( 1, $members_count ),
+            'total_amount'       => $total_amount,
+            'deposit_amount'     => $deposit_amount,
+            'payment_status'     => $payment_status,
+            'notes'              => $notes !== '' ? $notes : ( $from_mobile ? 'Created from mobile app' : 'Created from Lightroom plugin' ),
+            'skip_notifications' => ! $send_email,
         ));
 
         if ( ! $session_id ) {
@@ -301,7 +536,7 @@ class TwellerFlow2_Photo_Automation {
         }
 
         $session = TwellerFlow2_Session::get( $session_id );
-        self::log_activity( $session_id, 'booked', 'Session created from Lightroom plugin' );
+        self::log_activity( $session_id, 'booked', $from_mobile ? 'Session created from mobile app' : 'Session created from Lightroom plugin' );
 
         return rest_ensure_response( array(
             'ok'            => true,

@@ -142,6 +142,9 @@ class TwellerFlow2_Notifications {
         $review_url  = get_option( 'tweller_flow_2_review_url', 'https://g.page/r/CbntSRvzXVrSEBM/review' );
         $first_name  = trim( explode( ' ', trim( $session->client_name ) )[0] );
 
+        // Deep-link into the gallery's print store (prints.js auto-opens on ?prints=1)
+        $prints_url = $tracker_url . ( strpos( $tracker_url, '?' ) !== false ? '&' : '?' ) . 'prints=1';
+
         $templates = array(
             // The one-and-only booking email: warm welcome + reserved spot +
             // payment details + tracker + calendar hold (ICS attached by caller).
@@ -203,6 +206,11 @@ class TwellerFlow2_Notifications {
                     " ) . "
 
                     <p style='color:" . self::C_TEXT . "; line-height:1.7;'>We hope you love your photos as much as we loved creating them with you.</p>
+
+                    " . self::email_card( 'Love Them in Print?', "
+                        <p style='margin:6px 0 14px; color:" . self::C_TEXT . "; line-height:1.7;'>Turn your favourites into professional prints, gallery canvases and layflat photobooks — order straight from your gallery and pick up or arrange delivery in Trinidad &amp; Tobago.</p>
+                        " . self::email_button( $prints_url, 'Order Prints' ) . "
+                    " ) . "
 
                     " . self::email_card( 'Share the Love', "
                         <p style='margin:6px 0 14px; color:" . self::C_TEXT . ";'>If you enjoyed your experience, a review would mean the world to us.</p>

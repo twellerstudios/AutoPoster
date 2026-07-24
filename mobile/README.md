@@ -1,31 +1,40 @@
-# Tweller Bookings Mobile (v0.2)
+# Tweller Bookings Mobile (v0.3)
 
-The studio in your pocket. Manage every client and session from your phone —
-pipeline dashboard, session timelines, culling proof uploads, and full-quality
-gallery delivery straight from Lightroom Mobile exports.
+The studio in your pocket. Full client management from your phone — create
+bookings, track the pipeline, upload culling proofs, deliver full-quality
+galleries, curate the gallery before the client sees it, and handle print
+orders.
 
 ## What it does
 
-- **Home** — pipeline dashboard: active sessions, who's choosing photos,
-  what needs your attention (receipts to verify, selections waiting on you),
-  and the next shoots on the calendar.
-- **Clients** — every session, searchable by name/email/shoot code, filterable
-  by stage. Tap one to open the full session.
-- **Session detail** — hero card, contact info (tap to call/email), payment
+- **Home** — pipeline dashboard: tappable stat tiles (jump straight to the
+  filtered client list), needs-your-attention, upcoming shoots, print orders,
+  **＋ New booking**, and **Share booking link** (send the booking page to a
+  client via any app).
+- **Clients** — every session, cache-first (opens instantly, refreshes in the
+  background), searchable, filterable by stage, ＋ New booking.
+- **Session detail** — hero card, tap-to-call/email contact info, payment
   summary with mark-as-paid, culling status with the client's picks, delivery
-  gallery status, the full stage timeline, stage control, and notes.
+  gallery, full stage timeline, stage control, notes — and delete (removes the
+  session, proofs and gallery from the website, double-confirmed).
 - **Upload for Culling** — watermarked selection proofs. Photos are resized
   on the phone (2048px, same as the Lightroom export), grouped by capture-time
   gaps, matched against the shoot date, and the server adds the watermark.
   Sources: this phone's gallery, or the WD My Passport Wireless Pro.
-- **Deliver to Gallery** — the finished photos. Files upload **exactly as
-  exported — zero compression** — so export from Lightroom Mobile at full
-  quality, pick them here, and they land in the client's delivery gallery.
-  When the upload finishes, one tap marks the session Delivered and sends the
-  gallery email.
+- **Upload to Gallery** — the finished photos. Files upload **exactly as
+  exported — zero compression** (export from Lightroom Mobile at full quality
+  first). Picked photos are queued instantly, so nothing is lost if you leave
+  the screen.
+- **Manage gallery** — see every delivered photo in-app before the client
+  does, set the cover photo, tap to place its focal point, and delete photos
+  (singly or in a batch).
+- **Print orders** — every order from client galleries and the public print
+  page: items with thumbnails, totals, one-tap status updates (with optional
+  customer email), and a copy-ready print list for the lab.
 - **Uploads** — a persistent queue (survives app restarts) showing the exact
   MB before anything moves. Wi-Fi-only by default; mobile data always asks
-  first with the size shown.
+  first with the size shown. After a gallery upload finishes: view the gallery
+  first, then mark delivered.
 
 ## Run in a browser (quickest way to try it)
 

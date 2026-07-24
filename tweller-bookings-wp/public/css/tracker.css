@@ -1123,3 +1123,136 @@ body.page .page-hero {
 .tf2-lightbox__bar {
     transition: opacity 0.6s ease;
 }
+
+/* ── Print Store integration (Order Prints) ────────── */
+
+/* Top toolbar pill button with cart counter */
+.tf2-gallery__toolbar-prints {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1.5px solid var(--tf-gold);
+    background: var(--tf-black);
+    color: var(--tf-gold);
+    border-radius: 100px;
+    padding: 8px 16px;
+    font-family: var(--tf-font);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.tf2-gallery__toolbar-prints:hover {
+    background: var(--tf-gold);
+    color: var(--tf-black);
+    box-shadow: 0 2px 10px rgba(201, 168, 76, 0.35);
+}
+
+.tf2-prints-badge {
+    min-width: 18px;
+    height: 18px;
+    border-radius: 100px;
+    background: var(--tf-gold);
+    color: var(--tf-black);
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    box-sizing: border-box;
+    line-height: 1;
+}
+
+.tf2-gallery__toolbar-prints:hover .tf2-prints-badge {
+    background: var(--tf-black);
+    color: var(--tf-gold);
+}
+
+/* Grid tile print button (top-right of each photo) */
+.tf2-item-print {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: none;
+    border-radius: 100px;
+    background: rgba(10, 10, 10, 0.62);
+    color: #fff;
+    padding: 7px 9px;
+    cursor: pointer;
+    line-height: 0;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, transform 0.12s;
+    backdrop-filter: blur(3px);
+}
+
+.tf2-gallery__item:hover .tf2-item-print,
+.tf2-item-print--active {
+    opacity: 1;
+}
+
+.tf2-item-print:hover {
+    background: var(--tf-gold);
+    color: var(--tf-black);
+}
+
+.tf2-item-print:active {
+    transform: scale(0.94);
+}
+
+.tf2-item-print--active {
+    background: var(--tf-gold);
+    color: var(--tf-black);
+}
+
+.tf2-item-print__count {
+    min-width: 15px;
+    height: 15px;
+    border-radius: 100px;
+    background: var(--tf-black);
+    color: var(--tf-gold);
+    font-family: var(--tf-font);
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    box-sizing: border-box;
+    line-height: 1;
+}
+
+/* Touch devices don't hover — keep the button visible but subtle */
+@media (hover: none) {
+    .tf2-item-print {
+        opacity: 0.85;
+    }
+}
+
+/* Lightbox print button — lives in .tf2-lightbox__bar so it inherits
+   the tf2-lightbox--idle fade with the rest of the controls */
+.tf2-lightbox__print {
+    border: none;
+    background: none;
+    padding: 0;
+    font-family: inherit;
+    gap: 6px;
+}
+
+.tf2-lightbox__print:hover {
+    color: var(--tf-gold-light);
+}
+
+.tf2-prints-badge--lb {
+    background: var(--tf-gold);
+    color: var(--tf-black);
+    min-width: 16px;
+    height: 16px;
+    font-size: 10px;
+}

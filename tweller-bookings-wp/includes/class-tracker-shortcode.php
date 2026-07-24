@@ -57,6 +57,16 @@ class TwellerFlow2_Tracker_Shortcode {
             if ( ! $session ) {
                 self::render_not_found( $code );
             } else {
+                // Print store rides along with the delivered gallery
+                if ( class_exists( 'TwellerFlow2_Prints' )
+                    && in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
+                    TwellerFlow2_Prints::enqueue_store_assets( array(
+                        'mode'          => 'gallery',
+                        'code'          => $session->tracking_code,
+                        'customerName'  => $session->client_name,
+                        'customerEmail' => $session->client_email,
+                    ));
+                }
                 self::render_tracker( $session );
             }
         }
@@ -354,6 +364,11 @@ class TwellerFlow2_Tracker_Shortcode {
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 <span>Download All</span>
                             </a>
+                            <button id="tf2-prints-open" class="tf2-gallery__toolbar-prints" type="button" title="Order Prints" style="display:none;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                <span>Order Prints</span>
+                                <span class="tf2-prints-badge" id="tf2-prints-count" style="display:none;">0</span>
+                            </button>
                         </div>
                     </div>
 
@@ -407,6 +422,11 @@ class TwellerFlow2_Tracker_Shortcode {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 Download
                             </a>
+                            <button class="tf2-lightbox__download tf2-lightbox__print" id="tf2-lightbox-print" type="button" style="display:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                Print
+                                <span class="tf2-prints-badge tf2-prints-badge--lb" id="tf2-lightbox-print-count" style="display:none;">0</span>
+                            </button>
                         </div>
                     </div>
                 </div>

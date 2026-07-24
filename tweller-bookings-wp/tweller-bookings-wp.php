@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Bookings WP
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client proof uploads, photo selection portal, gallery delivery, and WiPay payment integration.
- * Version: 3.13.0
+ * Version: 3.14.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_2_VERSION', '3.13.0' );
+define( 'TWELLER_FLOW_2_VERSION', '3.14.0' );
 define( 'TWELLER_FLOW_2_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_2_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_2_TABLE_SESSIONS', 'tweller_sessions' );
@@ -34,6 +34,8 @@ require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-culling.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-booking-api.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-booking-shortcode.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-google-contacts.php';
+require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-google-calendar.php';
+require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-prints.php';
 
 if ( is_admin() ) {
     require_once TWELLER_FLOW_2_PLUGIN_DIR . 'admin/class-admin.php';
@@ -48,6 +50,7 @@ function tweller_flow_2_activate() {
     TwellerFlow2_Gallery::create_table();
     TwellerFlow2_Client_Activity::create_table();
     TwellerFlow2_Culling::create_tables();
+    TwellerFlow2_Prints::create_tables();
     tweller_flow_2_ensure_tracker_page();
     tweller_flow_2_ensure_culling_page();
     flush_rewrite_rules();
@@ -217,6 +220,8 @@ function tweller_flow_2_init() {
     TwellerFlow2_Booking_API::init();
     TwellerFlow2_Booking_Shortcode::init();
     TwellerFlow2_Google_Contacts::init();
+    TwellerFlow2_Google_Calendar::init();
+    TwellerFlow2_Prints::init();
 
     // Auto-upgrade: create tables if missing
     $db_version = get_option( 'tweller_flow_2_db_version', '2.1.2' );

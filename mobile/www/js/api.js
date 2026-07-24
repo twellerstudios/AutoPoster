@@ -77,7 +77,63 @@ var TwellerApi = (function () {
 
     /** Full session detail: info, timeline, culling, gallery, receipt, links. */
     async function fetchSessionDetail(code) {
-        return getJson(base() + '/automation/session/' + encodeURIComponent(code) + '?' + keyParam());
+        var data = await getJson(base() + '/automation/session/' + encodeURIComponent(code) + '?' + keyParam());
+        try {
+            localStorage.setItem('tb_detail_' + code, JSON.stringify({ at: Date.now(), data: data }));
+        } catch (e) {}
+        return data;
+    }
+
+    function cachedSessionDetail(code) {
+        try {
+            var raw = localStorage.getItem('tb_detail_' + code);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
+    /** Create a booking from the app's New Booking form. */
+    async function createSession(fields) {
+        return postForm(base() + '/automation/create-session', Object.assign({ source_mobile: '1' }, fields));
+    }
+
+    /** Delete a session and all its files. */
+    async function deleteSession(code) {
+        try { localStorage.removeItem('tb_detail_' + code); } catch (e) {}
+        return postForm(base() + '/automation/session/' + encodeURIComponent(code) + '/delete', { confirm: 'DELETE' });
+    }
+
+    // ── Gallery management (app-side, API key) ──────────────────
+
+    /** Gallery photos + cover for the in-app manager (not stage-gated). */
+    async function fetchGallery(code) {
+        return getJson(base() + '/automation/gallery/' + encodeURIComponent(code) + '?' + keyParam());
+    }
+
+    async function deleteGalleryPhotos(code, ids) {
+        return postForm(base() + '/automation/gallery/' + encodeURIComponent(code) + '/photo-delete', {
+            photo_ids: ids.join(',')
+        });
+    }
+
+    async function setGalleryCover(code, photoId, posX, posY) {
+        var params = {};
+        if (photoId) params.photo_id = photoId;
+        if (posX !== undefined && posX !== null) { params.pos_x = posX; params.pos_y = posY; }
+        return postForm(base() + '/automation/gallery/' + encodeURIComponent(code) + '/cover', params);
+    }
+
+    // ── Print orders ────────────────────────────────────────────
+
+    async function fetchPrintOrders(status) {
+        var url = base() + '/prints/orders?' + keyParam() + (status ? '&status=' + encodeURIComponent(status) : '');
+        return getJson(url);
+    }
+
+    async function setPrintOrderStatus(id, status, notify) {
+        return postForm(base() + '/prints/orders/' + encodeURIComponent(id) + '/status', {
+            status: status,
+            notify: notify ? '1' : ''
+        });
     }
 
     /** Dashboard: stage counts, upcoming shoots, needs-attention list. */
@@ -215,6 +271,14 @@ var TwellerApi = (function () {
         fetchSessions: fetchSessions,
         cachedSessions: cachedSessions,
         fetchSessionDetail: fetchSessionDetail,
+        cachedSessionDetail: cachedSessionDetail,
+        createSession: createSession,
+        deleteSession: deleteSession,
+        fetchGallery: fetchGallery,
+        deleteGalleryPhotos: deleteGalleryPhotos,
+        setGalleryCover: setGalleryCover,
+        fetchPrintOrders: fetchPrintOrders,
+        setPrintOrderStatus: setPrintOrderStatus,
         fetchOverview: fetchOverview,
         cachedOverview: cachedOverview,
         advanceStage: advanceStage,

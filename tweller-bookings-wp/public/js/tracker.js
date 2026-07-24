@@ -602,8 +602,116 @@
 
             item.appendChild(img);
             item.addEventListener('click', function() { openLightbox(idx); });
+
+            // Print store: per-photo order button (only when the store is loaded)
+            if (window.TwellerPrints) {
+                item.appendChild(makeTilePrintBtn(photo));
+            }
+
             grid.appendChild(item);
         });
+
+        updatePrintBadges();
+    }
+
+    // ── Print store integration (window.TwellerPrints from prints.js) ──
+
+    function makeTilePrintBtn(photo) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tf2-item-print';
+        btn.title = 'Order a print of this photo';
+        btn.setAttribute('data-filename', photo.filename);
+        btn.innerHTML =
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>' +
+            '<span class="tf2-item-print__count" style="display:none;">0</span>';
+        btn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            if (window.TwellerPrints) {
+                window.TwellerPrints.openPicker({
+                    filename: photo.filename,
+                    url: photo.url,
+                    thumb_url: photo.thumb_url
+                });
+            }
+        });
+        return btn;
+    }
+
+    function updatePrintBadges() {
+        if (!window.TwellerPrints) return;
+
+        // Toolbar counter
+        var topCount = document.getElementById('tf2-prints-count');
+        if (topCount) {
+            var total = window.TwellerPrints.getCount();
+            topCount.textContent = String(total);
+            topCount.style.display = total > 0 ? '' : 'none';
+        }
+
+        // Grid tile badges
+        var tileBtns = grid ? grid.querySelectorAll('.tf2-item-print') : [];
+        for (var i = 0; i < tileBtns.length; i++) {
+            var fname = tileBtns[i].getAttribute('data-filename');
+            var n = window.TwellerPrints.getCountFor(fname);
+            var badge = tileBtns[i].querySelector('.tf2-item-print__count');
+            if (badge) {
+                badge.textContent = String(n);
+                badge.style.display = n > 0 ? '' : 'none';
+            }
+            if (n > 0) tileBtns[i].classList.add('tf2-item-print--active');
+            else tileBtns[i].classList.remove('tf2-item-print--active');
+        }
+
+        // Lightbox per-photo badge
+        var lbBadge = document.getElementById('tf2-lightbox-print-count');
+        if (lbBadge) {
+            var photo = photos[currentIdx];
+            var c = photo ? window.TwellerPrints.getCountFor(photo.filename) : 0;
+            lbBadge.textContent = String(c);
+            lbBadge.style.display = c > 0 ? '' : 'none';
+        }
+    }
+
+    function initPrintsIntegration() {
+        if (!window.TwellerPrints) return;
+
+        var topBtn = document.getElementById('tf2-prints-open');
+        if (topBtn) {
+            topBtn.style.display = '';
+            topBtn.addEventListener('click', function() {
+                trackActivity('prints_store_opened');
+                window.TwellerPrints.openStore();
+            });
+        }
+
+        var lbPrint = document.getElementById('tf2-lightbox-print');
+        if (lbPrint) {
+            lbPrint.style.display = '';
+            lbPrint.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var photo = photos[currentIdx];
+                if (photo) {
+                    window.TwellerPrints.openPicker({
+                        filename: photo.filename,
+                        url: photo.url,
+                        thumb_url: photo.thumb_url
+                    });
+                }
+            });
+        }
+
+        window.TwellerPrints.onCountChange(updatePrintBadges);
+        updatePrintBadges();
+    }
+
+    // prints.js is a separate footer script — bind once everything has run
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPrintsIntegration);
+    } else {
+        initPrintsIntegration();
     }
 
     // ── Force download helper ─────────────────────────
@@ -647,6 +755,8 @@
         // Store data for download handler
         lbDownload.setAttribute('data-url', photo.url);
         lbDownload.setAttribute('data-filename', photo.filename);
+        // Keep the per-photo print counter in sync while navigating
+        updatePrintBadges();
     }
 
     function prevPhoto() {

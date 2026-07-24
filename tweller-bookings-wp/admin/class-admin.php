@@ -170,6 +170,9 @@ class TwellerFlow2_Admin {
             );
             TwellerFlow2_Session::update( $id, $update_data );
 
+            // Payment status / date / time may have changed — re-sync Google Calendar
+            do_action( 'tweller_flow_2_payment_updated', $id );
+
             // Handle culling toggle
             if ( ! empty( $_POST['culling_enabled'] ) ) {
                 $cull_pw = sanitize_text_field( $_POST['culling_password'] ?? '' );
@@ -331,6 +334,9 @@ class TwellerFlow2_Admin {
                         TwellerFlow2_Notifications::send_email( $session, "Quick fix needed — we couldn't verify your receipt", $reject_body );
                     }
                 }
+
+                // Payment status changed — flip the Google Calendar event color
+                do_action( 'tweller_flow_2_payment_updated', $id );
             }
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&receipt_processed=1' ) );
             exit;
@@ -448,13 +454,31 @@ class TwellerFlow2_Admin {
                 ) );
             }
 
-            // Google Contacts sync
+            // Google Sync (Contacts + Calendar)
             if ( isset( $_POST['google_client_id'] ) ) {
                 update_option( TwellerFlow2_Google_Contacts::OPT_CONFIG, array(
-                    'client_id'     => sanitize_text_field( $_POST['google_client_id'] ),
-                    'client_secret' => sanitize_text_field( $_POST['google_client_secret'] ?? '' ),
-                    'enabled'       => ! empty( $_POST['google_sync_enabled'] ),
+                    'client_id'        => sanitize_text_field( $_POST['google_client_id'] ),
+                    'client_secret'    => sanitize_text_field( $_POST['google_client_secret'] ?? '' ),
+                    'enabled'          => ! empty( $_POST['google_sync_enabled'] ),
+                    'calendar_enabled' => ! empty( $_POST['google_calendar_enabled'] ),
                 ) );
+            }
+
+            // "Save & Test Sync Now" — run contact + calendar sync for the
+            // most recent session inline and show the results on the page.
+            if ( ! empty( $_POST['tweller_flow_2_google_test_sync'] ) ) {
+                $recent = TwellerFlow2_Session::get_all( array( 'per_page' => 1, 'orderby' => 'created_at', 'order' => 'DESC' ) );
+                if ( ! empty( $recent ) ) {
+                    $test_id = intval( $recent[0]->id );
+                    TwellerFlow2_Google_Contacts::sync_session_contact( $test_id );
+                    if ( class_exists( 'TwellerFlow2_Google_Calendar' ) ) {
+                        TwellerFlow2_Google_Calendar::sync_session( $test_id );
+                    }
+                    wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-settings&saved=1&google_test=' . $test_id ) );
+                } else {
+                    wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-settings&saved=1&google_test=0' ) );
+                }
+                exit;
             }
 
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-settings&saved=1' ) );

@@ -44,6 +44,9 @@ class TwellerFlow2_Tracker_Shortcode {
             'apiUrl'      => rest_url( 'tweller-flow-2/v1/track/' ),
             'galleryUrl'  => rest_url( 'tweller-flow-2/v1/gallery/' ),
             'nonce'       => wp_create_nonce( 'wp_rest' ),
+            'wipay'       => array(
+                'enabled' => class_exists( 'TwellerFlow2_WiPay' ) && TwellerFlow2_WiPay::is_enabled(),
+            ),
         ));
 
         $code = isset( $_GET['code'] ) ? sanitize_text_field( $_GET['code'] ) : '';
@@ -268,6 +271,7 @@ class TwellerFlow2_Tracker_Shortcode {
                     </div>
                     
                     <?php if ( $idx === 0 && $session->current_stage === 'booked' && $session->payment_status === 'pending' ) : ?>
+                        <?php self::render_wipay_card( $session, (float) $session->total_amount, true ); ?>
                         <div class="tf2-tracker__receipt">
                             <div class="tf2-tracker__receipt-header">
                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--tf2-gold)" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -316,6 +320,11 @@ class TwellerFlow2_Tracker_Shortcode {
                                 Your <?php echo esc_html($receipt['bank'] ?? 'bank'); ?> transfer receipt has been successfully uploaded! We are currently verifying your payment. Please check back in 1-2 business days.
                             </p>
                         </div>
+                    <?php elseif ( $idx === 0 && $session->payment_status === 'deposit' ) : ?>
+                        <?php
+                        // Deposit received — offer the card option for the remaining balance
+                        self::render_wipay_card( $session, (float) $session->total_amount - (float) $session->deposit_amount, false );
+                        ?>
                     <?php endif; ?>
                     
                 <?php endforeach; ?>
@@ -438,5 +447,30 @@ class TwellerFlow2_Tracker_Shortcode {
             </div>
         </div>
         <?php
+    }
+
+    /**
+     * "Pay by card" card (WiPay hosted checkout) — shown above the
+     * bank-transfer option whenever card payments are enabled and a
+     * balance is due on the session.
+     */
+    private static function render_wipay_card( $session, $amount, $with_divider = true ) {
+        if ( ! class_exists( 'TwellerFlow2_WiPay' ) || ! TwellerFlow2_WiPay::is_enabled() ) return;
+        if ( $amount < 1 ) return;
+
+        $pay_url = TwellerFlow2_WiPay::checkout_url( 'booking', $session->tracking_code );
+        ?>
+        <div class="tf2-wipay">
+            <span class="tf2-wipay__label">Pay Online</span>
+            <div class="tf2-wipay__amount">TT$<?php echo esc_html( number_format( $amount, 2 ) ); ?></div>
+            <a class="tf2-wipay__btn" href="<?php echo esc_url( $pay_url ); ?>">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                Pay by card
+            </a>
+            <p class="tf2-wipay__sub">Secure checkout powered by WiPay &middot; Visa &amp; Mastercard</p>
+        </div>
+        <?php if ( $with_divider ) : ?>
+        <div class="tf2-wipay-divider"><span>or pay by bank transfer</span></div>
+        <?php endif;
     }
 }

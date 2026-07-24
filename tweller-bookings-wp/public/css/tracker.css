@@ -1256,3 +1256,125 @@ body.page .page-hero {
     height: 16px;
     font-size: 10px;
 }
+
+/* ── WiPay online payment card ─────────────────────── */
+.tf2-wipay {
+    background: var(--tf-white);
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 16px 0 0;
+    width: 100%;
+    max-width: 420px;
+    box-sizing: border-box;
+    font-family: var(--tf-font);
+    text-align: left;
+    transition: box-shadow 0.2s;
+}
+.tf2-wipay:hover {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03);
+}
+.tf2-wipay__label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #C9A227;
+    margin-bottom: 6px;
+}
+.tf2-wipay__amount {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #101010;
+    margin-bottom: 16px;
+}
+.tf2-wipay__btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    background: #101010;
+    color: #FFFFFF !important;
+    border-radius: 8px;
+    padding: 13px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-decoration: none !important;
+    box-sizing: border-box;
+    transition: background 0.2s, color 0.2s, transform 0.1s;
+}
+.tf2-wipay__btn:hover {
+    background: #C9A227;
+    color: #101010 !important;
+}
+.tf2-wipay__btn:active {
+    transform: scale(0.98);
+}
+.tf2-wipay__sub {
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: var(--tf-gray-500);
+    text-align: center;
+    line-height: 1.5;
+}
+.tf2-wipay-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 420px;
+    margin: 20px 0 0;
+    color: var(--tf-gray-500);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: var(--tf-font);
+}
+.tf2-wipay-divider::before,
+.tf2-wipay-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--tf-gray-200);
+}
+
+/* ── Payment return banners ────────────────────────── */
+.tf2-pay-banner {
+    border-radius: 12px;
+    border: 1px solid;
+    padding: 16px 18px;
+    margin: 0 0 20px;
+    font-family: var(--tf-font);
+}
+.tf2-pay-banner--success {
+    background: #F6FBF6;
+    border-color: #CDE8CF;
+    color: #14532D;
+}
+.tf2-pay-banner--error {
+    background: #FDF7F7;
+    border-color: #F0D5D5;
+    color: #7F1D1D;
+}
+.tf2-pay-banner__title {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.tf2-pay-banner__msg {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.tf2-pay-banner__txn {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    opacity: 0.7;
+}

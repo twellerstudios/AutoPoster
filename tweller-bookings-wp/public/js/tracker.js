@@ -10,6 +10,58 @@
     var code = tracker.getAttribute('data-code');
     if (!code || typeof twellerFlow2Tracker === 'undefined') return;
 
+    // ── WiPay payment return banner (?payment=success|failed|error|unverified) ──
+    (function() {
+        var qs = window.location.search || '';
+        var stateMatch = qs.match(/[?&]payment=([A-Za-z]+)/);
+        if (!stateMatch) return;
+        var state = stateMatch[1].toLowerCase();
+
+        function qparam(name) {
+            var r = qs.match(new RegExp('[?&]' + name + '=([^&]*)'));
+            if (!r) return '';
+            try {
+                return decodeURIComponent(r[1].replace(/\+/g, ' '));
+            } catch (e) {
+                return '';
+            }
+        }
+
+        var banner = document.createElement('div');
+        var title = document.createElement('p');
+        title.className = 'tf2-pay-banner__title';
+        var msg = document.createElement('p');
+        msg.className = 'tf2-pay-banner__msg';
+
+        if (state === 'success') {
+            banner.className = 'tf2-pay-banner tf2-pay-banner--success';
+            title.textContent = 'Payment received — thank you!';
+            msg.textContent = 'Your session is confirmed.';
+            var txn = qparam('txn').slice(0, 64);
+            if (txn) {
+                var txnEl = document.createElement('span');
+                txnEl.className = 'tf2-pay-banner__txn';
+                txnEl.textContent = 'Transaction ' + txn;
+                msg.appendChild(txnEl);
+            }
+        } else if (state === 'unverified') {
+            banner.className = 'tf2-pay-banner tf2-pay-banner--error';
+            title.textContent = 'Payment received — verification pending';
+            msg.textContent = 'We could not verify this payment automatically. We will confirm it manually — please contact us if you have any questions.';
+        } else if (state === 'failed' || state === 'error') {
+            banner.className = 'tf2-pay-banner tf2-pay-banner--error';
+            title.textContent = 'Payment unsuccessful';
+            var pmsg = qparam('pmsg').slice(0, 140);
+            msg.textContent = pmsg || 'Your card was not charged. You can try again below, or pay by bank transfer instead.';
+        } else {
+            return;
+        }
+
+        banner.appendChild(title);
+        banner.appendChild(msg);
+        tracker.insertBefore(banner, tracker.firstChild);
+    })();
+
     // Handle post-upload scroll restoration smoothly
     if (sessionStorage.getItem('tf_receipt_uploaded')) {
         sessionStorage.removeItem('tf_receipt_uploaded');

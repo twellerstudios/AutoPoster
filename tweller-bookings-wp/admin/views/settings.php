@@ -185,6 +185,111 @@
             </div>
         </div>
 
+        <!-- Payments — WiPay -->
+        <?php if ( class_exists( 'TwellerFlow2_WiPay' ) ) :
+            $wipay     = TwellerFlow2_WiPay::get_settings();
+            $wipay_log = get_option( 'tweller_wipay_log', array() );
+            $wipay_log = is_array( $wipay_log ) ? array_slice( $wipay_log, 0, 8 ) : array();
+        ?>
+        <div class="tf2-card tf2-mb-6">
+            <div class="tf2-settings-section">
+                <h3>Payments &mdash; WiPay</h3>
+                <p class="tf2-description">Accept Visa &amp; Mastercard through WiPay's secure hosted checkout. Clients get a "Pay by card" button on their tracker page next to the bank-transfer option.</p>
+
+                <div class="tf2-field" style="max-width:480px;">
+                    <label class="tf2-toggle">
+                        <input type="checkbox" name="wipay_enabled" value="1" <?php checked( ! empty( $wipay['enabled'] ) ); ?>>
+                        <span class="tf2-toggle__switch"></span>
+                        <span class="tf2-toggle__label">Enable WiPay card payments</span>
+                    </label>
+                </div>
+
+                <div class="tf2-row" style="max-width:640px;">
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Account Number</label>
+                        <input type="text" name="wipay_account_number" value="<?php echo esc_attr( $wipay['account_number'] ); ?>" placeholder="8694059828" pattern="[0-9]{10}" maxlength="10">
+                        <div class="tf2-field__hint">Your 10-digit WiPay account number (used in Live mode).</div>
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">API Key</label>
+                        <input type="password" name="wipay_api_key" value="<?php echo esc_attr( $wipay['api_key'] ); ?>" placeholder="From your WiPay dashboard">
+                        <div class="tf2-field__hint">Used to cryptographically verify payment confirmations.</div>
+                    </div>
+                </div>
+
+                <div class="tf2-row" style="max-width:640px;">
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Environment</label>
+                        <select name="wipay_environment">
+                            <option value="sandbox" <?php selected( $wipay['environment'], 'sandbox' ); ?>>Sandbox &mdash; test cards</option>
+                            <option value="live" <?php selected( $wipay['environment'], 'live' ); ?>>Live</option>
+                        </select>
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Fee Structure</label>
+                        <select name="wipay_fee_structure">
+                            <option value="customer_pay" <?php selected( $wipay['fee_structure'], 'customer_pay' ); ?>>Customer pays fee</option>
+                            <option value="merchant_absorb" <?php selected( $wipay['fee_structure'], 'merchant_absorb' ); ?>>I absorb the fee</option>
+                            <option value="split" <?php selected( $wipay['fee_structure'], 'split' ); ?>>Split</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="tf2-field" style="max-width:300px;">
+                    <label class="tf2-field__label">Origin (app identifier)</label>
+                    <input type="text" name="wipay_origin" value="<?php echo esc_attr( $wipay['origin'] ); ?>" readonly onfocus="this.removeAttribute('readonly');">
+                    <div class="tf2-field__hint">Identifies this website to WiPay. Leave as-is unless WiPay support asks otherwise.</div>
+                </div>
+
+                <div class="tf2-field" style="max-width:640px;">
+                    <label class="tf2-field__label">Response URL</label>
+                    <code style="user-select:all; display:inline-block; padding:6px 8px; background:#F5F5F5; border-radius:6px;"><?php echo esc_html( rest_url( 'tweller-flow-2/v1/wipay/response' ) ); ?></code>
+                    <div class="tf2-field__hint">Sent automatically with every payment request &mdash; nothing to configure on the WiPay side.</div>
+                </div>
+
+                <div class="tf2-alert" style="background:#EFF6FF; color:#1E3A8A; max-width:640px;">
+                    <strong>Sandbox testing:</strong> in Sandbox mode the plugin automatically uses WiPay's shared test account <code>1234567890</code> &mdash; set the API Key above to <code>123</code>, then pay with test card <code>4111 1111 1111 1111</code> (any expiry / CVV). No real money moves.
+                </div>
+
+                <?php if ( ! empty( $wipay_log ) ) : ?>
+                    <div class="tf2-field" style="max-width:640px;">
+                        <label class="tf2-field__label">Recent payment activity</label>
+                        <table class="widefat striped" style="margin-top:4px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:140px;">Time</th>
+                                    <th style="width:70px;">Type</th>
+                                    <th style="width:90px;">Status</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $wipay_log as $entry ) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html( $entry['time'] ?? '' ); ?></td>
+                                        <td><?php echo esc_html( ucfirst( $entry['type'] ?? '' ) ); ?></td>
+                                        <td>
+                                            <?php $wl_status = $entry['status'] ?? ''; ?>
+                                            <?php if ( $wl_status === 'success' ) : ?>
+                                                <span style="color:#166534; font-weight:600;">Success</span>
+                                            <?php elseif ( $wl_status === 'request' ) : ?>
+                                                <span style="color:#3D3630;">Request</span>
+                                            <?php else : ?>
+                                                <span style="color:#991B1B; font-weight:600;"><?php echo esc_html( ucfirst( $wl_status ) ); ?></span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo esc_html( ( $entry['ref'] ?? '' ) . ' — ' . ( $entry['message'] ?? '' ) ); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <div class="tf2-field__hint" style="margin-top:4px;">Last 8 payment events, newest first.</div>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Culling edited-preview look -->
         <div class="tf2-card tf2-mb-6">
             <div class="tf2-settings-section">

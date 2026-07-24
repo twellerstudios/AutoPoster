@@ -36,6 +36,7 @@ require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-booking-shortcode.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-google-contacts.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-google-calendar.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-prints.php';
+require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-wipay.php';
 
 if ( is_admin() ) {
     require_once TWELLER_FLOW_2_PLUGIN_DIR . 'admin/class-admin.php';
@@ -222,6 +223,7 @@ function tweller_flow_2_init() {
     TwellerFlow2_Google_Contacts::init();
     TwellerFlow2_Google_Calendar::init();
     TwellerFlow2_Prints::init();
+    TwellerFlow2_WiPay::init();
 
     // Auto-upgrade: create tables if missing
     $db_version = get_option( 'tweller_flow_2_db_version', '2.1.2' );

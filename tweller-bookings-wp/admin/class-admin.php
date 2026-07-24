@@ -438,6 +438,26 @@ class TwellerFlow2_Admin {
 
             // Session types & packages are managed on the Offerings page
 
+            // WiPay card payments
+            if ( isset( $_POST['wipay_account_number'] ) && class_exists( 'TwellerFlow2_WiPay' ) ) {
+                $wipay_account = preg_replace( '/\D/', '', sanitize_text_field( $_POST['wipay_account_number'] ) );
+                $wipay_env     = in_array( $_POST['wipay_environment'] ?? '', array( 'sandbox', 'live' ), true )
+                    ? $_POST['wipay_environment'] : 'sandbox';
+                $wipay_fee     = in_array( $_POST['wipay_fee_structure'] ?? '', array( 'customer_pay', 'merchant_absorb', 'split' ), true )
+                    ? $_POST['wipay_fee_structure'] : 'customer_pay';
+                $wipay_origin  = preg_replace( '/[^A-Za-z0-9_-]/', '', sanitize_text_field( $_POST['wipay_origin'] ?? '' ) );
+                $wipay_origin  = substr( $wipay_origin, 0, 32 );
+
+                update_option( 'tweller_flow_2_wipay', array(
+                    'enabled'        => ! empty( $_POST['wipay_enabled'] ),
+                    'account_number' => $wipay_account !== '' ? $wipay_account : '8694059828',
+                    'api_key'        => sanitize_text_field( $_POST['wipay_api_key'] ?? '' ),
+                    'environment'    => $wipay_env,
+                    'fee_structure'  => $wipay_fee,
+                    'origin'         => $wipay_origin !== '' ? $wipay_origin : 'TwellerBookings-WP',
+                ));
+            }
+
             // Save automation settings
             if ( isset( $_POST['automation_backend_url'] ) ) {
                 TwellerFlow2_Photo_Automation::save_settings( $_POST );

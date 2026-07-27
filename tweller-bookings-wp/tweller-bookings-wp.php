@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Bookings WP
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client proof uploads, photo selection portal, gallery delivery, and WiPay payment integration.
- * Version: 3.15.0
+ * Version: 3.16.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_2_VERSION', '3.15.0' );
+define( 'TWELLER_FLOW_2_VERSION', '3.16.0' );
 define( 'TWELLER_FLOW_2_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_2_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_2_TABLE_SESSIONS', 'tweller_sessions' );
@@ -36,6 +36,7 @@ require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-booking-shortcode.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-google-contacts.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-google-calendar.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-prints.php';
+require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-print-fulfillment.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-wipay.php';
 
 if ( is_admin() ) {
@@ -223,6 +224,7 @@ function tweller_flow_2_init() {
     TwellerFlow2_Google_Contacts::init();
     TwellerFlow2_Google_Calendar::init();
     TwellerFlow2_Prints::init();
+    TwellerFlow2_Print_Fulfillment::init();
     TwellerFlow2_WiPay::init();
 
     // Auto-upgrade: create tables if missing

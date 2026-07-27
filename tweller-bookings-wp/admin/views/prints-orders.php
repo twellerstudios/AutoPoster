@@ -174,6 +174,13 @@
                                         <?php if ( ! empty( $payment['paid_at'] ) ) : ?> · <?php echo esc_html( date( 'M j, Y g:ia', strtotime( $payment['paid_at'] ) ) ); ?><?php endif; ?>
                                     </p>
                                 <?php endif; ?>
+
+                                <?php
+                                // Print-ready files, provider hand-off, shipping label
+                                if ( class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
+                                    TwellerFlow2_Print_Fulfillment::render_order_panel( $order );
+                                }
+                                ?>
                             </div>
                             <div style="flex:0 0 300px;">
                                 <h4 style="margin:8px 0;">Manage</h4>

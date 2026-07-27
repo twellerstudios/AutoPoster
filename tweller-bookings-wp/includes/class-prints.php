@@ -13,7 +13,7 @@ class TwellerFlow2_Prints {
 
     const TABLE_ORDERS  = 'tweller_print_orders';
     const UPLOAD_SUBDIR = 'tweller-prints';
-    const VERSION       = '2.0.0';
+    const VERSION       = '2.1.0';
 
     const OPT_PRODUCTS = 'tweller_prints_products';
     const OPT_SETTINGS = 'tweller_prints_settings';
@@ -71,8 +71,34 @@ class TwellerFlow2_Prints {
         self::ensure_page();
         if ( get_option( self::OPT_PRODUCTS, false ) === false ) {
             add_option( self::OPT_PRODUCTS, self::default_products() );
+        } else {
+            self::strip_supplier_names();
         }
         update_option( self::OPT_VERSION, self::VERSION );
+    }
+
+    /**
+     * Album products are made by a trade supplier and resold as our own —
+     * their brand never belongs in customer-facing product names.
+     */
+    private static function strip_supplier_names() {
+        $products = get_option( self::OPT_PRODUCTS, array() );
+        if ( ! is_array( $products ) ) return;
+
+        $changed = false;
+        foreach ( $products as &$p ) {
+            if ( empty( $p['name'] ) ) continue;
+            $clean = trim( preg_replace( '/\bZno\b\s*/i', '', $p['name'] ) );
+            if ( $clean !== '' && $clean !== $p['name'] ) {
+                $p['name'] = $clean;
+                $changed   = true;
+            }
+        }
+        unset( $p );
+
+        if ( $changed ) {
+            update_option( self::OPT_PRODUCTS, $products );
+        }
     }
 
     public static function create_tables() {
@@ -182,9 +208,9 @@ class TwellerFlow2_Prints {
             );
         }
         $books = array(
-            array( 'book_layflat_8x8',    'Zno Layflat Photobook 8×8 (20 pages)',   8,  8,  650 ),
-            array( 'book_layflat_10x10',  'Zno Layflat Photobook 10×10 (20 pages)', 10, 10, 850 ),
-            array( 'book_flushmount_12x12', 'Zno Premium Flushmount Album 12×12',   12, 12, 1400 ),
+            array( 'book_layflat_8x8',    'Layflat Photobook 8×8 (20 pages)',   8,  8,  650 ),
+            array( 'book_layflat_10x10',  'Layflat Photobook 10×10 (20 pages)', 10, 10, 850 ),
+            array( 'book_flushmount_12x12', 'Premium Flushmount Album 12×12',   12, 12, 1400 ),
         );
         foreach ( $books as $b ) {
             $products[] = array(
@@ -229,7 +255,7 @@ class TwellerFlow2_Prints {
             'pickup_note'          => "Prints are usually ready for pickup at Tweller Studios within 7–10 business days. Delivery across Trinidad & Tobago can be arranged — we'll confirm the details with you after your order.",
             'payment_instructions' => '',
             'hero_headline'        => 'Your memories, beautifully printed.',
-            'hero_subheadline'     => 'Museum-grade prints, gallery canvases and handcrafted Zno albums — delivered across Trinidad & Tobago.',
+            'hero_subheadline'     => 'Museum-grade prints, gallery canvases and handcrafted albums — delivered across Trinidad & Tobago.',
             'hero_intro'           => '',
             'hero_bg_url'          => '',
         );
@@ -364,7 +390,7 @@ class TwellerFlow2_Prints {
         $categories = array(
             'print'     => array( 'label' => 'Fine-Art Prints',  'blurb' => 'Rich, true-to-colour photographic prints on professional lustre paper.' ),
             'canvas'    => array( 'label' => 'Gallery Canvas',   'blurb' => 'Ready-to-hang wrapped canvas — your photo, gallery depth, no framing needed.' ),
-            'photobook' => array( 'label' => 'Albums & Photobooks', 'blurb' => 'Handcrafted Zno layflat albums, designed together with you after you order.' ),
+            'photobook' => array( 'label' => 'Albums & Photobooks', 'blurb' => 'Handcrafted layflat albums, designed together with you after you order.' ),
         );
         $grouped = array();
         foreach ( $products as $p ) {

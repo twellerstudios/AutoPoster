@@ -71,7 +71,7 @@
                 </div>
                 <div class="tf2-field">
                     <label>Hero subheadline</label>
-                    <input type="text" name="prints_hero_subheadline" value="<?php echo esc_attr( $settings['hero_subheadline'] ); ?>" style="max-width:640px;" placeholder="Museum-grade prints, gallery canvases and handcrafted Zno albums — delivered across Trinidad &amp; Tobago.">
+                    <input type="text" name="prints_hero_subheadline" value="<?php echo esc_attr( $settings['hero_subheadline'] ); ?>" style="max-width:640px;" placeholder="Museum-grade prints, gallery canvases and handcrafted albums — delivered across Trinidad &amp; Tobago.">
                 </div>
                 <div class="tf2-field">
                     <label>Hero intro (optional)</label>

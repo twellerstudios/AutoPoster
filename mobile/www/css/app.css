@@ -673,6 +673,30 @@ a { color: var(--gold-deep); text-decoration: none; }
 }
 .sheet__title { font-weight: 800; font-size: 16px; margin-bottom: 10px; }
 
+/* ── Delivery scanner ──────────────────────────────────────── */
+
+.scanbox {
+    position: relative;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--black);
+    aspect-ratio: 4 / 3;
+}
+.scanbox video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.scanbox__frame {
+    position: absolute;
+    inset: 18% 8%;
+    border: 2px solid var(--gold);
+    border-radius: 8px;
+    box-shadow: 0 0 0 100vmax rgba(16, 16, 16, 0.35);
+    pointer-events: none;
+}
+
 /* ── Print orders ──────────────────────────────────────────── */
 
 .order-items { margin-top: 8px; }

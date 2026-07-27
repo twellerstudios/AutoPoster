@@ -149,6 +149,11 @@ var TwellerApi = (function () {
         });
     }
 
+    /** Scan a shipping-label barcode to mark an order delivered. */
+    async function scanPrintDelivery(code) {
+        return postForm(base() + '/prints/scan', { code: code });
+    }
+
     /** Dashboard: stage counts, upcoming shoots, needs-attention list. */
     async function fetchOverview() {
         var data = await getJson(base() + '/automation/overview?' + keyParam());
@@ -293,6 +298,7 @@ var TwellerApi = (function () {
         fetchPrintOrders: fetchPrintOrders,
         cachedPrintOrders: cachedPrintOrders,
         setPrintOrderStatus: setPrintOrderStatus,
+        scanPrintDelivery: scanPrintDelivery,
         fetchOverview: fetchOverview,
         cachedOverview: cachedOverview,
         advanceStage: advanceStage,

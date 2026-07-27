@@ -899,8 +899,6 @@
 
     // ── Slideshow ──────────────────────────────────────
     var ssBtn     = document.getElementById('tf2-gallery-slideshow');
-    var ssChooser = document.getElementById('tf2-ss-chooser');
-    var ssCancel  = document.getElementById('tf2-ss-cancel');
     var ss        = document.getElementById('tf2-slideshow');
     var ssLayerA  = document.getElementById('tf2-ss-layer-a');
     var ssLayerB  = document.getElementById('tf2-ss-layer-b');
@@ -911,30 +909,19 @@
     var ssTimer = null, ssIdleTimer = null;
     var ssIndex = 0, ssFront = null, ssPaused = false;
 
+    // Slideshow launches straight into the classic (crossfade) mode —
+    // there is no style chooser.
     if (ssBtn && ss) {
         ssBtn.addEventListener('click', function() {
             if (!photos.length) return;
-            ssChooser.style.display = 'flex';
-        });
-
-        if (ssCancel) ssCancel.addEventListener('click', function() {
-            ssChooser.style.display = 'none';
-        });
-        ssChooser.addEventListener('click', function(e) {
-            if (e.target === ssChooser) ssChooser.style.display = 'none';
-        });
-
-        ssChooser.querySelectorAll('.tf2-ss-chooser__option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                ssChooser.style.display = 'none';
-                startSlideshow(opt.getAttribute('data-style') || 'fade');
-            });
+            if (selMode) exitSelectMode();
+            startSlideshow();
         });
     }
 
-    function startSlideshow(style) {
-        trackActivity('slideshow_played', style);
-        ss.className = 'tf2-slideshow tf2-slideshow--' + style;
+    function startSlideshow() {
+        trackActivity('slideshow_played', 'classic');
+        ss.className = 'tf2-slideshow';
         ss.style.display = 'block';
         document.body.style.overflow = 'hidden';
 

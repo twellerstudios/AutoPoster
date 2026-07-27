@@ -194,7 +194,8 @@
         users: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>',
         upload: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
         star: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
-        link: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+        link: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+        scan: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>'
     };
 
     // ── Navigation (tab roots + pushed sub-screens) ──────────────
@@ -1449,16 +1450,19 @@
     //  PRINT ORDERS
     // ═════════════════════════════════════════════════════════════
 
-    var ORDER_STATUSES = ['new', 'confirmed', 'printing', 'ready', 'completed', 'cancelled'];
+    // The order's life in the order it actually happens.
+    var ORDER_LADDER = ['new', 'confirmed', 'printing', 'ready', 'completed'];
+    var ORDER_STATUSES = ORDER_LADDER.concat(['cancelled']);
     var ORDER_META = {
-        new:       { label: 'Awaiting payment',  pill: 'gold' },
-        confirmed: { label: 'Payment confirmed', pill: 'blue' },
-        printing:  { label: 'Printing',          pill: 'purple' },
-        ready:     { label: 'Ready for pickup',  pill: 'green' },
-        completed: { label: 'Completed',         pill: 'gray' },
-        cancelled: { label: 'Cancelled',         pill: 'red' }
+        new:       { label: 'Order received',    pill: 'gold',   action: 'Confirm payment' },
+        confirmed: { label: 'Payment confirmed', pill: 'blue',   action: 'Start printing' },
+        printing:  { label: 'In printing',       pill: 'purple', action: 'Printing complete' },
+        ready:     { label: 'Printing complete', pill: 'green',  action: 'Mark delivered' },
+        completed: { label: 'Delivered',         pill: 'gray',   action: '' },
+        cancelled: { label: 'Cancelled',         pill: 'red',    action: '' }
     };
-    function orderMeta(st) { return ORDER_META[st] || { label: st || '—', pill: 'gray' }; }
+    function orderMeta(st) { return ORDER_META[st] || { label: st || '—', pill: 'gray', action: '' }; }
+    function ladderIndex(st) { return ORDER_LADDER.indexOf(st); }
 
     function orderPill(status) {
         var m = orderMeta(status);
@@ -1539,6 +1543,12 @@
         ));
         var wrap = el('<div class="wrap"></div>');
         screen.appendChild(wrap);
+
+        var scanBtn = el('<button class="btn btn--dark">' + ICONS.scan + ' Scan delivery</button>');
+        scanBtn.addEventListener('click', function () {
+            push(function () { renderScanner(); });
+        });
+        wrap.appendChild(scanBtn);
 
         var filter = '';
         var chips = el('<div class="chips"></div>');
@@ -1692,32 +1702,215 @@
         }
         wrap.appendChild(payCard);
 
-        // Status control
-        var stCard = el('<div class="card"><div class="card__title">Status — currently ' + orderPill(o.status) + '</div></div>');
+        // Progress — the order's life, in order
+        wrap.appendChild(buildOrderStepper(o));
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    /**
+     * The order ladder as a stepper: past steps ticked, the current step
+     * highlighted, and one primary button that advances exactly one step.
+     */
+    function buildOrderStepper(o) {
+        var card = el('<div class="card"><div class="card__title">Progress</div></div>');
+
+        if (o.status === 'cancelled') {
+            card.appendChild(el('<p class="empty" style="padding:10px 0;">This order was cancelled.</p>'));
+            return card;
+        }
+
+        var current = ladderIndex(o.status);
+        var tl = el('<div class="tl"></div>');
+        ORDER_LADDER.forEach(function (st, idx) {
+            var cls = idx < current ? 'tl__item--done' : (idx === current ? 'tl__item--current' : 'tl__item--future');
+            tl.appendChild(el(
+                '<div class="tl__item ' + cls + '">' +
+                    '<div class="tl__rail"><div class="tl__dot"></div><div class="tl__line"></div></div>' +
+                    '<div class="tl__body"><div class="tl__stage">' + esc(orderMeta(st).label) + '</div></div>' +
+                '</div>'
+            ));
+        });
+        card.appendChild(tl);
+
         var notifyToggle = el('<label class="toggle"><input type="checkbox" checked><span>Email the customer about this update</span></label>');
-        stCard.appendChild(notifyToggle);
-        ORDER_STATUSES.forEach(function (st) {
-            if (st === o.status) return;
-            var label = st === 'confirmed' ? '✓ Confirm payment' : 'Mark ' + orderMeta(st).label.toLowerCase();
-            var b = el('<button class="btn btn--ghost btn--sm" style="margin-right:8px;">' + esc(label) + '</button>');
-            b.addEventListener('click', async function () {
-                b.disabled = true;
+        card.appendChild(notifyToggle);
+
+        function advanceTo(target, label) {
+            return async function () {
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Updating…';
                 try {
-                    await TwellerApi.setPrintOrderStatus(o.id, st, notifyToggle.querySelector('input').checked);
-                    o.status = st;
-                    toast('Order updated: ' + orderMeta(st).label + '.');
+                    await TwellerApi.setPrintOrderStatus(o.id, target, notifyToggle.querySelector('input').checked);
+                    o.status = target;
+                    toast('Order updated: ' + label + '.');
                     refreshPrintsBadge();
                     renderPrintOrderDetail(o);
                 } catch (e) {
-                    b.disabled = false;
+                    btn.disabled = false;
+                    btn.textContent = label;
                     toast('Could not update: ' + e.message, 5000);
                 }
-            });
-            stCard.appendChild(b);
-        });
-        wrap.appendChild(stCard);
+            };
+        }
 
+        // One forward step at a time — no jumping the queue.
+        var next = ORDER_LADDER[current + 1];
+        if (current >= 0 && next) {
+            var actionLabel = orderMeta(o.status).action || ('Mark ' + orderMeta(next).label.toLowerCase());
+            var nextBtn = el('<button class="btn">' + esc(actionLabel) + '</button>');
+            nextBtn.addEventListener('click', advanceTo(next, orderMeta(next).label));
+            card.appendChild(nextBtn);
+        }
+
+        // Step back one, for mistakes
+        var prev = current > 0 ? ORDER_LADDER[current - 1] : null;
+        if (prev) {
+            var backBtn = el('<button class="btn btn--ghost btn--sm" style="margin-right:8px;">← Back to ' + esc(orderMeta(prev).label.toLowerCase()) + '</button>');
+            backBtn.addEventListener('click', advanceTo(prev, orderMeta(prev).label));
+            card.appendChild(backBtn);
+        }
+
+        if (o.status !== 'completed') {
+            var cancelBtn = el('<button class="btn btn--danger btn--sm">Cancel order</button>');
+            cancelBtn.addEventListener('click', function () {
+                if (!confirm('Cancel ' + o.order_ref + '?')) return;
+                advanceTo('cancelled', 'Cancelled').call(this);
+            });
+            card.appendChild(cancelBtn);
+        }
+
+        return card;
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  DELIVERY SCANNER — scan a shipping label to close an order
+    // ═════════════════════════════════════════════════════════════
+
+    function renderScanner() {
         view.innerHTML = '';
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Scan delivery'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var card = el(
+            '<div class="card"><div class="card__title">Point at the shipping label</div>' +
+                '<p class="hint" style="margin-top:0;">Scanning the barcode marks the order delivered and emails the customer.</p>' +
+                '<div class="scanbox"><video id="scan-video" playsinline muted></video><div class="scanbox__frame"></div></div>' +
+                '<div id="scan-state" class="hint" style="text-align:center; margin:10px 0 0;">Starting camera…</div>' +
+            '</div>'
+        );
+        wrap.appendChild(card);
+
+        var manual = el(
+            '<div class="card"><div class="card__title">Or type the code</div>' +
+                '<p class="hint" style="margin-top:0;">The code printed under the barcode on the label.</p>' +
+                '<div class="field" style="margin-bottom:8px;"><input type="text" id="scan-manual" placeholder="TS-PRINT-XXXXXX|…" autocapitalize="characters"></div>' +
+                '<button class="btn btn--ghost" id="scan-submit">Mark delivered</button>' +
+            '</div>'
+        );
+        wrap.appendChild(manual);
+
+        var stateEl = card.querySelector('#scan-state');
+        var video = card.querySelector('#scan-video');
+        var stream = null;
+        var stopped = false;
+        var busy = false;
+
+        function stop() {
+            stopped = true;
+            if (stream) {
+                stream.getTracks().forEach(function (t) { t.stop(); });
+                stream = null;
+            }
+        }
+
+        // Leaving the screen must always release the camera.
+        window.addEventListener('popstate', stop, { once: true });
+        document.querySelectorAll('.tab').forEach(function (b) {
+            b.addEventListener('click', stop, { once: true });
+        });
+
+        async function submitCode(code) {
+            if (busy) return;
+            code = String(code || '').trim();
+            if (!code) return;
+            busy = true;
+            stateEl.textContent = 'Checking ' + code.split('|')[0] + '…';
+            try {
+                var res = await TwellerApi.scanPrintDelivery(code);
+                stop();
+                var ref = res.order_ref || code.split('|')[0];
+                if (res.already_delivered) {
+                    toast(ref + ' was already marked delivered.', 4500);
+                } else {
+                    toast('✓ ' + ref + ' delivered — customer emailed.', 4500);
+                }
+                refreshPrintsBadge();
+                stateEl.innerHTML = '<strong style="color:var(--green);">✓ ' + esc(ref) + ' — delivered</strong>';
+                busy = false;
+            } catch (e) {
+                busy = false;
+                stateEl.innerHTML = '<span style="color:var(--red);">' + esc(e.message) + '</span>';
+                toast('Could not mark delivered: ' + e.message, 5000);
+            }
+        }
+
+        manual.querySelector('#scan-submit').addEventListener('click', function () {
+            submitCode(manual.querySelector('#scan-manual').value);
+        });
+
+        // Camera + barcode detection (Chrome/Android WebView ships BarcodeDetector)
+        (async function startCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                stateEl.textContent = 'No camera available — type the code below.';
+                return;
+            }
+            var detector = null;
+            if (window.BarcodeDetector) {
+                try {
+                    var formats = await window.BarcodeDetector.getSupportedFormats();
+                    var want = ['code_128', 'qr_code'].filter(function (f) { return formats.indexOf(f) !== -1; });
+                    if (want.length) detector = new window.BarcodeDetector({ formats: want });
+                } catch (e) {}
+            }
+            if (!detector) {
+                stateEl.textContent = 'This device can’t scan barcodes — type the code below.';
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }, audio: false
+                });
+            } catch (e) {
+                stateEl.textContent = 'Camera blocked — allow camera access, or type the code below.';
+                return;
+            }
+            if (stopped) { stop(); return; }
+
+            video.srcObject = stream;
+            await video.play().catch(function () {});
+            stateEl.textContent = 'Looking for a barcode…';
+
+            (function tick() {
+                if (stopped || busy) {
+                    if (!stopped) setTimeout(tick, 400);
+                    return;
+                }
+                detector.detect(video).then(function (codes) {
+                    if (codes && codes.length && codes[0].rawValue) {
+                        submitCode(codes[0].rawValue);
+                    }
+                }).catch(function () {}).then(function () {
+                    if (!stopped) setTimeout(tick, 350);
+                });
+            })();
+        })();
+
         view.appendChild(screen);
     }
 

@@ -359,44 +359,50 @@ class TwellerFlow2_Tracker_Shortcode {
                         <p class="tf2-gallery__pw-error" id="tf2-gallery-pw-error" style="display:none;">Incorrect password. Please try again.</p>
                     </div>
 
-                    <!-- Gallery toolbar (client name + download) -->
+                    <!-- Gallery toolbar (client name + gallery actions) -->
                     <div class="tf2-gallery__toolbar" id="tf2-gallery-toolbar" style="display:none;">
-                        <div class="tf2-gallery__toolbar-left">
+                        <div class="tf2-gallery__toolbar-inner">
                             <span class="tf2-gallery__toolbar-name" id="tf2-gallery-toolbar-name"><?php echo esc_html( strtoupper( $session->client_name ) ); ?></span>
-                        </div>
-                        <div class="tf2-gallery__toolbar-right">
-                            <button id="tf2-gallery-slideshow" class="tf2-gallery__toolbar-action" type="button" title="Play Slideshow">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                                <span>Slideshow</span>
-                            </button>
-                            <a id="tf2-gallery-download-all" class="tf2-gallery__toolbar-action" href="#" title="Download All">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                <span>Download All</span>
-                            </a>
-                            <button id="tf2-prints-open" class="tf2-gallery__toolbar-prints" type="button" title="Order Prints" style="display:none;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                                <span>Order Prints</span>
-                                <span class="tf2-prints-badge" id="tf2-prints-count" style="display:none;">0</span>
-                            </button>
+                            <div class="tf2-gallery__actions" id="tf2-gallery-actions">
+                                <button id="tf2-prints-open" class="tf2-gbtn tf2-gbtn--primary" type="button" title="Order Prints" style="display:none;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                    <span class="tf2-gbtn__label">Order Prints</span>
+                                    <span class="tf2-prints-badge" id="tf2-prints-count" style="display:none;">0</span>
+                                </button>
+                                <button id="tf2-printsel-enter" class="tf2-gbtn" type="button" title="Select photos for print" style="display:none;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                    <span class="tf2-gbtn__label">Select Photos</span>
+                                </button>
+                                <button id="tf2-gallery-slideshow" class="tf2-gbtn" type="button" title="Play Slideshow">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                    <span class="tf2-gbtn__label">Slideshow</span>
+                                </button>
+                                <a id="tf2-gallery-download-all" class="tf2-gbtn" href="#" title="Download All">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    <span class="tf2-gbtn__label">Download All</span>
+                                </a>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Slideshow style chooser -->
-                    <div class="tf2-ss-chooser" id="tf2-ss-chooser" style="display:none;">
-                        <div class="tf2-ss-chooser__box">
-                            <h3>Play Slideshow</h3>
-                            <p>Choose your viewing style</p>
-                            <div class="tf2-ss-chooser__options">
-                                <button type="button" class="tf2-ss-chooser__option" data-style="kenburns">
-                                    <span class="tf2-ss-chooser__option-title">Cinematic</span>
-                                    <span class="tf2-ss-chooser__option-desc">Slow, gentle motion with fading transitions</span>
+                    <!-- Batch print selection bar (shown while selection mode is on) -->
+                    <div class="tf2-printsel-bar" id="tf2-printsel-bar" style="display:none;" role="region" aria-label="Print selection">
+                        <div class="tf2-printsel-bar__inner">
+                            <div class="tf2-printsel-bar__head">
+                                <span class="tf2-printsel-bar__count" id="tf2-printsel-count" aria-live="polite">0 selected</span>
+                                <button type="button" class="tf2-printsel-bar__done" id="tf2-printsel-done">Done</button>
+                            </div>
+                            <div class="tf2-printsel-bar__actions">
+                                <button type="button" class="tf2-gbtn" id="tf2-printsel-all">
+                                    <span class="tf2-gbtn__label">Select all</span>
                                 </button>
-                                <button type="button" class="tf2-ss-chooser__option" data-style="fade">
-                                    <span class="tf2-ss-chooser__option-title">Classic</span>
-                                    <span class="tf2-ss-chooser__option-desc">Still images with elegant crossfades</span>
+                                <button type="button" class="tf2-gbtn" id="tf2-printsel-clear">
+                                    <span class="tf2-gbtn__label">Clear</span>
+                                </button>
+                                <button type="button" class="tf2-gbtn tf2-gbtn--primary tf2-printsel-bar__continue" id="tf2-printsel-continue" disabled>
+                                    <span class="tf2-gbtn__label">Continue to sizes</span>
                                 </button>
                             </div>
-                            <button type="button" class="tf2-ss-chooser__cancel" id="tf2-ss-cancel">Cancel</button>
                         </div>
                     </div>
 

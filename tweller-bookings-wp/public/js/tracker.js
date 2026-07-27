@@ -191,7 +191,7 @@
             if (panel) return panel;
             panel = document.createElement('div');
             panel.id = 'tf2-receipt-confirm';
-            panel.style.cssText = 'display:none; background:#FAF7F2; border:1px solid #E7DCC5; border-left:3px solid #C9A227; border-radius:10px; padding:14px 16px; margin:12px 0;';
+            panel.style.cssText = 'display:none; background:#FAF7F2; border:1px solid #E7DCC5; border-radius:10px; padding:14px 16px; margin:12px 0;';
             panel.innerHTML =
                 '<p style="margin:0 0 8px; font-weight:600; font-size:14px;">Confirm your transfer amount</p>' +
                 '<p id="tf2-receipt-confirm-note" style="margin:0 0 10px; font-size:12.5px; color:#6B7280;"></p>' +
@@ -578,18 +578,21 @@
 
         buildGrid();
 
-        toolbar.style.display = '';
-        grid.style.display = '';
+        if (toolbar) toolbar.style.display = '';
+        if (grid) grid.style.display = '';
 
-        downloadAll.href = galleryUrl + code + '/download-all'
-            + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
+        if (downloadAll) {
+            downloadAll.href = galleryUrl + code + '/download-all'
+                + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
 
-        downloadAll.addEventListener('click', function() {
-            trackActivity('all_downloaded', photos.length + ' photos');
-        });
+            downloadAll.addEventListener('click', function() {
+                if (selMode) exitSelectMode();
+                trackActivity('all_downloaded', photos.length + ' photos');
+            });
+        }
 
         setTimeout(function() {
-            toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
     }
 
@@ -634,6 +637,7 @@
     // ── Masonry Grid ──────────────────────────────────
 
     function buildGrid() {
+        if (!grid) return;
         grid.innerHTML = '';
 
         photos.forEach(function(photo, idx) {
@@ -653,20 +657,73 @@
             };
 
             item.appendChild(img);
-            item.addEventListener('click', function() { openLightbox(idx); });
+            item.setAttribute('data-idx', String(idx));
+            item.addEventListener('click', function() {
+                if (selMode) {
+                    toggleSelect(idx);
+                } else {
+                    openLightbox(idx);
+                }
+            });
 
             // Print store: per-photo order button (only when the store is loaded)
             if (window.TwellerPrints) {
                 item.appendChild(makeTilePrintBtn(photo));
             }
 
+            // Batch-selection tick (inert until selection mode is on)
+            item.appendChild(makeSelectCheck());
+
             grid.appendChild(item);
         });
 
         updatePrintBadges();
+        syncSelectionUI();
+    }
+
+    function makeSelectCheck() {
+        var chk = document.createElement('span');
+        chk.className = 'tf2-printsel-check';
+        chk.setAttribute('aria-hidden', 'true');
+        chk.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        return chk;
     }
 
     // ── Print store integration (window.TwellerPrints from prints.js) ──
+
+    // Feature detection — prints.js is a separate, independently versioned
+    // script, so every entry point is guarded before it is shown or called.
+    function printsApi() {
+        return window.TwellerPrints || null;
+    }
+
+    function printsCan(method) {
+        var api = printsApi();
+        return !!(api && typeof api[method] === 'function');
+    }
+
+    // Normalise a gallery photo into the shape the print store expects.
+    function printPayload(photo) {
+        return {
+            id: photo.id,
+            filename: photo.filename,
+            url: photo.url,
+            thumb_url: photo.thumb_url
+        };
+    }
+
+    // Per-photo order: openOrder() is the current contract, openPicker()
+    // is the legacy name — support whichever the loaded store exposes.
+    function openSinglePrint(photo) {
+        if (!photo) return;
+        try {
+            if (printsCan('openOrder')) {
+                window.TwellerPrints.openOrder(printPayload(photo));
+            } else if (printsCan('openPicker')) {
+                window.TwellerPrints.openPicker(printPayload(photo));
+            }
+        } catch (e) {}
+    }
 
     function makeTilePrintBtn(photo) {
         var btn = document.createElement('button');
@@ -680,24 +737,36 @@
         btn.addEventListener('click', function(ev) {
             ev.stopPropagation();
             ev.preventDefault();
-            if (window.TwellerPrints) {
-                window.TwellerPrints.openPicker({
-                    filename: photo.filename,
-                    url: photo.url,
-                    thumb_url: photo.thumb_url
-                });
+            // While picking photos in bulk the tile print icon is hidden, but
+            // guard anyway so a stray tap toggles selection rather than
+            // opening the single-photo flow.
+            if (selMode) {
+                var tile = btn.parentNode;
+                if (tile) toggleSelect(parseInt(tile.getAttribute('data-idx'), 10));
+                return;
             }
+            openSinglePrint(photo);
         });
         return btn;
     }
 
-    function updatePrintBadges() {
-        if (!window.TwellerPrints) return;
+    function countFor(filename) {
+        if (!filename || !printsCan('getCountFor')) return 0;
+        try {
+            return window.TwellerPrints.getCountFor(filename) || 0;
+        } catch (e) {
+            return 0;
+        }
+    }
 
-        // Toolbar counter
+    function updatePrintBadges() {
+        if (!printsApi()) return;
+
+        // Toolbar cart-count badge on "Order Prints"
         var topCount = document.getElementById('tf2-prints-count');
-        if (topCount) {
-            var total = window.TwellerPrints.getCount();
+        if (topCount && printsCan('getCount')) {
+            var total = 0;
+            try { total = window.TwellerPrints.getCount() || 0; } catch (e) { total = 0; }
             topCount.textContent = String(total);
             topCount.style.display = total > 0 ? '' : 'none';
         }
@@ -705,8 +774,7 @@
         // Grid tile badges
         var tileBtns = grid ? grid.querySelectorAll('.tf2-item-print') : [];
         for (var i = 0; i < tileBtns.length; i++) {
-            var fname = tileBtns[i].getAttribute('data-filename');
-            var n = window.TwellerPrints.getCountFor(fname);
+            var n = countFor(tileBtns[i].getAttribute('data-filename'));
             var badge = tileBtns[i].querySelector('.tf2-item-print__count');
             if (badge) {
                 badge.textContent = String(n);
@@ -720,42 +788,56 @@
         var lbBadge = document.getElementById('tf2-lightbox-print-count');
         if (lbBadge) {
             var photo = photos[currentIdx];
-            var c = photo ? window.TwellerPrints.getCountFor(photo.filename) : 0;
+            var c = photo ? countFor(photo.filename) : 0;
             lbBadge.textContent = String(c);
             lbBadge.style.display = c > 0 ? '' : 'none';
         }
     }
 
+    // Batch-selection elements (declared before initPrintsIntegration, which
+    // may run synchronously and needs selEnterBtn)
+    var selEnterBtn = document.getElementById('tf2-printsel-enter');
+    var selBar      = document.getElementById('tf2-printsel-bar');
+    var selCountEl  = document.getElementById('tf2-printsel-count');
+    var selAllBtn   = document.getElementById('tf2-printsel-all');
+    var selClearBtn = document.getElementById('tf2-printsel-clear');
+    var selDoneBtn  = document.getElementById('tf2-printsel-done');
+    var selNextBtn  = document.getElementById('tf2-printsel-continue');
+
+    var selMode = false;
+    var selected = {};   // photo index -> true
+
     function initPrintsIntegration() {
-        if (!window.TwellerPrints) return;
+        // No print store on the page → every print entry point stays hidden.
+        if (!printsApi()) return;
 
         var topBtn = document.getElementById('tf2-prints-open');
-        if (topBtn) {
+        if (topBtn && printsCan('openStore')) {
             topBtn.style.display = '';
             topBtn.addEventListener('click', function() {
                 trackActivity('prints_store_opened');
-                window.TwellerPrints.openStore();
+                try { window.TwellerPrints.openStore(); } catch (e) {}
             });
         }
 
         var lbPrint = document.getElementById('tf2-lightbox-print');
-        if (lbPrint) {
+        if (lbPrint && (printsCan('openOrder') || printsCan('openPicker'))) {
             lbPrint.style.display = '';
             lbPrint.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                var photo = photos[currentIdx];
-                if (photo) {
-                    window.TwellerPrints.openPicker({
-                        filename: photo.filename,
-                        url: photo.url,
-                        thumb_url: photo.thumb_url
-                    });
-                }
+                openSinglePrint(photos[currentIdx]);
             });
         }
 
-        window.TwellerPrints.onCountChange(updatePrintBadges);
+        // Batch selection only makes sense when the store can receive a batch
+        if (selEnterBtn && printsCan('openBatchOrder')) {
+            selEnterBtn.style.display = '';
+        }
+
+        if (printsCan('onCountChange')) {
+            window.TwellerPrints.onCountChange(updatePrintBadges);
+        }
         updatePrintBadges();
     }
 
@@ -764,6 +846,126 @@
         document.addEventListener('DOMContentLoaded', initPrintsIntegration);
     } else {
         initPrintsIntegration();
+    }
+
+    // ── Batch print selection ──────────────────────────
+    // Namespaced tf2-printsel-* so it can never collide with the culling
+    // shortcode's tc-* selection UI.
+
+    function selCount() {
+        var n = 0, k;
+        for (k in selected) {
+            if (Object.prototype.hasOwnProperty.call(selected, k)) n++;
+        }
+        return n;
+    }
+
+    function enterSelectMode() {
+        if (selMode || !grid || !printsCan('openBatchOrder')) return;
+        selMode = true;
+        selected = {};
+        grid.classList.add('tf2-printsel-on');
+        if (gallery) gallery.classList.add('tf2-gallery--printsel');
+        if (selBar) selBar.style.display = 'block';
+        if (selEnterBtn) selEnterBtn.classList.add('tf2-gbtn--on');
+        syncSelectionUI();
+        trackActivity('prints_batch_select_started');
+    }
+
+    function exitSelectMode() {
+        if (!selMode) return;
+        selMode = false;
+        selected = {};
+        if (grid) grid.classList.remove('tf2-printsel-on');
+        if (gallery) gallery.classList.remove('tf2-gallery--printsel');
+        if (selBar) selBar.style.display = 'none';
+        if (selEnterBtn) selEnterBtn.classList.remove('tf2-gbtn--on');
+        syncSelectionUI();
+    }
+
+    function toggleSelect(idx) {
+        if (isNaN(idx) || !photos[idx]) return;
+        if (selected[idx]) delete selected[idx];
+        else selected[idx] = true;
+        syncSelectionUI();
+    }
+
+    function syncSelectionUI() {
+        if (!grid) return;
+        var tiles = grid.querySelectorAll('.tf2-gallery__item');
+        for (var i = 0; i < tiles.length; i++) {
+            var idx = parseInt(tiles[i].getAttribute('data-idx'), 10);
+            var on = selMode && !!selected[idx];
+            if (on) tiles[i].classList.add('tf2-gallery__item--printsel');
+            else tiles[i].classList.remove('tf2-gallery__item--printsel');
+            if (selMode) tiles[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+            else tiles[i].removeAttribute('aria-pressed');
+        }
+
+        var n = selCount();
+        if (selCountEl) {
+            selCountEl.textContent = n === 1 ? '1 selected' : n + ' selected';
+        }
+        if (selNextBtn) selNextBtn.disabled = n === 0;
+        if (selAllBtn) {
+            selAllBtn.textContent = '';
+            var lbl = document.createElement('span');
+            lbl.className = 'tf2-gbtn__label';
+            lbl.textContent = (n > 0 && n === photos.length) ? 'Deselect all' : 'Select all';
+            selAllBtn.appendChild(lbl);
+        }
+    }
+
+    if (selEnterBtn) {
+        selEnterBtn.addEventListener('click', function() {
+            if (selMode) exitSelectMode();
+            else enterSelectMode();
+        });
+    }
+
+    if (selAllBtn) {
+        selAllBtn.addEventListener('click', function() {
+            if (selCount() === photos.length) {
+                selected = {};
+            } else {
+                selected = {};
+                for (var i = 0; i < photos.length; i++) selected[i] = true;
+            }
+            syncSelectionUI();
+        });
+    }
+
+    if (selClearBtn) {
+        selClearBtn.addEventListener('click', function() {
+            selected = {};
+            syncSelectionUI();
+        });
+    }
+
+    if (selDoneBtn) selDoneBtn.addEventListener('click', exitSelectMode);
+
+    // Escape leaves selection mode — but only when no overlay owns the key
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape' || !selMode) return;
+        if (lightbox && lightbox.style.display !== 'none') return;
+        if (ss && ss.style.display !== 'none') return;
+        exitSelectMode();
+    });
+
+    if (selNextBtn) {
+        selNextBtn.addEventListener('click', function() {
+            if (!printsCan('openBatchOrder')) return;
+            var batch = [];
+            for (var i = 0; i < photos.length; i++) {
+                if (selected[i]) batch.push(printPayload(photos[i]));
+            }
+            if (!batch.length) return;
+            trackActivity('prints_batch_selected', batch.length + ' photos');
+            try {
+                window.TwellerPrints.openBatchOrder(batch, {});
+                exitSelectMode();
+            } catch (e) {}
+        });
     }
 
     // ── Force download helper ─────────────────────────
@@ -946,12 +1148,11 @@
         var incoming = (ssFront === ssLayerA) ? ssLayerB : ssLayerA;
         var outgoing = ssFront;
 
-        var kb = 'tf2-kb-' + (Math.floor(Math.random() * 4) + 1);
         incoming.className = 'tf2-slideshow__layer';
-        // Force style reset so the Ken Burns animation restarts cleanly
+        // Force a style flush so the crossfade restarts cleanly
         void incoming.offsetWidth;
         incoming.style.backgroundImage = 'url("' + photos[ssIndex].url + '")';
-        incoming.classList.add('tf2-slideshow__layer--visible', kb);
+        incoming.classList.add('tf2-slideshow__layer--visible');
 
         if (outgoing) outgoing.classList.remove('tf2-slideshow__layer--visible');
         ssFront = incoming;

@@ -123,14 +123,20 @@ class TwellerFlow2_Print_Fulfillment {
 		foreach ( $raw as $p ) {
 			if ( ! is_array( $p ) || empty( $p['id'] ) ) continue;
 			$row = array(
-				'id'           => sanitize_key( $p['id'] ),
-				'name'         => sanitize_text_field( (string) ( $p['name'] ?? '' ) ),
-				'contact_name' => sanitize_text_field( (string) ( $p['contact_name'] ?? '' ) ),
-				'email'        => sanitize_email( (string) ( $p['email'] ?? '' ) ),
-				'phone'        => sanitize_text_field( (string) ( $p['phone'] ?? '' ) ),
-				'notes'        => sanitize_textarea_field( (string) ( $p['notes'] ?? '' ) ),
-				'active'       => empty( $p['active'] ) ? 0 : 1,
-				'default'      => empty( $p['default'] ) ? 0 : 1,
+				'id'            => sanitize_key( $p['id'] ),
+				'name'          => sanitize_text_field( (string) ( $p['name'] ?? '' ) ),
+				'contact_name'  => sanitize_text_field( (string) ( $p['contact_name'] ?? '' ) ),
+				'email'         => sanitize_email( (string) ( $p['email'] ?? '' ) ),
+				'phone'         => sanitize_text_field( (string) ( $p['phone'] ?? '' ) ),
+				'address'       => sanitize_textarea_field( (string) ( $p['address'] ?? '' ) ),
+				'notes'         => sanitize_textarea_field( (string) ( $p['notes'] ?? '' ) ),
+				'active'        => empty( $p['active'] ) ? 0 : 1,
+				'default'       => empty( $p['default'] ) ? 0 : 1,
+				// Provider portal: the WP account that logs in as this lab
+				// (0 = no linked account) and whether THEY ship to the
+				// client rather than the studio delivering.
+				'user_id'       => isset( $p['user_id'] ) ? (int) $p['user_id'] : 0,
+				'does_delivery' => empty( $p['does_delivery'] ) ? 0 : 1,
 			);
 			if ( $row['name'] === '' ) continue;
 			if ( $active_only && ! $row['active'] ) continue;
@@ -179,6 +185,14 @@ class TwellerFlow2_Print_Fulfillment {
 			'sends'            => array(),
 			'delivered_at'     => '',
 			'delivered_via'    => '',
+			// ── Provider portal ──
+			'provider_id'      => '',   // lab currently responsible for the job
+			'assigned_at'      => '',
+			'started_at'       => '',   // provider hit "start printing"
+			'ready_at'         => '',   // provider marked ready
+			'shipped_at'       => '',   // provider handed over / shipped
+			'delivered_by'     => array(), // actor_type + actor_id of the closing scan
+			'audit'            => array(), // {at, actor_type, actor_id, action}
 		);
 	}
 
@@ -192,7 +206,65 @@ class TwellerFlow2_Print_Fulfillment {
 		$merged = array_merge( self::default_fulfillment(), $data );
 		if ( ! is_array( $merged['sends'] ) ) $merged['sends'] = array();
 		if ( ! is_array( $merged['build'] ) ) $merged['build'] = null;
+		if ( ! is_array( $merged['audit'] ) ) $merged['audit'] = array();
+		if ( ! is_array( $merged['delivered_by'] ) ) $merged['delivered_by'] = array();
+
+		// Legacy orders were assigned by email only — infer the provider
+		// from the most recent send so the portal can still see them.
+		if ( (string) $merged['provider_id'] === '' && ! empty( $merged['sends'] ) ) {
+			$last = end( $merged['sends'] );
+			if ( is_array( $last ) && ! empty( $last['provider_id'] ) ) {
+				$merged['provider_id'] = sanitize_key( (string) $last['provider_id'] );
+				if ( (string) $merged['assigned_at'] === '' ) {
+					$merged['assigned_at'] = (string) ( $last['sent_at'] ?? '' );
+				}
+			}
+		}
 		return $merged;
+	}
+
+	/**
+	 * Public writer so the provider portal can persist its own state
+	 * (status timestamps, audit entries) without duplicating the encode.
+	 *
+	 * @param int   $order_id
+	 * @param array $fulfillment
+	 * @return bool
+	 */
+	public static function set_fulfillment( $order_id, $fulfillment ) {
+		if ( ! is_array( $fulfillment ) ) return false;
+		return self::save_fulfillment( (int) $order_id, $fulfillment );
+	}
+
+	/** Provider id currently responsible for an order ('' when unassigned). */
+	public static function assigned_provider_id( $order ) {
+		$f = self::get_fulfillment( $order );
+		return sanitize_key( (string) $f['provider_id'] );
+	}
+
+	/** Append one audit entry: {at, actor_type, actor_id, action}. */
+	public static function log_audit( $order_id, $actor_type, $actor_id, $action, $meta = array() ) {
+		$order = self::get_order( (int) $order_id );
+		if ( ! $order ) return false;
+
+		$f     = self::get_fulfillment( $order );
+		$entry = array(
+			'at'         => current_time( 'mysql' ),
+			'actor_type' => ( $actor_type === 'provider' ) ? 'provider' : 'studio',
+			'actor_id'   => (int) $actor_id,
+			'action'     => sanitize_key( (string) $action ),
+		);
+		if ( ! empty( $meta ) && is_array( $meta ) ) {
+			$entry['meta'] = array_map( 'sanitize_text_field', array_map( 'strval', $meta ) );
+		}
+		$f['audit'][] = $entry;
+		if ( count( $f['audit'] ) > 200 ) {
+			$f['audit'] = array_slice( $f['audit'], -200 );
+		}
+		self::save_fulfillment( (int) $order_id, $f );
+
+		do_action( 'tweller_print_order_audit', (int) $order_id, $entry );
+		return true;
 	}
 
 	private static function save_fulfillment( $order_id, $fulfillment ) {
@@ -1301,7 +1373,10 @@ class TwellerFlow2_Print_Fulfillment {
 			) );
 		}
 
-		$result = self::mark_delivered( $order, 'scan' );
+		// A studio API-key scan is attributed to the studio; the provider
+		// portal scan endpoint attributes itself to the provider account.
+		$result   = self::mark_delivered( $order, 'scan', array( 'type' => 'studio', 'id' => get_current_user_id() ) );
+		$provider = self::get_provider( $fulfillment['provider_id'] );
 
 		return rest_ensure_response( array(
 			'ok'                => true,
@@ -1311,6 +1386,9 @@ class TwellerFlow2_Print_Fulfillment {
 			'already_delivered' => false,
 			'delivered_at'      => $result['delivered_at'],
 			'notified'          => (bool) $result['notified'],
+			'scanned_by'        => 'studio',
+			'provider_id'       => $provider ? $provider['id'] : '',
+			'provider_name'     => $provider ? $provider['name'] : '',
 			'message'           => 'Order ' . $order->order_ref . ' marked delivered.',
 		) );
 	}
@@ -1319,15 +1397,26 @@ class TwellerFlow2_Print_Fulfillment {
 	 * Close the order out: status completed (shown as "Delivered"),
 	 * timestamp, customer email, and a hook for anything else.
 	 */
-	public static function mark_delivered( $order, $via = 'scan' ) {
+	public static function mark_delivered( $order, $via = 'scan', $actor = array() ) {
 		$fulfillment = self::get_fulfillment( $order );
 		if ( ! empty( $fulfillment['delivered_at'] ) ) {
 			return array( 'delivered_at' => (string) $fulfillment['delivered_at'], 'notified' => false, 'already' => true );
 		}
 
+		$actor_type = ( is_array( $actor ) && ( $actor['type'] ?? '' ) === 'provider' ) ? 'provider' : 'studio';
+		$actor_id   = is_array( $actor ) ? (int) ( $actor['id'] ?? 0 ) : 0;
+
 		$now = current_time( 'mysql' );
 		$fulfillment['delivered_at']  = $now;
 		$fulfillment['delivered_via'] = sanitize_key( $via );
+		$fulfillment['delivered_by']  = array( 'actor_type' => $actor_type, 'actor_id' => $actor_id );
+		$fulfillment['audit'][]       = array(
+			'at'         => $now,
+			'actor_type' => $actor_type,
+			'actor_id'   => $actor_id,
+			'action'     => 'delivered',
+			'meta'       => array( 'via' => sanitize_key( $via ) ),
+		);
 		self::save_fulfillment( $order->id, $fulfillment );
 
 		$notified = false;
@@ -1347,7 +1436,7 @@ class TwellerFlow2_Print_Fulfillment {
 			$notified = self::send_delivered_email( self::get_order( $order->id ) );
 		}
 
-		do_action( 'tweller_print_order_delivered', $order->order_ref, $via );
+		do_action( 'tweller_print_order_delivered', $order->order_ref, $via, array( 'actor_type' => $actor_type, 'actor_id' => $actor_id ) );
 
 		return array( 'delivered_at' => $now, 'notified' => (bool) $notified, 'already' => false );
 	}
@@ -1547,7 +1636,21 @@ class TwellerFlow2_Print_Fulfillment {
 			'expires'       => $expires,
 			'sent'          => $sent ? 1 : 0,
 		);
+
+		// The job is now this provider's responsibility — that assignment
+		// is what the provider portal filters on.
+		$fulfillment['provider_id'] = $provider['id'];
+		$fulfillment['assigned_at'] = current_time( 'mysql' );
+		$fulfillment['audit'][]     = array(
+			'at'         => current_time( 'mysql' ),
+			'actor_type' => 'studio',
+			'actor_id'   => ( $user && $user->exists() ) ? (int) $user->ID : 0,
+			'action'     => 'sent_to_provider',
+			'meta'       => array( 'provider' => $provider['id'] ),
+		);
 		self::save_fulfillment( $order->id, $fulfillment );
+
+		do_action( 'tweller_print_order_assigned', (int) $order->id, $provider['id'] );
 
 		if ( ! $sent ) {
 			return new WP_Error( 'send_failed', 'The email to ' . $provider['name'] . ' could not be sent — check the SMTP settings.' );
@@ -1706,15 +1809,27 @@ class TwellerFlow2_Print_Fulfillment {
 				while ( isset( $used[ $id ] ) ) { $id = $base . '_' . $i++; }
 				$used[ $id ] = true;
 
+				// Preserve fields this legacy form does not post (linked
+				// portal account, address, delivery responsibility) so a
+				// save here can never silently unlink a provider account.
+				$prev = self::get_provider( $id );
+
 				$providers[] = array(
-					'id'           => $id,
-					'name'         => $name,
-					'contact_name' => sanitize_text_field( wp_unslash( $row['contact_name'] ?? '' ) ),
-					'email'        => sanitize_email( wp_unslash( $row['email'] ?? '' ) ),
-					'phone'        => sanitize_text_field( wp_unslash( $row['phone'] ?? '' ) ),
-					'notes'        => sanitize_textarea_field( wp_unslash( $row['notes'] ?? '' ) ),
-					'active'       => empty( $row['active'] ) ? 0 : 1,
-					'default'      => 0,
+					'id'            => $id,
+					'name'          => $name,
+					'contact_name'  => sanitize_text_field( wp_unslash( $row['contact_name'] ?? '' ) ),
+					'email'         => sanitize_email( wp_unslash( $row['email'] ?? '' ) ),
+					'phone'         => sanitize_text_field( wp_unslash( $row['phone'] ?? '' ) ),
+					'address'       => isset( $row['address'] )
+						? sanitize_textarea_field( wp_unslash( $row['address'] ) )
+						: (string) ( $prev['address'] ?? '' ),
+					'notes'         => sanitize_textarea_field( wp_unslash( $row['notes'] ?? '' ) ),
+					'active'        => empty( $row['active'] ) ? 0 : 1,
+					'default'       => 0,
+					'user_id'       => isset( $row['user_id'] ) ? (int) $row['user_id'] : (int) ( $prev['user_id'] ?? 0 ),
+					'does_delivery' => isset( $row['does_delivery'] )
+						? ( empty( $row['does_delivery'] ) ? 0 : 1 )
+						: (int) ( $prev['does_delivery'] ?? 0 ),
 				);
 			}
 

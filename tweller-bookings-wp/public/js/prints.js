@@ -55,6 +55,7 @@
     var products       = [];
     var productsById   = {};
     var pickupNote     = '';
+    var cropService    = cfg.cropService || { enabled: false, fee: 0, label: '', note: '' };
     var productsLoaded = false;
 
     /**
@@ -664,6 +665,7 @@
             productLocked: !!opts.productLocked,
             qtyPer: opts.qtyPer || 1,
             items: [],
+            cropMode: opts.cropMode || 'studio',
             editBatchId: opts.editBatchId || null
         };
 
@@ -787,6 +789,7 @@
             var dims = photoDims[it.key] || null;
             cart.push({
                 batch_id:     batchId,
+                crop_mode:    flow.cropMode || 'studio',
                 key:          it.key,
                 product_id:   product.id,
                 product_name: product.name,
@@ -1190,12 +1193,63 @@
         lock.appendChild(change);
         wrap.appendChild(lock);
 
+        if (cropService.enabled) {
+            wrap.appendChild(buildCropChoice());
+        }
+
         var list = el('div', 'tf2p-reviewlist');
         for (var i = 0; i < flow.items.length; i++) {
             list.appendChild(buildReviewRow(flow.items[i], product));
         }
         wrap.appendChild(list);
         return wrap;
+    }
+
+    /** Free-by-default "we'll crop it for you" choice (fee is admin-set). */
+    function buildCropChoice() {
+        var box = el('div', 'tf2p-cropsvc');
+        var feeTxt = cropService.fee > 0 ? money(cropService.fee) : 'Free';
+
+        var opts = [
+            { id: 'studio', title: cropService.label || 'Let us crop them for you',
+              note: cropService.note || '', tag: feeTxt },
+            { id: 'self', title: 'I\u2019ll adjust the crops myself',
+              note: 'Use "Adjust crop" on any photo below.', tag: '' }
+        ];
+
+        for (var i = 0; i < opts.length; i++) {
+            (function(o) {
+                var on  = (flow.cropMode || 'studio') === o.id;
+                var row = btn('tf2p-cropsvc__opt' + (on ? ' tf2p-cropsvc__opt--on' : ''), '');
+                row.appendChild(el('span', 'tf2p-cropsvc__radio'));
+                var body = el('span', 'tf2p-cropsvc__body');
+                body.appendChild(el('span', 'tf2p-cropsvc__title', o.title));
+                if (o.note) body.appendChild(el('span', 'tf2p-cropsvc__note', o.note));
+                row.appendChild(body);
+                if (o.tag) row.appendChild(el('span', 'tf2p-cropsvc__tag', o.tag));
+                row.addEventListener('click', function() {
+                    flow.cropMode = o.id;
+                    renderFlow();
+                });
+                box.appendChild(row);
+            })(opts[i]);
+        }
+        return box;
+    }
+
+    /** Did any batch in the cart ask us to do the cropping? */
+    function cartUsesStudioCrop() {
+        for (var i = 0; i < cart.length; i++) {
+            if ((cart[i].crop_mode || 'studio') === 'studio') return true;
+        }
+        return false;
+    }
+
+    /** Fee charged for the studio-crop service on this order (0 when free). */
+    function cropServiceFee() {
+        if (!cropService.enabled) return 0;
+        if (!flow || (flow.cropMode || 'studio') !== 'studio') return 0;
+        return cropService.fee > 0 ? cropService.fee : 0;
     }
 
     function buildReviewRow(item, product) {
@@ -1656,7 +1710,8 @@
                     crop:       cart[i].crop || null,
                     source_w:   cart[i].source_w || 0,
                     source_h:   cart[i].source_h || 0,
-                    batch_id:   cart[i].batch_id || ''
+                    batch_id:   cart[i].batch_id || '',
+                    crop_mode:  cart[i].crop_mode || 'studio'
                 });
             }
             fetch(cfg.restUrl + 'order', {
@@ -1669,6 +1724,7 @@
                     customer_phone: phone,
                     notes: notes,
                     website: hp,
+                    crop_service: cartUsesStudioCrop() ? 1 : 0,
                     items: payload
                 })
             })

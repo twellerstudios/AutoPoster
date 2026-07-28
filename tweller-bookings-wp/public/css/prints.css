@@ -1573,3 +1573,804 @@ a.tf2p-btn {
 .tf2-portal__help a {
     color: var(--tf2p-gray-700);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   v3 ORDER FLOW — bottom sheet (mobile) / centred modal (desktop)
+   Every surface here is fixed-position and layered ABOVE the page,
+   so the theme's own footer can never flow through the middle of it.
+   Layering: backdrop 100000 · flow 100001 · drawer 100002 · crop 100003
+   ═══════════════════════════════════════════════════════════════ */
+
+.tf2p-flow {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100001;
+    display: flex;
+    flex-direction: column;
+    max-height: 92vh;
+    max-height: 92dvh;
+    background: var(--tf2p-white);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -10px 44px rgba(16, 16, 16, 0.24);
+    transform: translateY(102%);
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+    overscroll-behavior: contain;
+}
+.tf2p-flow.tf2p-open { transform: none; }
+
+.tf2p-flow__handle {
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--tf2p-gray-300);
+    margin: 8px auto 2px;
+    flex: none;
+}
+
+.tf2p-flow__head {
+    position: relative;
+    padding: 10px 20px 12px;
+    border-bottom: 1px solid var(--tf2p-gray-200);
+    flex: none;
+}
+.tf2p-flow__eyebrow {
+    margin: 0 0 2px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tf2p-gold);
+}
+.tf2p-flow__eyebrow:empty { display: none; }
+.tf2p-flow__title {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--tf2p-black);
+    padding-right: 40px;
+}
+.tf2p-flow__sub {
+    margin: 3px 0 0;
+    font-size: 13px;
+    color: var(--tf2p-gray-500);
+}
+.tf2p-flow__sub:empty { display: none; }
+
+/* Scrollable middle — the only scrolling region in the sheet */
+.tf2p-flow__scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 16px 20px 8px;
+    min-height: 0;
+}
+
+.tf2p-flow__foot {
+    flex: none;
+    padding: 12px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--tf2p-gray-200);
+    background: var(--tf2p-white);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.tf2p-flow__summary {
+    margin: 0;
+    flex: 1 1 auto;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tf2p-gray-700);
+    line-height: 1.35;
+}
+.tf2p-flow__actions {
+    display: flex;
+    gap: 8px;
+    flex: none;
+}
+.tf2p-flow__next { min-width: 132px; }
+
+.tf2p-close {
+    position: absolute;
+    top: 6px;
+    right: 14px;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--tf2p-gray-100);
+    color: var(--tf2p-gray-700);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+.tf2p-close:hover { background: var(--tf2p-gray-200); }
+
+/* ── Stepper ─────────────────────────────────────── */
+
+.tf2p-steps {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    list-style: none;
+    margin: 0 0 14px;
+    padding: 0;
+}
+.tf2p-steps__item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 12.5px;
+    color: var(--tf2p-gray-500);
+}
+.tf2p-steps__num {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--tf2p-gray-100);
+    color: var(--tf2p-gray-500);
+    font-size: 11.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tf2p-steps__label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tf2p-steps__item--on { color: var(--tf2p-black); font-weight: 700; }
+.tf2p-steps__item--on .tf2p-steps__num { background: var(--tf2p-black); color: var(--tf2p-gold); }
+.tf2p-steps__item--done .tf2p-steps__num { background: var(--tf2p-gold); color: var(--tf2p-black); }
+
+.tf2p-step { display: block; }
+
+/* ── Locked-product bar (the size tapped on the storefront) ── */
+
+.tf2p-lockbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(201, 162, 39, 0.10);
+    border: 1px solid rgba(201, 162, 39, 0.35);
+    border-radius: 10px;
+    padding: 9px 12px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--tf2p-gray-700);
+}
+.tf2p-lockbar__name { font-weight: 700; color: var(--tf2p-black); }
+
+/* ── Drop zone / upload ──────────────────────────── */
+
+.tf2p-flow__dz {
+    border: 2px dashed var(--tf2p-gray-300);
+    border-radius: 14px;
+    background: var(--tf2p-gray-100);
+    padding: 28px 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.18s, background 0.18s;
+}
+.tf2p-flow__dz:hover,
+.tf2p-flow__dz--over {
+    border-color: var(--tf2p-gold);
+    background: rgba(201, 162, 39, 0.07);
+}
+.tf2p-flow__dz-title {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+}
+.tf2p-flow__dz-note {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--tf2p-gray-500);
+}
+.tf2p-file-input { display: none; }
+
+/* ── Photo grid — small, square, never skewed ───── */
+
+.tf2p-photogrid,
+.tf2p-upload-grid,
+.tf2p-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.tf2p-ptile,
+.tf2p-tile {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--tf2p-gray-100);
+    cursor: pointer;
+    border: 0;
+    padding: 0;
+    display: block;
+    width: 100%;
+}
+/* object-fit is what stops photos being stretched/squashed */
+.tf2p-ptile img,
+.tf2p-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.tf2p-ptile--on { outline: 3px solid var(--tf2p-gold); outline-offset: -3px; }
+
+.tf2p-ptile__check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.92);
+    background: rgba(16, 16, 16, 0.38);
+    color: transparent;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
+    text-align: center;
+}
+.tf2p-ptile--on .tf2p-ptile__check {
+    background: var(--tf2p-gold);
+    border-color: var(--tf2p-gold);
+    color: var(--tf2p-black);
+}
+
+.tf2p-selbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+    font-size: 13px;
+}
+.tf2p-selbar__count { font-weight: 700; color: var(--tf2p-black); }
+
+/* ── Size / product cards ────────────────────────── */
+
+.tf2p-prodgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+}
+.tf2p-prodcard {
+    border: 1.5px solid var(--tf2p-gray-200);
+    border-radius: 12px;
+    background: var(--tf2p-white);
+    padding: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.16s, box-shadow 0.16s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.tf2p-prodcard:hover { border-color: var(--tf2p-gray-300); }
+.tf2p-prodcard--on {
+    border-color: var(--tf2p-gold);
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.16);
+}
+.tf2p-prodcard__art {
+    height: 66px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tf2p-gray-100);
+    border-radius: 8px;
+}
+/* CSS-only paper mockup, proportioned to the real print ratio */
+.tf2p-prodcard__shape {
+    background: var(--tf2p-white);
+    border: 1px solid var(--tf2p-gray-300);
+    box-shadow: 0 2px 6px rgba(16, 16, 16, 0.14);
+    max-width: 84%;
+    max-height: 54px;
+}
+.tf2p-prodcard__body { display: flex; flex-direction: column; gap: 1px; }
+.tf2p-prodcard__name { font-size: 13.5px; font-weight: 700; color: var(--tf2p-black); }
+.tf2p-prodcard__price { font-size: 12.5px; color: var(--tf2p-gray-500); }
+
+.tf2p-qtyrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--tf2p-gray-200);
+}
+.tf2p-qtyrow__label { font-size: 13.5px; font-weight: 600; color: var(--tf2p-gray-700); }
+
+/* ── Review list ─────────────────────────────────── */
+
+.tf2p-reviewlist { display: flex; flex-direction: column; gap: 10px; }
+
+.tf2p-review {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 12px;
+}
+/* Constrained thumb — this is why desktop previews were enormous.
+   Height is left to the inline aspect-ratio the JS sets, so the
+   thumbnail shows the PRINT's true proportions (a 6x4 looks 6x4). */
+.tf2p-review__thumb {
+    flex: none;
+    width: 78px;
+    height: auto;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--tf2p-gray-100);
+    position: relative;
+}
+.tf2p-review__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.tf2p-review__info { flex: 1 1 auto; min-width: 0; }
+.tf2p-review__file {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tf2p-black);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tf2p-review__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 3px;
+}
+.tf2p-review__warn,
+.tf2p-crop-warn,
+.tf2p-citem__warn {
+    font-size: 12px;
+    color: #B45309;
+    background: #FEF3C7;
+    border-radius: 6px;
+    padding: 3px 8px;
+    display: inline-block;
+    margin: 4px 0 0;
+}
+
+.tf2p-linkbtn {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tf2p-gold);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.tf2p-linkbtn--danger { color: #B91C1C; }
+
+/* ── Crop modal — full-screen, above everything ──── */
+
+.tf2p-cropmodal {
+    position: fixed;
+    inset: 0;
+    z-index: 100003;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(16, 16, 16, 0.72);
+    padding: 16px;
+}
+.tf2p-cropmodal.tf2p-open { display: flex; }
+
+.tf2p-cropmodal__panel {
+    background: var(--tf2p-white);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 440px;
+    max-height: 92vh;
+    max-height: 92dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.tf2p-cropmodal__head {
+    position: relative;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--tf2p-gray-200);
+    flex: none;
+}
+.tf2p-cropmodal__title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+    padding-right: 40px;
+}
+.tf2p-cropmodal__head .tf2p-close { top: 8px; right: 12px; }
+
+.tf2p-cropmodal__stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tf2p-gray-100);
+}
+
+/* The crop window. JS sets aspect-ratio inline and then MEASURES this
+   element to size the image, so it must have a definite width here or
+   it collapses to zero and the editor renders empty. */
+.tf2p-crop__frame {
+    position: relative;
+    overflow: hidden;
+    background: #000;
+    border-radius: 6px;
+    width: 100%;
+    max-width: min(340px, 100%);
+    max-height: 52vh;
+    margin: 0 auto;
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+}
+.tf2p-crop__frame:active { cursor: grabbing; }
+.tf2p-crop__img {
+    position: absolute;
+    transform-origin: 0 0;
+    max-width: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.tf2p-crop__grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.tf2p-crop__grid span {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.35);
+}
+.tf2p-crop__grid span:nth-child(1) { left: 33.33%; top: 0; bottom: 0; width: 1px; }
+.tf2p-crop__grid span:nth-child(2) { left: 66.66%; top: 0; bottom: 0; width: 1px; }
+.tf2p-crop__grid span:nth-child(3) { top: 33.33%; left: 0; right: 0; height: 1px; }
+.tf2p-crop__grid span:nth-child(4) { top: 66.66%; left: 0; right: 0; height: 1px; }
+
+.tf2p-crop__zoom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px 0;
+    flex: none;
+}
+.tf2p-crop__zoom input[type="range"] { flex: 1 1 auto; accent-color: var(--tf2p-gold); }
+.tf2p-crop__zoom-ico { font-size: 15px; color: var(--tf2p-gray-500); flex: none; }
+.tf2p-crop__hint {
+    margin: 6px 18px 0;
+    font-size: 12px;
+    color: var(--tf2p-gray-500);
+    text-align: center;
+    flex: none;
+}
+.tf2p-crop__warn { margin: 8px 18px 0; flex: none; }
+
+.tf2p-cropmodal__foot {
+    flex: none;
+    display: flex;
+    gap: 10px;
+    padding: 14px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.tf2p-cropmodal__foot .tf2p-btn { flex: 1 1 0; }
+
+/* ── Cart drawer contents ────────────────────────── */
+
+.tf2p-drawer__addrow { padding: 12px 18px; border-bottom: 1px solid var(--tf2p-gray-200); }
+.tf2p-cart-items { padding: 8px 18px; }
+.tf2p-cart-empty { padding: 40px 18px; text-align: center; color: var(--tf2p-gray-500); font-size: 14px; }
+
+.tf2p-citem {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--tf2p-gray-200);
+}
+.tf2p-citem:last-child { border-bottom: 0; }
+.tf2p-citem__thumb {
+    flex: none;
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--tf2p-gray-100);
+    position: relative;
+}
+.tf2p-citem__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tf2p-citem__qty { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.tf2p-citem__step {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--tf2p-gray-300);
+    background: var(--tf2p-white);
+    border-radius: 7px;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--tf2p-gray-700);
+}
+.tf2p-citem__step:hover { border-color: var(--tf2p-gold); color: var(--tf2p-black); }
+.tf2p-citem__num { min-width: 20px; text-align: center; font-size: 13.5px; font-weight: 700; }
+
+.tf2p-subtotal-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 14px 18px 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+}
+.tf2p-pickup-note { padding: 0 18px 12px; font-size: 12.5px; color: var(--tf2p-gray-500); }
+
+/* ── Checkout ────────────────────────────────────── */
+
+.tf2p-checkout-form { padding: 4px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+.tf2p-checkout-form input,
+.tf2p-checkout-form textarea {
+    width: 100%;
+    border: 1px solid var(--tf2p-gray-300);
+    border-radius: 9px;
+    padding: 11px 12px;
+    font: inherit;
+    font-size: 15px;
+    background: var(--tf2p-white);
+}
+.tf2p-checkout-form input:focus,
+.tf2p-checkout-form textarea:focus {
+    outline: none;
+    border-color: var(--tf2p-gold);
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.16);
+}
+.tf2p-checkout-form textarea { min-height: 74px; resize: vertical; }
+.tf2p-checkout-error {
+    margin: 0;
+    font-size: 13px;
+    color: #B91C1C;
+    background: #FEE2E2;
+    border-radius: 8px;
+    padding: 9px 11px;
+}
+/* Honeypot — must never be visible to a human */
+.tf2p-hp {
+    position: absolute !important;
+    left: -9999px !important;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ── Success ─────────────────────────────────────── */
+
+.tf2p-success-ref {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--tf2p-black);
+    letter-spacing: 0.02em;
+    margin: 0 0 6px;
+}
+.tf2p-success-note,
+.tf2p-success-pay-text { font-size: 13.5px; color: var(--tf2p-gray-700); line-height: 1.6; margin: 0 0 10px; }
+.tf2p-success-pay { margin-top: 8px; }
+.tf2p-success-portal, .tf2p-success-done { margin-top: 10px; }
+
+/* ── Cart FAB ────────────────────────────────────── */
+
+.tf2p-fab {
+    position: fixed;
+    right: 18px;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    z-index: 99999;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    border: 0;
+    background: var(--tf2p-black);
+    color: var(--tf2p-gold);
+    box-shadow: 0 6px 22px rgba(16, 16, 16, 0.32);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tf2p-fab__badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 21px;
+    height: 21px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--tf2p-gold);
+    color: var(--tf2p-black);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 21px;
+    text-align: center;
+}
+
+/* ── Desktop: centred modal instead of bottom sheet ── */
+
+@media (min-width: 768px) {
+    .tf2p-flow {
+        top: 50%;
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        width: min(720px, calc(100vw - 48px));
+        max-height: 86vh;
+        border-radius: 18px;
+        transform: translate(-50%, -46%) scale(0.98);
+        opacity: 0;
+        transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+    }
+    .tf2p-flow.tf2p-open { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    .tf2p-flow__handle { display: none; }
+
+    .tf2p-photogrid,
+    .tf2p-upload-grid,
+    .tf2p-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+
+    .tf2p-cropmodal__panel { max-width: 520px; }
+    .tf2p-crop__frame { max-width: min(420px, 100%); max-height: 58vh; }
+}
+
+/* ── Batches: one order can hold several size groups ── */
+
+.tf2p-batch {
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--tf2p-white);
+}
+.tf2p-batch--new {
+    border-style: dashed;
+    border-color: var(--tf2p-gold);
+    background: rgba(201, 162, 39, 0.06);
+}
+.tf2p-batch__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+.tf2p-batch__info { min-width: 0; flex: 1 1 auto; }
+.tf2p-batch__name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tf2p-batch__meta { font-size: 12.5px; color: var(--tf2p-gray-500); margin-top: 1px; }
+.tf2p-batch__actions { display: flex; gap: 10px; flex: none; align-items: center; }
+
+/* Horizontal filmstrip of the photos in a batch */
+.tf2p-batch__strip {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 10px 0 2px;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+}
+.tf2p-batch__strip::-webkit-scrollbar { height: 5px; }
+.tf2p-batch__strip::-webkit-scrollbar-thumb { background: var(--tf2p-gray-300); border-radius: 999px; }
+.tf2p-batch__strip img,
+.tf2p-batch__strip .tf2p-cropbox {
+    flex: none;
+    width: 54px;
+    height: 54px;
+    border-radius: 7px;
+    object-fit: cover;
+    display: block;
+}
+
+/* Fixed-ratio crop preview box (ratio set inline by JS) */
+.tf2p-cropbox {
+    position: relative;
+    overflow: hidden;
+    background: var(--tf2p-gray-100);
+    border-radius: 8px;
+}
+.tf2p-cropbox img {
+    display: block;
+    /* Positioning, sizing and object-fit are set inline by
+       applyCropStyle() — uncropped uses object-fit:cover, cropped uses
+       absolute offsets. CSS must not override either path. */
+    object-fit: cover;
+}
+
+/* ── "We'll crop it for you" choice (review step) ── */
+
+.tf2p-cropsvc {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.tf2p-cropsvc__opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: var(--tf2p-white);
+    border: 1.5px solid var(--tf2p-gray-200);
+    border-radius: 12px;
+    padding: 11px 13px;
+    cursor: pointer;
+    font: inherit;
+    transition: border-color 0.16s, box-shadow 0.16s;
+}
+.tf2p-cropsvc__opt:hover { border-color: var(--tf2p-gray-300); }
+.tf2p-cropsvc__opt--on {
+    border-color: var(--tf2p-gold);
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.15);
+}
+.tf2p-cropsvc__radio {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    border-radius: 50%;
+    border: 2px solid var(--tf2p-gray-300);
+    background: var(--tf2p-white);
+    position: relative;
+}
+.tf2p-cropsvc__opt--on .tf2p-cropsvc__radio { border-color: var(--tf2p-gold); }
+.tf2p-cropsvc__opt--on .tf2p-cropsvc__radio::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--tf2p-gold);
+}
+.tf2p-cropsvc__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tf2p-cropsvc__title { font-size: 13.5px; font-weight: 700; color: var(--tf2p-black); }
+.tf2p-cropsvc__note { font-size: 12px; color: var(--tf2p-gray-500); line-height: 1.45; }
+.tf2p-cropsvc__tag {
+    flex: none;
+    align-self: center;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tf2p-gold);
+    background: rgba(201, 162, 39, 0.12);
+    border-radius: 999px;
+    padding: 3px 9px;
+    white-space: nowrap;
+}

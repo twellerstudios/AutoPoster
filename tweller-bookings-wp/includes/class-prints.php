@@ -258,6 +258,12 @@ class TwellerFlow2_Prints {
             'hero_subheadline'     => 'Museum-grade prints, gallery canvases and handcrafted albums — delivered across Trinidad & Tobago.',
             'hero_intro'           => '',
             'hero_bg_url'          => '',
+            // "We'll crop it for you" service. Free by default; set a fee
+            // here to start charging for it without touching any code.
+            'crop_service_enabled' => 1,
+            'crop_service_fee'     => 0,
+            'crop_service_label'   => 'Let us crop them for you',
+            'crop_service_note'    => 'Our editors will centre and crop every photo for the size you chose — the same way we prepare prints in studio.',
         );
         $saved = get_option( self::OPT_SETTINGS, array() );
         if ( ! is_array( $saved ) ) $saved = array();
@@ -347,6 +353,14 @@ class TwellerFlow2_Prints {
             'code'     => '',
             'customerName'  => '',
             'customerEmail' => '',
+        );
+
+        $s = self::get_settings();
+        $defaults['cropService'] = array(
+            'enabled' => ! empty( $s['crop_service_enabled'] ),
+            'fee'     => (float) $s['crop_service_fee'],
+            'label'   => (string) $s['crop_service_label'],
+            'note'    => (string) $s['crop_service_note'],
         );
         wp_localize_script( 'tweller-flow-2-prints', 'twellerFlow2Prints', array_merge( $defaults, $config ) );
     }
@@ -785,6 +799,7 @@ class TwellerFlow2_Prints {
             'items'          => $items,
             'notes'          => $notes,
             'source'         => 'gallery',
+            'crop_service'   => ! empty( $request->get_param( 'crop_service' ) ),
         ));
 
         if ( ! $order_id ) {
@@ -929,6 +944,7 @@ class TwellerFlow2_Prints {
             'items'          => $items,
             'notes'          => $notes,
             'source'         => 'public',
+            'crop_service'   => ! empty( $_POST['crop_service'] ),
         ));
 
         if ( ! $order_id ) {
@@ -1316,7 +1332,28 @@ class TwellerFlow2_Prints {
         global $wpdb;
         $table = $wpdb->prefix . self::TABLE_ORDERS;
 
-        $items    = $data['items'];
+        $items = $data['items'];
+
+        // "We'll crop it for you" — recorded as its own line so it shows up
+        // in totals, emails, the admin order and the app. Free until a fee
+        // is set under Print Store → Settings → Cropping Service.
+        if ( ! empty( $data['crop_service'] ) ) {
+            $settings = self::get_settings();
+            if ( ! empty( $settings['crop_service_enabled'] ) ) {
+                $items[] = array(
+                    'product_id'   => 'crop_service',
+                    'product_name' => (string) $settings['crop_service_label'],
+                    'category'     => 'service',
+                    'price'        => (float) $settings['crop_service_fee'],
+                    'qty'          => 1,
+                    'filename'     => '',
+                    'photo_url'    => '',
+                    'thumb_url'    => '',
+                    'crop'         => null,
+                );
+            }
+        }
+
         $subtotal = 0;
         foreach ( $items as $item ) {
             $subtotal += $item['price'] * $item['qty'];
@@ -1747,6 +1784,10 @@ class TwellerFlow2_Prints {
                 'hero_subheadline'     => sanitize_text_field( $_POST['prints_hero_subheadline'] ?? '' ),
                 'hero_intro'           => sanitize_textarea_field( $_POST['prints_hero_intro'] ?? '' ),
                 'hero_bg_url'          => esc_url_raw( $_POST['prints_hero_bg_url'] ?? '' ),
+                'crop_service_enabled' => empty( $_POST['prints_crop_service_enabled'] ) ? 0 : 1,
+                'crop_service_fee'     => max( 0, (float) ( $_POST['prints_crop_service_fee'] ?? 0 ) ),
+                'crop_service_label'   => sanitize_text_field( $_POST['prints_crop_service_label'] ?? '' ),
+                'crop_service_note'    => sanitize_textarea_field( $_POST['prints_crop_service_note'] ?? '' ),
             ));
 
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-prints&view=settings&saved=1' ) );

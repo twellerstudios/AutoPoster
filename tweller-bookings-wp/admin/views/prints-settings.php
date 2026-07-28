@@ -85,6 +85,40 @@
             </div>
         </div>
 
+        <!-- ══════════ CROPPING SERVICE ══════════ -->
+        <div class="tf2-card tf2-mb-6">
+            <h2 style="margin-top:0;">Cropping Service</h2>
+            <p class="tf2-description">
+                At the review step a customer can either adjust each crop themselves, or hand it to you.
+                Leave the fee at <strong>0</strong> and it shows as <strong>Free</strong>; set any amount to start charging for it.
+            </p>
+            <div class="tf2-grid tf2-grid--2">
+                <div class="tf2-field">
+                    <label class="tf2-field__label">
+                        <input type="checkbox" name="prints_crop_service_enabled" value="1"
+                            <?php checked( ! empty( $settings['crop_service_enabled'] ) ); ?>>
+                        Offer the "we'll crop it for you" option
+                    </label>
+                </div>
+                <div class="tf2-field">
+                    <label class="tf2-field__label">Fee (TT$, per order)</label>
+                    <input type="number" step="0.01" min="0" name="prints_crop_service_fee"
+                        value="<?php echo esc_attr( (float) $settings['crop_service_fee'] ); ?>" style="max-width:160px;">
+                    <p class="tf2-description">0 = free (shown to the customer as "Free").</p>
+                </div>
+                <div class="tf2-field">
+                    <label class="tf2-field__label">Option label</label>
+                    <input type="text" name="prints_crop_service_label"
+                        value="<?php echo esc_attr( $settings['crop_service_label'] ); ?>" style="max-width:420px;">
+                </div>
+                <div class="tf2-field">
+                    <label class="tf2-field__label">Short description</label>
+                    <textarea name="prints_crop_service_note" rows="2" style="max-width:640px;"><?php
+                        echo esc_textarea( $settings['crop_service_note'] ); ?></textarea>
+                </div>
+            </div>
+        </div>
+
         <!-- ══════════ STORE SETTINGS ══════════ -->
         <div class="tf2-card tf2-mb-6">
             <h2 style="margin-top:0;">Store Settings</h2>

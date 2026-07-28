@@ -263,6 +263,26 @@ class TwellerFlow2_Print_Providers {
 		return $wpdb->prefix . TwellerFlow2_Prints::TABLE_ORDERS;
 	}
 
+	/**
+	 * The assignment lives in the fulfilment JSON column, which is added by
+	 * the fulfilment class. Never query it blind.
+	 */
+	private static function has_fulfillment_column() {
+		static $has = null;
+		if ( $has !== null ) return $has;
+
+		global $wpdb;
+		$table = self::orders_table();
+		if ( ! $table ) { $has = false; return $has; }
+
+		$exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+		if ( ! $exists ) { $has = false; return $has; }
+
+		$col = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM `{$table}` LIKE %s", 'fulfillment' ) );
+		$has = ! empty( $col );
+		return $has;
+	}
+
 	private static function get_order( $order_id ) {
 		if ( ! class_exists( 'TwellerFlow2_Prints' ) ) return null;
 		return TwellerFlow2_Prints::get_order( (int) $order_id );
@@ -353,6 +373,8 @@ class TwellerFlow2_Print_Providers {
 		$provider_id = sanitize_key( (string) $provider_id );
 		$table       = self::orders_table();
 		if ( $provider_id === '' || ! $table ) return array();
+
+		if ( ! self::has_fulfillment_column() ) return array();
 
 		$needle = '%' . $wpdb->esc_like( '"provider_id":"' . $provider_id . '"' ) . '%';
 		$limit  = max( 1, min( 1000, (int) $limit ) );

@@ -800,6 +800,8 @@ class TwellerFlow2_Prints {
             'notes'          => $notes,
             'source'         => 'gallery',
             'crop_service'   => ! empty( $request->get_param( 'crop_service' ) ),
+            'fulfilment'     => $request->get_param( 'fulfilment' ),
+            'shipping'       => $request->get_param( 'shipping' ),
         ));
 
         if ( ! $order_id ) {
@@ -945,6 +947,8 @@ class TwellerFlow2_Prints {
             'notes'          => $notes,
             'source'         => 'public',
             'crop_service'   => ! empty( $_POST['crop_service'] ),
+            'fulfilment'     => isset( $_POST['fulfilment'] ) ? $_POST['fulfilment'] : '',
+            'shipping'       => isset( $_POST['shipping'] ) ? json_decode( wp_unslash( $_POST['shipping'] ), true ) : null,
         ));
 
         if ( ! $order_id ) {
@@ -1359,6 +1363,25 @@ class TwellerFlow2_Prints {
             $subtotal += $item['price'] * $item['qty'];
         }
 
+        // Delivery choice + address, appended to the order notes so it
+        // reaches the studio, the emails and the app with no schema change.
+        $notes = (string) $data['notes'];
+        $fulfil = ( isset( $data['fulfilment'] ) && $data['fulfilment'] === 'delivery' ) ? 'delivery' : 'pickup';
+        if ( $fulfil === 'delivery' ) {
+            $sh = is_array( $data['shipping'] ?? null ) ? $data['shipping'] : array();
+            $lines = array();
+            foreach ( array( 'address1', 'address2', 'city', 'region' ) as $k ) {
+                $v = sanitize_text_field( (string) ( $sh[ $k ] ?? '' ) );
+                if ( $v !== '' ) $lines[] = $v;
+            }
+            $note = sanitize_text_field( (string) ( $sh['note'] ?? '' ) );
+            $block = "DELIVERY REQUESTED\n" . implode( ', ', $lines );
+            if ( $note !== '' ) $block .= "\nNotes: " . $note;
+            $notes = $notes !== '' ? $notes . "\n\n" . $block : $block;
+        } else {
+            $notes = $notes !== '' ? $notes . "\n\nPICKUP at the studio" : 'PICKUP at the studio';
+        }
+
         $now = current_time( 'mysql' );
         $ok  = $wpdb->insert( $table, array(
             'order_ref'      => ! empty( $data['order_ref'] ) ? $data['order_ref'] : self::generate_order_ref(),
@@ -1371,7 +1394,7 @@ class TwellerFlow2_Prints {
             'subtotal'       => round( $subtotal, 2 ),
             'status'         => 'new',
             'source'         => $data['source'],
-            'notes'          => $data['notes'],
+            'notes'          => $notes,
             'created_at'     => $now,
             'updated_at'     => $now,
         ));

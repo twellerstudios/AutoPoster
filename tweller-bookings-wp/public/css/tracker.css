@@ -758,14 +758,22 @@ body.page .page-hero {
     position: absolute;
     top: 16px;
     right: 20px;
+    /* fixed box + flex centring: the bare glyph sat off-centre
+       because its line-box carried the font's own metrics */
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     background: none;
     border: none;
     color: var(--tf-white);
-    font-size: 36px;
+    font-size: 34px;
+    line-height: 0;
     cursor: pointer;
     opacity: 0.6;
     transition: opacity 0.15s;
-    line-height: 1;
     z-index: 10;
 }
 

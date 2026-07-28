@@ -287,6 +287,8 @@
     }
 
     var CATEGORY_LABELS = { print: 'Prints', canvas: 'Canvas', photobook: 'Albums' };
+    /** An album only makes sense with a decent spread of photos. */
+    var PHOTOBOOK_MIN = 20;
     var CATEGORY_ORDER  = ['print', 'canvas', 'photobook'];
 
     // ── Crop maths ─────────────────────────────────────
@@ -451,29 +453,70 @@
         drawer.setAttribute('aria-label', 'Print cart');
         drawer.innerHTML =
             '<div class="tf2p-drawer__head">' +
-                '<h3 class="tf2p-drawer__title" id="tf2p-drawer-title">Your Prints</h3>' +
+                '<h3 class="tf2p-drawer__title" id="tf2p-drawer-title">Checkout</h3>' +
                 '<button type="button" class="tf2p-close" id="tf2p-drawer-close" aria-label="Close">&times;</button>' +
             '</div>' +
             '<div class="tf2p-drawer__body" id="tf2p-drawer-body">' +
-                '<div class="tf2p-drawer__addrow">' +
-                    '<button type="button" class="tf2p-btn tf2p-btn--gold tf2p-btn--full" id="tf2p-add-size">&#65291; Add another size</button>' +
-                    '<button type="button" class="tf2p-btn tf2p-btn--ghost tf2p-btn--full" id="tf2p-continue">Continue adding photos</button>' +
-                '</div>' +
-                '<div id="tf2p-cart-items"></div>' +
-                '<p class="tf2p-empty" id="tf2p-cart-empty" style="display:none;">Your cart is empty.<br>Choose your photos, pick a size, and they’ll appear here.</p>' +
-                '<div class="tf2p-subtotal" id="tf2p-subtotal-row"><span>Subtotal</span><strong id="tf2p-subtotal"></strong></div>' +
-                '<p class="tf2p-pickup" id="tf2p-pickup-note" style="display:none;"></p>' +
-                '<form class="tf2p-form" id="tf2p-checkout-form" novalidate>' +
-                    '<h4 class="tf2p-form__title">Your details</h4>' +
+              '<div class="tf2p-co">' +
+                // ── Left column: contact + delivery ──
+                '<div class="tf2p-co__main">' +
+                  '<form class="tf2p-form" id="tf2p-checkout-form" novalidate>' +
+                    '<h4 class="tf2p-form__title">Contact</h4>' +
                     '<label class="tf2p-field"><span>Name</span><input type="text" id="tf2p-cust-name" autocomplete="name" required maxlength="120"></label>' +
                     '<label class="tf2p-field"><span>Email</span><input type="email" id="tf2p-cust-email" autocomplete="email" required maxlength="190"></label>' +
                     '<label class="tf2p-field"><span>Phone (WhatsApp)</span><input type="tel" id="tf2p-cust-phone" autocomplete="tel" maxlength="40"></label>' +
-                    '<label class="tf2p-field"><span>Notes (optional)</span><textarea id="tf2p-cust-notes" rows="2" maxlength="1000"></textarea></label>' +
-                    '<input type="text" name="website" id="tf2p-hp" value="" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute; left:-9999px; height:1px; width:1px; opacity:0;">' +
+
+                    '<h4 class="tf2p-form__title">How would you like it?</h4>' +
+                    '<div class="tf2p-fulfil" id="tf2p-fulfil">' +
+                      '<button type="button" class="tf2p-fulfil__opt tf2p-fulfil__opt--on" data-mode="pickup">' +
+                        '<span class="tf2p-fulfil__radio"></span>' +
+                        '<span class="tf2p-fulfil__body">' +
+                          '<span class="tf2p-fulfil__title">Pick up</span>' +
+                          '<span class="tf2p-fulfil__note">Collect from Tweller Studios</span>' +
+                        '</span>' +
+                      '</button>' +
+                      '<button type="button" class="tf2p-fulfil__opt" data-mode="delivery">' +
+                        '<span class="tf2p-fulfil__radio"></span>' +
+                        '<span class="tf2p-fulfil__body">' +
+                          '<span class="tf2p-fulfil__title">Deliver to me</span>' +
+                          '<span class="tf2p-fulfil__note">Across Trinidad &amp; Tobago</span>' +
+                        '</span>' +
+                      '</button>' +
+                    '</div>' +
+
+                    '<div class="tf2p-ship" id="tf2p-ship" style="display:none;">' +
+                      '<label class="tf2p-field"><span>Street address</span><input type="text" id="tf2p-ship-addr1" autocomplete="address-line1" maxlength="160"></label>' +
+                      '<label class="tf2p-field"><span>Apartment, unit (optional)</span><input type="text" id="tf2p-ship-addr2" autocomplete="address-line2" maxlength="160"></label>' +
+                      '<div class="tf2p-field-row">' +
+                        '<label class="tf2p-field"><span>Town / City</span><input type="text" id="tf2p-ship-city" autocomplete="address-level2" maxlength="80"></label>' +
+                        '<label class="tf2p-field"><span>Island / Region</span><input type="text" id="tf2p-ship-region" autocomplete="address-level1" maxlength="80" placeholder="Trinidad"></label>' +
+                      '</div>' +
+                      '<label class="tf2p-field"><span>Delivery notes (optional)</span><input type="text" id="tf2p-ship-note" maxlength="200" placeholder="Landmark, gate colour, best time…"></label>' +
+                    '</div>' +
+
+                    '<label class="tf2p-field"><span>Order notes (optional)</span><textarea id="tf2p-cust-notes" rows="2" maxlength="1000"></textarea></label>' +
+                    '<input type="text" name="website" id="tf2p-hp" value="" tabindex="-1" autocomplete="off" aria-hidden="true" class="tf2p-hp">' +
                     '<p class="tf2p-error" id="tf2p-checkout-error" style="display:none;"></p>' +
-                    '<button type="submit" class="tf2p-btn tf2p-btn--gold tf2p-btn--full" id="tf2p-checkout-btn">Place Order</button>' +
+                  '</form>' +
+                '</div>' +
+
+                // ── Right column: order summary ──
+                '<aside class="tf2p-co__aside">' +
+                  '<div class="tf2p-co__card">' +
+                    '<h4 class="tf2p-co__title">Order summary</h4>' +
+                    '<div id="tf2p-cart-items"></div>' +
+                    '<p class="tf2p-empty" id="tf2p-cart-empty" style="display:none;">Your cart is empty.<br>Choose your photos, pick a size, and they’ll appear here.</p>' +
+                    '<div class="tf2p-subtotal" id="tf2p-subtotal-row"><span>Total</span><strong id="tf2p-subtotal"></strong></div>' +
+                    '<p class="tf2p-pickup" id="tf2p-pickup-note" style="display:none;"></p>' +
+                    '<div class="tf2p-drawer__addrow">' +
+                      '<button type="button" class="tf2p-btn tf2p-btn--ghost tf2p-btn--full" id="tf2p-add-size">&#65291; Add another size</button>' +
+                      '<button type="button" class="tf2p-btn tf2p-btn--ghost tf2p-btn--full" id="tf2p-continue">Continue adding photos</button>' +
+                    '</div>' +
+                    '<button type="submit" form="tf2p-checkout-form" class="tf2p-btn tf2p-btn--gold tf2p-btn--full" id="tf2p-checkout-btn">Place Order</button>' +
                     '<p class="tf2p-payhint">Pay after checkout from your order page — by card (via WiPay) or bank transfer.</p>' +
-                '</form>' +
+                  '</div>' +
+                '</aside>' +
+              '</div>' +
             '</div>' +
             '<div class="tf2p-success" id="tf2p-success" style="display:none;">' +
                 '<div class="tf2p-success__icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>' +
@@ -526,6 +569,25 @@
             '<span class="tf2p-fab__badge" id="tf2p-fab-badge">0</span>';
         fab.style.display = 'none';
         fab.addEventListener('click', function() { openDrawer(); });
+
+        // Pickup vs delivery — reveals the shipping fields
+        var fulfilWrap = drawer.querySelector('#tf2p-fulfil');
+        if (fulfilWrap) {
+            var opts = fulfilWrap.querySelectorAll('.tf2p-fulfil__opt');
+            for (var fi = 0; fi < opts.length; fi++) {
+                (function(o) {
+                    o.addEventListener('click', function() {
+                        for (var k = 0; k < opts.length; k++) {
+                            opts[k].className = 'tf2p-fulfil__opt';
+                        }
+                        o.className = 'tf2p-fulfil__opt tf2p-fulfil__opt--on';
+                        shipMode = o.getAttribute('data-mode') === 'delivery' ? 'delivery' : 'pickup';
+                        var ship = document.getElementById('tf2p-ship');
+                        if (ship) ship.style.display = shipMode === 'delivery' ? '' : 'none';
+                    });
+                })(opts[fi]);
+            }
+        }
 
         root.appendChild(backdrop);
         root.appendChild(flowEl);
@@ -1122,18 +1184,39 @@
             }
             if (!group.length) continue;
 
+            var locked = (category === 'photobook') && !photobookUnlocked();
+
             wrap.appendChild(el('h4', 'tf2p-group__title', CATEGORY_LABELS[category] || category));
             if (category === 'photobook') {
-                wrap.appendChild(el('p', 'tf2p-group__note', 'We design your album together with you after ordering — the selected photos come along.'));
+                if (locked) {
+                    wrap.appendChild(el('p', 'tf2p-group__note',
+                        'Albums need at least ' + PHOTOBOOK_MIN + ' photos — you have ' +
+                        selectedKeys().length + '. Add ' + (PHOTOBOOK_MIN - selectedKeys().length) +
+                        ' more to unlock them.'));
+                } else {
+                    wrap.appendChild(el('p', 'tf2p-group__note', 'We design your album together with you after ordering — the selected photos come along.'));
+                }
             }
 
-            var grid = el('div', 'tf2p-prodgrid');
+            var grid = el('div', 'tf2p-prodgrid' + (locked ? ' tf2p-prodgrid--locked' : ''));
             for (var g = 0; g < group.length; g++) {
-                grid.appendChild(buildProductCard(group[g]));
+                var card = buildProductCard(group[g]);
+                if (locked) {
+                    card.disabled = true;
+                    card.className += ' tf2p-prodcard--locked';
+                    card.setAttribute('aria-disabled', 'true');
+                    card.title = 'Select at least ' + PHOTOBOOK_MIN + ' photos to order an album';
+                }
+                grid.appendChild(card);
             }
             wrap.appendChild(grid);
         }
         return wrap;
+    }
+
+    /** Albums unlock once enough photos are in the batch. */
+    function photobookUnlocked() {
+        return selectedKeys().length >= PHOTOBOOK_MIN;
     }
 
     function buildProductCard(p) {
@@ -1613,6 +1696,16 @@
             cell.appendChild(flag);
         }
 
+        // Name / size / filename — without this the steppers read as
+        // bare +/- boxes with no indication of what they change.
+        var info = el('div', 'tf2p-citem__info');
+        info.appendChild(el('span', 'tf2p-citem__name', (product && product.name) ? product.name : (item.product_name || 'Print')));
+        var metaBits = [];
+        if (item.filename) metaBits.push(item.filename);
+        if (product) metaBits.push(money(product.price) + ' each');
+        if (metaBits.length) info.appendChild(el('span', 'tf2p-citem__meta', metaBits.join(' · ')));
+        cell.appendChild(info);
+
         var qtyWrap = el('div', 'tf2p-citem__qty');
         var minus = btn('tf2p-citem__step', '−');
         minus.setAttribute('aria-label', 'Fewer');
@@ -1638,12 +1731,34 @@
         qtyWrap.appendChild(plus);
         cell.appendChild(qtyWrap);
 
+        if (product) {
+            cell.appendChild(el('span', 'tf2p-citem__line', money(product.price * item.qty)));
+        }
+
         return cell;
     }
 
     // ── Checkout ───────────────────────────────────────
 
     var submitting = false;
+    var shipMode   = 'pickup';
+
+    function val(id) {
+        var e = document.getElementById(id);
+        return e ? trim(e.value) : '';
+    }
+
+    /** Shipping block — empty object when the customer is collecting. */
+    function collectShipping() {
+        if (shipMode !== 'delivery') return null;
+        return {
+            address1: val('tf2p-ship-addr1'),
+            address2: val('tf2p-ship-addr2'),
+            city:     val('tf2p-ship-city'),
+            region:   val('tf2p-ship-region'),
+            note:     val('tf2p-ship-note')
+        };
+    }
 
     function showCheckoutError(msg) {
         var errEl = document.getElementById('tf2p-checkout-error');
@@ -1666,6 +1781,13 @@
         if (!name || !email || email.indexOf('@') < 1) {
             showCheckoutError('Please enter your name and a valid email address.');
             return;
+        }
+        if (shipMode === 'delivery') {
+            var sh = collectShipping();
+            if (!sh || !sh.address1 || !sh.city) {
+                showCheckoutError('Please add the street address and town for delivery.');
+                return;
+            }
         }
         showCheckoutError('');
 
@@ -1725,6 +1847,8 @@
                     notes: notes,
                     website: hp,
                     crop_service: cartUsesStudioCrop() ? 1 : 0,
+                    fulfilment: shipMode,
+                    shipping: collectShipping(),
                     items: payload
                 })
             })

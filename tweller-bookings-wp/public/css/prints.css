@@ -385,24 +385,26 @@ body.tf2p-noscroll {
 
 /* ── Cart drawer ──────────────────────────────────── */
 
+/* Checkout surface — a full page-style checkout (Stripe / SureCart
+   feel), not a side drawer: full-screen on mobile, a wide centred
+   sheet on desktop with summary beside the form. */
 .tf2p-drawer {
     position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     z-index: 100002;
     width: 100%;
-    max-width: 420px;
-    background: var(--tf2p-white);
-    box-shadow: -12px 0 40px rgba(16, 16, 16, 0.25);
-    transform: translateX(105%);
+    max-width: none;
+    background: var(--tf2p-gray-100);
+    box-shadow: none;
+    transform: translateY(100%);
     transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
     display: flex;
     flex-direction: column;
+    overscroll-behavior: contain;
 }
 
 .tf2p-drawer.tf2p-open {
-    transform: translateX(0);
+    transform: none;
 }
 
 .tf2p-drawer__head {
@@ -1683,8 +1685,13 @@ a.tf2p-btn {
     border-radius: 50%;
     background: var(--tf2p-gray-100);
     color: var(--tf2p-gray-700);
-    font-size: 22px;
-    line-height: 1;
+    font-size: 20px;
+    /* flex centring — the glyph's own line-box was offsetting it */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    padding: 0;
     cursor: pointer;
 }
 .tf2p-close:hover { background: var(--tf2p-gray-200); }
@@ -2191,8 +2198,14 @@ a.tf2p-btn {
     right: 18px;
     bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     z-index: 99999;
-    width: 54px;
-    height: 54px;
+    width: 56px;
+    height: 56px;
+    /* explicit box + aspect keeps it a true circle, never an oval,
+       whatever padding a theme puts on buttons */
+    min-width: 56px;
+    min-height: 56px;
+    aspect-ratio: 1 / 1;
+    padding: 0;
     border-radius: 50%;
     border: 0;
     background: var(--tf2p-black);
@@ -2202,7 +2215,9 @@ a.tf2p-btn {
     display: flex;
     align-items: center;
     justify-content: center;
+    line-height: 0;
 }
+.tf2p-fab svg { stroke: var(--tf2p-gold); display: block; }
 .tf2p-fab__badge {
     position: absolute;
     top: -3px;
@@ -2265,8 +2280,9 @@ a.tf2p-btn {
     justify-content: space-between;
     gap: 10px;
 }
-.tf2p-batch__info { min-width: 0; flex: 1 1 auto; }
+.tf2p-batch__info { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
 .tf2p-batch__name {
+    display: block;
     font-size: 14px;
     font-weight: 700;
     color: var(--tf2p-black);
@@ -2274,7 +2290,12 @@ a.tf2p-btn {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.tf2p-batch__meta { font-size: 12.5px; color: var(--tf2p-gray-500); margin-top: 1px; }
+.tf2p-batch__meta {
+    display: block;
+    font-size: 12.5px;
+    color: var(--tf2p-gray-500);
+    margin-top: 2px;
+}
 .tf2p-batch__actions { display: flex; gap: 10px; flex: none; align-items: center; }
 
 /* Horizontal filmstrip of the photos in a batch */
@@ -2373,4 +2394,207 @@ a.tf2p-btn {
     border-radius: 999px;
     padding: 3px 9px;
     white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHECKOUT — two-column on desktop, stacked on mobile
+   ═══════════════════════════════════════════════════════════════ */
+
+.tf2p-drawer__head {
+    position: relative;
+    flex: none;
+    background: var(--tf2p-white);
+    border-bottom: 1px solid var(--tf2p-gray-200);
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 14px;
+}
+.tf2p-drawer__title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+    padding-right: 44px;
+}
+.tf2p-drawer__head .tf2p-close { top: 50%; transform: translateY(-50%); right: 16px; }
+
+/* The single scroll container for checkout */
+.tf2p-drawer__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+.tf2p-co {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 18px 16px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+.tf2p-co__main { min-width: 0; }
+.tf2p-co__aside { min-width: 0; }
+
+.tf2p-co__card,
+.tf2p-co__main .tf2p-form {
+    background: var(--tf2p-white);
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 14px;
+    padding: 18px;
+}
+.tf2p-co__title {
+    margin: 0 0 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tf2p-gray-500);
+}
+.tf2p-form__title {
+    margin: 18px 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tf2p-gray-500);
+}
+.tf2p-form__title:first-child { margin-top: 0; }
+
+.tf2p-field { display: block; margin-bottom: 12px; }
+.tf2p-field > span {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tf2p-gray-700);
+    margin-bottom: 5px;
+}
+.tf2p-field input,
+.tf2p-field textarea {
+    width: 100%;
+    border: 1px solid var(--tf2p-gray-300);
+    border-radius: 9px;
+    padding: 11px 12px;
+    font: inherit;
+    font-size: 15px;
+    background: var(--tf2p-white);
+    color: var(--tf2p-black);
+}
+.tf2p-field input:focus,
+.tf2p-field textarea:focus {
+    outline: none;
+    border-color: var(--tf2p-gold);
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.16);
+}
+.tf2p-field-row { display: flex; gap: 10px; }
+.tf2p-field-row .tf2p-field { flex: 1 1 0; min-width: 0; }
+
+/* Pickup vs delivery */
+.tf2p-fulfil { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.tf2p-fulfil__opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: var(--tf2p-white);
+    border: 1.5px solid var(--tf2p-gray-200);
+    border-radius: 11px;
+    padding: 11px 13px;
+    cursor: pointer;
+    font: inherit;
+    transition: border-color 0.16s, box-shadow 0.16s;
+}
+.tf2p-fulfil__opt:hover { border-color: var(--tf2p-gray-300); }
+.tf2p-fulfil__opt--on {
+    border-color: var(--tf2p-gold);
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.15);
+}
+.tf2p-fulfil__radio {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--tf2p-gray-300);
+    position: relative;
+}
+.tf2p-fulfil__opt--on .tf2p-fulfil__radio { border-color: var(--tf2p-gold); }
+.tf2p-fulfil__opt--on .tf2p-fulfil__radio::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--tf2p-gold);
+}
+.tf2p-fulfil__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tf2p-fulfil__title { font-size: 13.5px; font-weight: 700; color: var(--tf2p-black); }
+.tf2p-fulfil__note { font-size: 12px; color: var(--tf2p-gray-500); }
+
+.tf2p-ship { border-top: 1px solid var(--tf2p-gray-200); padding-top: 14px; margin-bottom: 4px; }
+
+/* Cart line — readable: name, unit price, qty, line total */
+.tf2p-citem__info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tf2p-citem__name {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tf2p-citem__meta {
+    font-size: 12px;
+    color: var(--tf2p-gray-500);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tf2p-citem__line {
+    flex: none;
+    min-width: 68px;
+    text-align: right;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+}
+.tf2p-citem__qty { flex: none; margin-top: 0; }
+
+.tf2p-subtotal {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--tf2p-gray-200);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+}
+.tf2p-pickup { font-size: 12.5px; color: var(--tf2p-gray-500); margin: 8px 0 0; line-height: 1.5; }
+.tf2p-payhint { font-size: 12px; color: var(--tf2p-gray-500); margin: 10px 0 0; text-align: center; line-height: 1.5; }
+.tf2p-drawer__addrow { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; padding: 0; border: 0; }
+.tf2p-error {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: #B91C1C;
+    background: #FEE2E2;
+    border-radius: 8px;
+    padding: 9px 11px;
+}
+.tf2p-empty { padding: 26px 8px; text-align: center; color: var(--tf2p-gray-500); font-size: 14px; }
+
+/* Albums locked until enough photos are chosen */
+.tf2p-prodcard--locked { opacity: 0.45; cursor: not-allowed; }
+.tf2p-prodcard--locked:hover { border-color: var(--tf2p-gray-200); }
+
+@media (min-width: 860px) {
+    .tf2p-co {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 22px;
+        padding-top: 26px;
+    }
+    .tf2p-co__main  { flex: 1 1 auto; }
+    .tf2p-co__aside { flex: 0 0 372px; position: sticky; top: 18px; }
 }

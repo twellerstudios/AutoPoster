@@ -22,6 +22,13 @@ class TwellerFlow2_Prints {
 
     /** Public upload limits */
     const MAX_PUBLIC_FILES     = 25;
+    /**
+     * Hard ceiling on line items in one order. This is a sanity bound only —
+     * it must never be applied by truncating, because silently dropping
+     * items produces an order that bills for fewer photos than the customer
+     * chose. Exceeding it is an error the caller sees.
+     */
+    const MAX_ORDER_ITEMS      = 500;
     const MAX_PUBLIC_FILE_SIZE = 26214400; // 25 MB
     const PUBLIC_RATE_LIMIT    = 10;       // orders/hour/IP (public upload)
     const GALLERY_RATE_LIMIT   = 20;       // orders/hour/IP (gallery cart)
@@ -785,9 +792,27 @@ class TwellerFlow2_Prints {
         if ( is_string( $raw_items ) ) {
             $raw_items = json_decode( $raw_items, true );
         }
+        if ( is_array( $raw_items ) && count( $raw_items ) > self::MAX_ORDER_ITEMS ) {
+            return new WP_Error(
+                'too_many_items',
+                sprintf( 'This order has %d items, more than the %d we can take in one go. Please split it into two orders.', count( $raw_items ), self::MAX_ORDER_ITEMS ),
+                array( 'status' => 400 )
+            );
+        }
+
         $items = self::sanitize_cart_items( $raw_items, true );
         if ( empty( $items ) ) {
             return new WP_Error( 'no_items', 'Your cart is empty.', array( 'status' => 400 ) );
+        }
+
+        // A dropped line item means an under-billed order. If anything failed
+        // validation, refuse rather than quietly charge for fewer photos.
+        if ( is_array( $raw_items ) && count( $items ) !== count( $raw_items ) ) {
+            return new WP_Error(
+                'items_rejected',
+                sprintf( 'Only %d of %d items could be verified. Nothing has been charged — please refresh the gallery and try again.', count( $items ), count( $raw_items ) ),
+                array( 'status' => 400 )
+            );
         }
 
         $order_id = self::insert_order( array(
@@ -910,7 +935,7 @@ class TwellerFlow2_Prints {
 
         // Map items to saved files & price from the catalog
         $items = array();
-        foreach ( array_slice( (array) $raw_items, 0, 100 ) as $row ) {
+        foreach ( (array) $raw_items as $row ) {
             if ( ! is_array( $row ) ) continue;
             $file_index = isset( $row['file_index'] ) ? intval( $row['file_index'] ) : -1;
             if ( ! isset( $saved[ $file_index ] ) ) continue;
@@ -1302,7 +1327,7 @@ class TwellerFlow2_Prints {
         $base_url   = $upload_dir['baseurl'];
 
         $items = array();
-        foreach ( array_slice( $raw_items, 0, 100 ) as $row ) {
+        foreach ( $raw_items as $row ) {
             if ( ! is_array( $row ) ) continue;
 
             $product = self::get_product( sanitize_text_field( $row['product_id'] ?? '' ) );
@@ -1326,10 +1351,26 @@ class TwellerFlow2_Prints {
                 'filename'     => sanitize_file_name( (string) ( $row['filename'] ?? '' ) ),
                 'photo_url'    => $photo_url,
                 'thumb_url'    => $thumb_url,
-                'crop'         => sanitize_text_field( (string) ( $row['crop'] ?? '' ) ),
+                'crop'         => self::sanitize_crop( $row['crop'] ?? null ),
             );
         }
         return $items;
+    }
+
+    /**
+     * Crop arrives as {x,y,w,h,zoom} normalised 0-1. It used to be run
+     * through sanitize_text_field() after a string cast, which turns an
+     * array into the literal "Array" and threw the crop away entirely.
+     */
+    private static function sanitize_crop( $crop ) {
+        if ( ! is_array( $crop ) ) return null;
+        $out = array();
+        foreach ( array( 'x', 'y', 'w', 'h', 'zoom' ) as $k ) {
+            if ( ! isset( $crop[ $k ] ) || ! is_numeric( $crop[ $k ] ) ) continue;
+            $out[ $k ] = round( (float) $crop[ $k ], 6 );
+        }
+        if ( ! isset( $out['w'], $out['h'] ) ) return null;
+        return $out;
     }
 
     private static function insert_order( $data ) {

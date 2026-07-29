@@ -1676,6 +1676,19 @@
             strip.appendChild(buildCartItem(batch.items[i], product));
         }
         card.appendChild(strip);
+
+        // Long batches stay compact until asked to open, then scroll
+        // in place rather than stretching the summary down the page.
+        if (batch.items.length > 3) {
+            strip.className = 'tf2p-batch__strip tf2p-batch__strip--more';
+            var toggle = btn('tf2p-batch__toggle', 'Show all ' + batch.items.length + ' photos');
+            toggle.addEventListener('click', function() {
+                var open = strip.className.indexOf('--open') > -1;
+                strip.className = 'tf2p-batch__strip' + (open ? ' tf2p-batch__strip--more' : ' tf2p-batch__strip--open');
+                toggle.textContent = open ? ('Show all ' + batch.items.length + ' photos') : 'Show fewer';
+            });
+            card.appendChild(toggle);
+        }
         return card;
     }
 

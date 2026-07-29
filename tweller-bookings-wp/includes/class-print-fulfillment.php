@@ -375,6 +375,8 @@ class TwellerFlow2_Print_Fulfillment {
 	private static function rrmdir( $dir ) {
 		if ( ! is_dir( $dir ) ) return;
 		$base = self::jobs_basedir();
+		$base_real = $base ? realpath( $base ) : false;
+		if ( $base_real ) $base = wp_normalize_path( $base_real );
 		$real = realpath( $dir );
 		if ( ! $base || ! $real || strpos( wp_normalize_path( $real ), trailingslashit( $base ) ) !== 0 ) return;
 
@@ -1344,7 +1346,14 @@ class TwellerFlow2_Print_Fulfillment {
 			return new WP_Error( 'no_code', 'No barcode was supplied.', array( 'status' => 400 ) );
 		}
 
+		// A scanned label carries "REF|hmac". Typing the order reference by
+		// hand is the natural fallback, and this endpoint is already behind
+		// the studio API key, so the signature adds nothing there — accept
+		// a bare reference too rather than rejecting the obvious input.
 		$parts = explode( '|', $code );
+		if ( count( $parts ) === 1 ) {
+			$parts[] = '';
+		}
 		if ( count( $parts ) !== 2 ) {
 			return new WP_Error( 'bad_code', 'That barcode is not a Tweller delivery code.', array( 'status' => 400 ) );
 		}
@@ -1356,7 +1365,7 @@ class TwellerFlow2_Print_Fulfillment {
 		if ( ! $order ) {
 			return new WP_Error( 'not_found', 'No order matches that barcode.', array( 'status' => 404 ) );
 		}
-		if ( ! hash_equals( self::delivery_token( $order->order_ref ), $hmac ) ) {
+		if ( $hmac !== '' && ! hash_equals( self::delivery_token( $order->order_ref ), $hmac ) ) {
 			return new WP_Error( 'bad_signature', 'That barcode failed verification.', array( 'status' => 403 ) );
 		}
 
@@ -1510,7 +1519,13 @@ class TwellerFlow2_Print_Fulfillment {
 	private static function stream_zip( $order_ref ) {
 		$path = self::zip_path( $order_ref );
 		$real = $path ? realpath( $path ) : false;
+		// Resolve the base the same way as the file. realpath() follows
+		// symlinks, and on hosts where wp-content/uploads is symlinked an
+		// un-resolved base never prefix-matches a resolved file — which
+		// rejected packages that had in fact been built.
 		$base = self::jobs_basedir();
+		$base_real = $base ? realpath( $base ) : false;
+		if ( $base_real ) $base = wp_normalize_path( $base_real );
 
 		if ( ! $real || ! $base || strpos( wp_normalize_path( $real ), trailingslashit( $base ) ) !== 0 || ! is_file( $real ) ) {
 			status_header( 404 );
@@ -1711,15 +1726,36 @@ class TwellerFlow2_Print_Fulfillment {
 			$force = ! empty( $_GET['force'] );
 			$build = self::build_chunk( $order_id, $force );
 
-			$args = array( 'order_id' => $order_id );
+			// A build runs in chunks so it can't hit the PHP time limit.
+			// Keep redirecting back into the builder until it finishes,
+			// rather than dropping the user on the dashboard after one
+			// chunk and making them click Build again for every batch.
 			if ( empty( $build['done'] ) ) {
-				$args['fp_building'] = 1;
-				$args['fp_done']     = (int) ( $build['next'] ?? 0 );
-				$args['fp_total']    = (int) ( $build['total'] ?? 0 );
-			} else {
-				$args['fp_built'] = 1;
+				$pass = isset( $_GET['fp_pass'] ) ? (int) $_GET['fp_pass'] : 0;
+				$next = (int) ( $build['next'] ?? 0 );
+				$prev = isset( $_GET['fp_from'] ) ? (int) $_GET['fp_from'] : -1;
+
+				// Guard: stop if a pass made no progress, or we've looped far
+				// more than any real order needs.
+				if ( $pass < 60 && $next > $prev ) {
+					$url = add_query_arg(
+						array( 'fp_pass' => $pass + 1, 'fp_from' => $next ),
+						self::build_url( $order_id, false )
+					);
+					wp_safe_redirect( $url );
+					exit;
+				}
+
+				wp_safe_redirect( self::orders_url( array(
+					'order_id'    => $order_id,
+					'fp_building' => 1,
+					'fp_done'     => $next,
+					'fp_total'    => (int) ( $build['total'] ?? 0 ),
+				) ) );
+				exit;
 			}
-			wp_safe_redirect( self::orders_url( $args ) );
+
+			wp_safe_redirect( self::orders_url( array( 'order_id' => $order_id, 'fp_built' => 1 ) ) );
 			exit;
 		}
 

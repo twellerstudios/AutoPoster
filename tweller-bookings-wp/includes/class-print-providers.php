@@ -613,19 +613,37 @@ class TwellerFlow2_Print_Providers {
 			$email = sanitize_email( (string) ( isset( $post['new_email'] ) ? $post['new_email'] : '' ) );
 			$fname = sanitize_text_field( (string) ( isset( $post['new_name'] ) ? $post['new_name'] : '' ) );
 
+			// Fall back to the lab's own details so an account can be made
+			// with nothing typed: email from the provider record, username
+			// derived from the lab name (de-duplicated if taken).
+			if ( $email === '' ) $email = sanitize_email( (string) $record['email'] );
+			if ( $fname === '' ) $fname = (string) ( $record['contact_name'] !== '' ? $record['contact_name'] : $name );
+			if ( $login === '' ) {
+				$base = sanitize_user( sanitize_title( $name ), true );
+				if ( $base === '' && $email !== '' ) {
+					$base = sanitize_user( substr( $email, 0, strpos( $email, '@' ) ), true );
+				}
+				if ( $base === '' ) $base = 'provider';
+				$login = $base;
+				$n = 2;
+				while ( username_exists( $login ) ) { $login = $base . $n; $n++; }
+			}
+
 			if ( $login === '' || ! is_email( $email ) ) {
-				$error = 'A username and a valid email address are required to create a provider account.';
+				$error = 'Add an email address for this lab (or type one) so an account can be created.';
 			} elseif ( username_exists( $login ) ) {
 				$error = 'That username is already taken.';
 			} elseif ( email_exists( $email ) ) {
 				$error = 'That email address already belongs to a WordPress user — link the existing account instead.';
 			} else {
-				// Never store or email a plaintext password: WordPress
-				// generates one and mails the user a set-password link.
+				// A strong per-provider password (never a shared default) is
+				// generated here, shown to the admin once, and also mailed
+				// to the lab as a set-password link by WordPress.
+				$pass   = wp_generate_password( 16, true, false );
 				$new_id = wp_insert_user( array(
 					'user_login'   => $login,
 					'user_email'   => $email,
-					'user_pass'    => wp_generate_password( 24, true, true ),
+					'user_pass'    => $pass,
 					'display_name' => $fname !== '' ? $fname : $name,
 					'first_name'   => $fname,
 					'role'         => self::ROLE,
@@ -636,6 +654,16 @@ class TwellerFlow2_Print_Providers {
 				} else {
 					$record['user_id'] = (int) $new_id;
 					wp_send_new_user_notifications( (int) $new_id, 'both' );
+
+					// Show the credentials to the admin once, so a lab that
+					// never checks the WordPress email can still be given a
+					// working login by hand. Stored for a single page load
+					// only — never written into the provider record.
+					set_transient( 'tf2pv_new_login_' . get_current_user_id(), array(
+						'login' => $login,
+						'pass'  => $pass,
+						'email' => $email,
+					), 60 );
 				}
 			}
 		}
@@ -692,6 +720,22 @@ class TwellerFlow2_Print_Providers {
 		}
 		if ( $msg !== '' && isset( $messages[ $msg ] ) ) {
 			echo '<div class="notice notice-success"><p>' . esc_html( $messages[ $msg ] ) . '</p></div>';
+		}
+
+		// Credentials for a just-created account, shown once.
+		$fresh = get_transient( 'tf2pv_new_login_' . get_current_user_id() );
+		if ( is_array( $fresh ) && ! empty( $fresh['login'] ) ) {
+			delete_transient( 'tf2pv_new_login_' . get_current_user_id() );
+			echo '<div class="notice notice-success" style="border-left-color:#C9A227;">'
+				. '<p style="margin-bottom:6px;"><strong>Provider login created.</strong> '
+				. 'WordPress has emailed ' . esc_html( $fresh['email'] ) . ' a set-password link. '
+				. 'These credentials are shown once — copy them now if you want to pass them on directly:</p>'
+				. '<p style="font-family:ui-monospace,Menlo,Consolas,monospace; background:#fff; border:1px solid #dcdcde; border-radius:6px; padding:10px 12px; display:inline-block;">'
+				. 'Username: <strong>' . esc_html( $fresh['login'] ) . '</strong><br>'
+				. 'Password: <strong>' . esc_html( $fresh['pass'] ) . '</strong>'
+				. '</p>'
+				. '<p style="color:#646970; margin-top:6px;">Ask them to change it after their first sign-in.</p>'
+				. '</div>';
 		}
 
 		self::render_provider_table( $providers );
@@ -1220,7 +1264,9 @@ class TwellerFlow2_Print_Providers {
 		}
 
 		$parts = explode( '|', $code );
-		if ( count( $parts ) !== 2 ) {
+		
+		if ( count( $parts ) === 1 ) { $parts[] = ''; } // bare order ref is fine: ownership is already enforced
+if ( count( $parts ) !== 2 ) {
 			return new WP_Error( 'bad_code', 'That is not a Tweller delivery code.', array( 'status' => 400 ) );
 		}
 
@@ -1237,7 +1283,7 @@ class TwellerFlow2_Print_Providers {
 		if ( ! class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
 			return new WP_Error( 'unavailable', 'Scanning is not available on this site.', array( 'status' => 503 ) );
 		}
-		if ( ! hash_equals( TwellerFlow2_Print_Fulfillment::delivery_token( $order->order_ref ), $hmac ) ) {
+		if ( $hmac !== '' && ! hash_equals( TwellerFlow2_Print_Fulfillment::delivery_token( $order->order_ref ), $hmac ) ) {
 			return new WP_Error( 'bad_signature', 'That code failed verification.', array( 'status' => 403 ) );
 		}
 

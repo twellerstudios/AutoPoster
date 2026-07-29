@@ -1544,7 +1544,7 @@
         var wrap = el('<div class="wrap"></div>');
         screen.appendChild(wrap);
 
-        var scanBtn = el('<button class="btn btn--dark">' + ICONS.scan + ' Scan delivery</button>');
+        var scanBtn = el('<button class="btn btn--dark" style="margin-bottom:18px;">' + ICONS.scan + ' Scan delivery</button>');
         scanBtn.addEventListener('click', function () {
             push(function () { renderScanner(); });
         });
@@ -1695,6 +1695,14 @@
             });
             payCard.appendChild(confirmBtn);
         }
+        if (o.status === 'ready' || o.status === 'printing') {
+            var scanThis = el('<button class="btn btn--dark btn--sm" style="margin-top:8px;">' + ICONS.scan + ' Scan / mark this delivered</button>');
+            scanThis.addEventListener('click', function () {
+                push(function () { renderScanner(o.order_ref); });
+            });
+            payCard.appendChild(scanThis);
+        }
+
         if (o.portal_url) {
             var portalBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:8px;">Open customer order page ' + ICONS.link + '</button>');
             portalBtn.addEventListener('click', function () { openExternal(o.portal_url); });
@@ -1789,7 +1797,7 @@
     //  DELIVERY SCANNER — scan a shipping label to close an order
     // ═════════════════════════════════════════════════════════════
 
-    function renderScanner() {
+    function renderScanner(prefillRef) {
         view.innerHTML = '';
         var screen = el('<div class="screen"></div>');
         screen.appendChild(topbar('Scan delivery'));
@@ -1807,8 +1815,8 @@
 
         var manual = el(
             '<div class="card"><div class="card__title">Or type the code</div>' +
-                '<p class="hint" style="margin-top:0;">The code printed under the barcode on the label.</p>' +
-                '<div class="field" style="margin-bottom:8px;"><input type="text" id="scan-manual" placeholder="TS-PRINT-XXXXXX|…" autocapitalize="characters"></div>' +
+                '<p class="hint" style="margin-top:0;">Type the order reference (or the full code printed under the barcode).</p>' +
+                '<div class="field" style="margin-bottom:8px;"><input type="text" id="scan-manual" placeholder="TS-PRINT-XXXXXX" autocapitalize="characters"></div>' +
                 '<button class="btn btn--ghost" id="scan-submit">Mark delivered</button>' +
             '</div>'
         );
@@ -1859,6 +1867,9 @@
             }
         }
 
+        if (prefillRef) {
+            manual.querySelector('#scan-manual').value = prefillRef;
+        }
         manual.querySelector('#scan-submit').addEventListener('click', function () {
             submitCode(manual.querySelector('#scan-manual').value);
         });
@@ -1887,7 +1898,18 @@
                     video: { facingMode: 'environment' }, audio: false
                 });
             } catch (e) {
-                stateEl.textContent = 'Camera blocked — allow camera access, or type the code below.';
+                // Name the actual cause — "blocked" sent people hunting in
+                // browser settings when the app itself lacked the permission.
+                var why = (e && e.name) || '';
+                if (why === 'NotAllowedError') {
+                    stateEl.textContent = 'Camera permission denied. Allow camera for Tweller Bookings in Android Settings → Apps → Permissions, then reopen this screen.';
+                } else if (why === 'NotFoundError' || why === 'OverconstrainedError') {
+                    stateEl.textContent = 'No back camera found — type the code below.';
+                } else if (why === 'NotReadableError') {
+                    stateEl.textContent = 'The camera is in use by another app. Close it and try again.';
+                } else {
+                    stateEl.textContent = 'Camera unavailable (' + (why || 'unknown') + ') — type the code below.';
+                }
                 return;
             }
             if (stopped) { stop(); return; }

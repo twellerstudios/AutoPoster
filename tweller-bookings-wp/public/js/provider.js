@@ -18,6 +18,12 @@
     var elScanGo = document.getElementById('tfpv-scan-go');
     var elScanCam = document.getElementById('tfpv-scan-cam');
     var elVideo  = document.getElementById('tfpv-scan-video');
+    var elCamRow = document.getElementById('tfpv-scan-camrow');
+    var elShot   = document.getElementById('tfpv-scan-shot');
+    var elPhotoBtn = document.getElementById('tfpv-scan-photo-btn');
+    var elPhoto  = document.getElementById('tfpv-scan-photo');
+    var elScanState = document.getElementById('tfpv-scan-state');
+    var sharedDetector = null;
 
     var openRef = '';       // order_ref whose detail panel is expanded
     var details = {};       // order_ref -> detail payload
@@ -315,7 +321,72 @@
             stream = null;
         }
         if (elVideo) { elVideo.hidden = true; elVideo.srcObject = null; }
+        if (elCamRow) { elCamRow.hidden = true; }
         if (elScanCam) { elScanCam.textContent = 'Use camera'; }
+        scanState('');
+    }
+
+    function scanState(msg) {
+        if (elScanState) { elScanState.textContent = msg || ''; }
+    }
+
+    /** Shared detector, QR first — a phone camera locks onto a QR far more
+     *  reliably than the thin 1-D barcode, and this label's primary mark is
+     *  now a QR code. code_128 stays as a fallback for older labels. */
+    function getDetector() {
+        if (sharedDetector) { return sharedDetector; }
+        if (!window.BarcodeDetector) { return null; }
+        try {
+            sharedDetector = new window.BarcodeDetector({ formats: ['qr_code', 'code_128'] });
+        } catch (e) {
+            try {
+                sharedDetector = new window.BarcodeDetector();
+            } catch (e2) {
+                sharedDetector = null;
+            }
+        }
+        return sharedDetector;
+    }
+
+    /** Detect from any CanvasImageSource — used by the still-capture and
+     *  photo-upload paths, which read far more reliably than polling the
+     *  live <video> element in most in-app browsers. */
+    function detectFrom(source) {
+        var detector = getDetector();
+        if (!detector) { return window.Promise.resolve(null); }
+        return detector.detect(source).then(function (codes) {
+            return (codes && codes.length && codes[0].rawValue) ? codes[0].rawValue : null;
+        }).catch(function () { return null; });
+    }
+
+    function captureAndScan() {
+        if (!stream || !elVideo.videoWidth) {
+            scanState('Camera isn’t ready yet — give it a moment.');
+            return;
+        }
+        scanState('Reading the captured frame…');
+        var canvas = document.createElement('canvas');
+        canvas.width = elVideo.videoWidth;
+        canvas.height = elVideo.videoHeight;
+        canvas.getContext('2d').drawImage(elVideo, 0, 0, canvas.width, canvas.height);
+        detectFrom(canvas).then(function (value) {
+            if (value) { stopCamera(); if (elScan) { elScan.value = value; } submitScan(value); return; }
+            scanState('No code found in that shot — fill the frame with the QR and try again.');
+        });
+    }
+
+    function scanFromPhoto(file) {
+        if (!file) { return; }
+        scanState('Reading the photo…');
+        window.createImageBitmap(file).then(function (bmp) {
+            return detectFrom(bmp).then(function (value) {
+                bmp.close && bmp.close();
+                return value;
+            });
+        }).catch(function () { return null; }).then(function (value) {
+            if (value) { if (elScan) { elScan.value = value; } submitScan(value); return; }
+            scanState('No code found in that photo — make sure the QR is sharp and fills the frame.');
+        });
     }
 
     function startCamera() {
@@ -324,11 +395,9 @@
             return;
         }
 
-        var detector;
-        try {
-            detector = new window.BarcodeDetector({ formats: ['code_128'] });
-        } catch (e) {
-            notify('Barcode scanning is not supported here — type the code instead.', 'error');
+        var detector = getDetector();
+        if (!detector) {
+            notify('Automatic scanning is not supported here — capture a photo or type the code instead.', 'error');
             return;
         }
 
@@ -337,23 +406,31 @@
                 stream = media;
                 elVideo.srcObject = media;
                 elVideo.hidden = false;
+                if (elCamRow) { elCamRow.hidden = false; }
                 elScanCam.textContent = 'Stop camera';
+                scanState('Looking for a QR code…');
                 return elVideo.play();
             })
             .then(function () {
                 scanTimer = window.setInterval(function () {
-                    detector.detect(elVideo).then(function (codes) {
-                        if (codes && codes.length) {
-                            var value = codes[0].rawValue;
+                    detectFrom(elVideo).then(function (value) {
+                        if (value) {
                             stopCamera();
                             if (elScan) { elScan.value = value; }
                             submitScan(value);
                         }
-                    }).catch(function () { /* frame not ready — keep trying */ });
+                    });
                 }, 600);
             })
-            .catch(function () {
-                notify('Camera access was blocked — type the code instead.', 'error');
+            .catch(function (err) {
+                var why = (err && err.name) || '';
+                if (why === 'NotAllowedError') {
+                    notify('Camera permission denied — allow camera access for this site, then try again.', 'error');
+                } else if (why === 'NotReadableError') {
+                    notify('The camera is in use by another app.', 'error');
+                } else {
+                    notify('Camera access was blocked — type the code instead.', 'error');
+                }
                 stopCamera();
             });
     }
@@ -411,6 +488,20 @@
         elScanCam.hidden = false;
         elScanCam.addEventListener('click', function () {
             if (stream) { stopCamera(); } else { startCamera(); }
+        });
+    }
+
+    if (elShot) {
+        elShot.addEventListener('click', captureAndScan);
+    }
+    if (elPhotoBtn && elPhoto) {
+        elPhotoBtn.addEventListener('click', function () { elPhoto.click(); });
+    }
+    if (elPhoto) {
+        elPhoto.addEventListener('change', function () {
+            var file = this.files && this.files[0];
+            this.value = '';
+            scanFromPhoto(file);
         });
     }
 

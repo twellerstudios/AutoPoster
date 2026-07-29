@@ -1040,13 +1040,19 @@ class TwellerFlow2_Print_Providers {
 
 			<section class="tfpv__scan">
 				<h2 class="tfpv__h2">Scan to complete</h2>
-				<p class="tfpv__hint">Scan or type the code printed under the barcode on the shipping label to close a job out.</p>
+				<p class="tfpv__hint">Point at the QR code on the shipping label — it closes the job automatically. If the live view won't lock on, use Capture &amp; scan or a photo instead.</p>
 				<div class="tfpv__scan-row">
-					<input type="text" id="tfpv-scan-input" class="tfpv__input" placeholder="TS-PRINT-XXXXXX|code" autocomplete="off" spellcheck="false">
+					<input type="text" id="tfpv-scan-input" class="tfpv__input" placeholder="TS-PRINT-XXXXXX" autocomplete="off" spellcheck="false">
 					<button type="button" class="tfpv__btn tfpv__btn--gold" id="tfpv-scan-go">Verify</button>
 					<button type="button" class="tfpv__btn tfpv__btn--ghost" id="tfpv-scan-cam" hidden>Use camera</button>
 				</div>
 				<video id="tfpv-scan-video" class="tfpv__video" playsinline hidden></video>
+				<div class="tfpv__scan-row" id="tfpv-scan-camrow" hidden>
+					<button type="button" class="tfpv__btn tfpv__btn--dark" id="tfpv-scan-shot">Capture &amp; scan</button>
+					<button type="button" class="tfpv__btn tfpv__btn--ghost" id="tfpv-scan-photo-btn">Use a photo instead</button>
+					<input type="file" id="tfpv-scan-photo" accept="image/*" capture="environment" hidden>
+				</div>
+				<p class="tfpv__hint" id="tfpv-scan-state" aria-live="polite"></p>
 			</section>
 
 			<div id="tfpv-stats" class="tfpv__stats" aria-live="polite"></div>

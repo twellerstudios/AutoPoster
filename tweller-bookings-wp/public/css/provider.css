@@ -313,6 +313,8 @@
 .tfpv__btn--ghost:hover { border-color: var(--tfpv-ink); }
 .tfpv__btn--link { background: none; border: 0; color: var(--tfpv-muted); padding: 10px 4px; }
 .tfpv__btn--link:hover { color: var(--tfpv-ink); }
+.tfpv__btn--dark { background: var(--tfpv-ink); border-color: var(--tfpv-ink); color: #fff; }
+.tfpv__btn--dark:hover { opacity: 0.85; }
 
 /* ── Detail ────────────────────────────────────────── */
 

@@ -31,20 +31,33 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class TwellerFlow2_Print_Providers {
 
-	const VERSION = '1.0.1';
+	const VERSION = '1.1.0';
 
 	const OPT_VERSION   = 'tweller_print_providers_version';
 	const OPT_PROVIDERS = 'tweller_print_providers';
 	const OPT_PAGE      = 'tweller_flow_2_provider_page';
+	const OPT_APPLY_PAGE = 'tweller_flow_2_provider_apply_page';
 
 	const ROLE = 'tweller_print_provider';
 	const CAP  = 'tweller_view_print_jobs';
 
-	const ADMIN_PAGE = 'tweller-flow-2-provider-accounts';
+	const ADMIN_PAGE          = 'tweller-flow-2-provider-accounts';
+	const ADMIN_PAGE_REQUESTS = 'tweller-flow-2-provider-requests';
 	const REST_NS    = 'tweller-flow-2/v1';
 
 	const PAGE_SLUG  = 'print-provider';
 	const SHORTCODE  = 'tweller_print_provider';
+
+	/** Public "become a print partner" application. */
+	const APPLY_PAGE_SLUG = 'print-partner-application';
+	const APPLY_SHORTCODE = 'tweller_provider_apply';
+	const TABLE_REQUESTS  = 'tweller_provider_requests';
+
+	/** Applications allowed from one IP per hour. */
+	const APPLY_RATE_LIMIT = 5;
+
+	/** Anything faster than this is a bot, not a print lab. */
+	const APPLY_MIN_SECONDS = 3;
 
 	/** Statuses a provider is allowed to set. Never confirmed/cancelled. */
 	const PROVIDER_STATUSES = 'printing,ready';
@@ -57,6 +70,11 @@ class TwellerFlow2_Print_Providers {
 		add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
 		add_shortcode( self::SHORTCODE, array( __CLASS__, 'render_shortcode' ) );
+
+		// Provider applications ("Become a Print Partner").
+		add_shortcode( self::APPLY_SHORTCODE, array( __CLASS__, 'render_apply_shortcode' ) );
+		add_action( 'template_redirect', array( __CLASS__, 'maybe_handle_application' ) );
+		add_action( 'admin_init', array( __CLASS__, 'handle_request_actions' ) );
 
 		// Providers have no business in wp-admin.
 		add_filter( 'show_admin_bar', array( __CLASS__, 'filter_admin_bar' ) );
@@ -75,6 +93,8 @@ class TwellerFlow2_Print_Providers {
 	public static function install() {
 		self::register_role();
 		self::ensure_page();
+		self::create_requests_table();
+		self::ensure_apply_page();
 	}
 
 	/** Minimal role: read the site, view print jobs. Nothing else. */
@@ -136,6 +156,46 @@ class TwellerFlow2_Print_Providers {
 	public static function page_url() {
 		$url = get_option( self::OPT_PAGE, '' );
 		return $url ? $url : home_url( '/' . self::PAGE_SLUG . '/' );
+	}
+
+	/**
+	 * Auto-create the public "Become a Print Partner" application page —
+	 * same pattern as the provider dashboard page above.
+	 */
+	public static function ensure_apply_page() {
+		$existing_url = get_option( self::OPT_APPLY_PAGE, '' );
+		if ( $existing_url ) {
+			$page_id = url_to_postid( $existing_url );
+			if ( $page_id && get_post_status( $page_id ) === 'publish' ) return;
+		}
+
+		$existing = get_posts( array(
+			'post_type'   => 'page',
+			'post_status' => 'publish',
+			's'           => '[' . self::APPLY_SHORTCODE . ']',
+			'numberposts' => 1,
+		) );
+		if ( ! empty( $existing ) ) {
+			update_option( self::OPT_APPLY_PAGE, get_permalink( $existing[0]->ID ) );
+			return;
+		}
+
+		$page_id = wp_insert_post( array(
+			'post_title'   => 'Become a Print Partner',
+			'post_name'    => self::APPLY_PAGE_SLUG,
+			'post_content' => '[' . self::APPLY_SHORTCODE . ']',
+			'post_status'  => 'publish',
+			'post_type'    => 'page',
+		) );
+
+		if ( $page_id && ! is_wp_error( $page_id ) ) {
+			update_option( self::OPT_APPLY_PAGE, get_permalink( $page_id ) );
+		}
+	}
+
+	public static function apply_page_url() {
+		$url = get_option( self::OPT_APPLY_PAGE, '' );
+		return $url ? $url : home_url( '/' . self::APPLY_PAGE_SLUG . '/' );
 	}
 
 	// ── Keep providers out of wp-admin ─────────────────
@@ -490,6 +550,24 @@ class TwellerFlow2_Print_Providers {
 			self::ADMIN_PAGE,
 			array( __CLASS__, 'page_accounts' )
 		);
+
+		// "Provider Requests" carries a pending-count bubble, same visual
+		// language as the core comment-moderation counter.
+		$pending = self::count_requests( 'new' );
+		$label   = 'Provider Requests';
+		if ( $pending > 0 ) {
+			$label .= ' <span class="awaiting-mod update-plugins count-' . (int) $pending . '"><span class="pending-count">'
+				. number_format_i18n( $pending ) . '</span></span>';
+		}
+
+		add_submenu_page(
+			'tweller-flow-2',
+			'Provider Requests',
+			$label,
+			'manage_options',
+			self::ADMIN_PAGE_REQUESTS,
+			array( __CLASS__, 'page_requests' )
+		);
 	}
 
 	private static function admin_url_for( $args = array() ) {
@@ -723,19 +801,13 @@ class TwellerFlow2_Print_Providers {
 		}
 
 		// Credentials for a just-created account, shown once.
-		$fresh = get_transient( 'tf2pv_new_login_' . get_current_user_id() );
-		if ( is_array( $fresh ) && ! empty( $fresh['login'] ) ) {
-			delete_transient( 'tf2pv_new_login_' . get_current_user_id() );
-			echo '<div class="notice notice-success" style="border-left-color:#C9A227;">'
-				. '<p style="margin-bottom:6px;"><strong>Provider login created.</strong> '
-				. 'WordPress has emailed ' . esc_html( $fresh['email'] ) . ' a set-password link. '
-				. 'These credentials are shown once — copy them now if you want to pass them on directly:</p>'
-				. '<p style="font-family:ui-monospace,Menlo,Consolas,monospace; background:#fff; border:1px solid #dcdcde; border-radius:6px; padding:10px 12px; display:inline-block;">'
-				. 'Username: <strong>' . esc_html( $fresh['login'] ) . '</strong><br>'
-				. 'Password: <strong>' . esc_html( $fresh['pass'] ) . '</strong>'
-				. '</p>'
-				. '<p style="color:#646970; margin-top:6px;">Ask them to change it after their first sign-in.</p>'
-				. '</div>';
+		self::render_new_login_notice();
+
+		$pending = self::count_requests( 'new' );
+		if ( $pending > 0 ) {
+			echo '<div class="notice notice-info"><p>'
+				. esc_html( sprintf( _n( '%d print lab is waiting to be reviewed.', '%d print labs are waiting to be reviewed.', $pending, 'tweller-bookings' ), $pending ) )
+				. ' <a href="' . esc_url( self::requests_url() ) . '">Open Provider Requests</a></p></div>';
 		}
 
 		self::render_provider_table( $providers );
@@ -899,6 +971,12 @@ class TwellerFlow2_Print_Providers {
 			array(),
 			defined( 'TWELLER_FLOW_2_VERSION' ) ? TWELLER_FLOW_2_VERSION : self::VERSION
 		);
+		wp_register_style(
+			'tweller-flow-2-provider-apply',
+			TWELLER_FLOW_2_PLUGIN_URL . 'public/css/provider-apply.css',
+			array(),
+			defined( 'TWELLER_FLOW_2_VERSION' ) ? TWELLER_FLOW_2_VERSION : self::VERSION
+		);
 		wp_register_script(
 			'tweller-flow-2-provider',
 			TWELLER_FLOW_2_PLUGIN_URL . 'public/js/provider.js',
@@ -1022,6 +1100,7 @@ class TwellerFlow2_Print_Providers {
 					?>
 				</div>
 				<p class="tfpv__card-foot"><a href="<?php echo esc_url( wp_lostpassword_url( $redirect ) ); ?>">Forgot your password?</a></p>
+				<p class="tfpv__card-foot">Not a partner yet? <a href="<?php echo esc_url( self::apply_page_url() ); ?>">Apply to print for Tweller Studios &rarr;</a></p>
 			</div>
 		</div>
 		<?php
@@ -1474,5 +1553,1283 @@ if ( count( $parts ) !== 2 ) {
 		$payload['studio_notes'] = $notes;
 
 		return $payload;
+	}
+
+	// ══════════════════════════════════════════════════════
+	// PROVIDER REQUESTS — a print lab applies, the studio
+	// reviews, approval provisions the account automatically.
+	// ══════════════════════════════════════════════════════
+
+	/** @var array<string,string> Field => message, for the public form. */
+	private static $apply_errors = array();
+
+	/** @var array<string,mixed> Re-populate the form after a failed submit. */
+	private static $apply_values = array();
+
+	// ── Storage ────────────────────────────────────────
+
+	public static function requests_table() {
+		global $wpdb;
+		return $wpdb->prefix . self::TABLE_REQUESTS;
+	}
+
+	/** @var bool|null Memoised table check, reset after a dbDelta run. */
+	private static $requests_table_ready = null;
+
+	private static function requests_table_exists() {
+		if ( self::$requests_table_ready !== null ) return self::$requests_table_ready;
+
+		global $wpdb;
+		$table = self::requests_table();
+		$found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+
+		self::$requests_table_ready = ( $found === $table );
+		return self::$requests_table_ready;
+	}
+
+	public static function create_requests_table() {
+		global $wpdb;
+
+		$table   = self::requests_table();
+		$charset = $wpdb->get_charset_collate();
+
+		$sql = "CREATE TABLE {$table} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			status varchar(20) NOT NULL DEFAULT 'new',
+			business_name varchar(190) NOT NULL DEFAULT '',
+			contact_name varchar(190) NOT NULL DEFAULT '',
+			email varchar(190) NOT NULL DEFAULT '',
+			phone varchar(60) NOT NULL DEFAULT '',
+			website varchar(255) NOT NULL DEFAULT '',
+			instagram varchar(190) NOT NULL DEFAULT '',
+			facebook varchar(190) NOT NULL DEFAULT '',
+			social_other varchar(190) NOT NULL DEFAULT '',
+			address text NULL,
+			country varchar(120) NOT NULL DEFAULT '',
+			years_in_business smallint(5) unsigned NOT NULL DEFAULT 0,
+			services text NULL,
+			turnaround varchar(160) NOT NULL DEFAULT '',
+			capacity varchar(160) NOT NULL DEFAULT '',
+			sample_url varchar(255) NOT NULL DEFAULT '',
+			equipment text NULL,
+			papers varchar(255) NOT NULL DEFAULT '',
+			business_reg varchar(120) NOT NULL DEFAULT '',
+			color_managed tinyint(1) NOT NULL DEFAULT 0,
+			does_delivery tinyint(1) NOT NULL DEFAULT 0,
+			referral varchar(190) NOT NULL DEFAULT '',
+			message text NULL,
+			ip varchar(100) NOT NULL DEFAULT '',
+			provider_id varchar(64) NOT NULL DEFAULT '',
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			created_at datetime NOT NULL,
+			reviewed_at datetime NULL,
+			reviewed_by bigint(20) unsigned NOT NULL DEFAULT 0,
+			review_notes text NULL,
+			PRIMARY KEY  (id),
+			KEY status (status),
+			KEY email (email),
+			KEY created_at (created_at)
+		) {$charset};";
+
+		if ( ! function_exists( 'dbDelta' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
+		dbDelta( $sql );
+
+		self::$requests_table_ready = null; // re-check on next use
+	}
+
+	/** Services a lab can tick on the application form. */
+	public static function service_options() {
+		return array(
+			'photo_prints' => 'Photo prints',
+			'canvas'       => 'Canvas',
+			'framing'      => 'Framing',
+			'albums'       => 'Albums / photobooks',
+			'large_format' => 'Large format',
+			'delivery'     => 'Delivery',
+		);
+	}
+
+	public static function request_statuses() {
+		return array(
+			'new'      => 'Pending',
+			'approved' => 'Approved',
+			'rejected' => 'Declined',
+		);
+	}
+
+	private static function services_label( $csv ) {
+		$opts  = self::service_options();
+		$out   = array();
+		foreach ( array_filter( array_map( 'trim', explode( ',', (string) $csv ) ) ) as $key ) {
+			$out[] = isset( $opts[ $key ] ) ? $opts[ $key ] : $key;
+		}
+		return implode( ', ', $out );
+	}
+
+	public static function get_request( $id ) {
+		global $wpdb;
+		$id = (int) $id;
+		if ( $id <= 0 || ! self::requests_table_exists() ) return null;
+
+		$table = self::requests_table();
+		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE id = %d", $id ) );
+		return $row ? $row : null;
+	}
+
+	/**
+	 * @param string $status '' for every status.
+	 * @return array<int, object>
+	 */
+	public static function get_requests( $status = '', $limit = 200, $offset = 0 ) {
+		global $wpdb;
+		if ( ! self::requests_table_exists() ) return array();
+
+		$table  = self::requests_table();
+		$limit    = max( 1, min( 500, (int) $limit ) );
+		$offset   = max( 0, (int) $offset );
+		$status   = sanitize_key( (string) $status );
+		$statuses = self::request_statuses();
+
+		if ( $status !== '' && isset( $statuses[ $status ] ) ) {
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT * FROM `{$table}` WHERE status = %s ORDER BY created_at DESC LIMIT %d OFFSET %d",
+				$status, $limit, $offset
+			) );
+		} else {
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT * FROM `{$table}` ORDER BY created_at DESC LIMIT %d OFFSET %d",
+				$limit, $offset
+			) );
+		}
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	public static function count_requests( $status = '' ) {
+		global $wpdb;
+		if ( ! self::requests_table_exists() ) return 0;
+
+		$table    = self::requests_table();
+		$status   = sanitize_key( (string) $status );
+		$statuses = self::request_statuses();
+
+		if ( $status !== '' && isset( $statuses[ $status ] ) ) {
+			return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE status = %s", $status ) );
+		}
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}`" );
+	}
+
+	// ── Public application form ────────────────────────
+
+	private static function client_ip() {
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		return substr( $ip, 0, 100 );
+	}
+
+	private static function rate_limit_key() {
+		return 'tf2pa_rl_' . md5( self::client_ip() );
+	}
+
+	private static function rate_limited() {
+		$hits = (int) get_transient( self::rate_limit_key() );
+		return $hits >= self::APPLY_RATE_LIMIT;
+	}
+
+	private static function bump_rate_limit() {
+		$key  = self::rate_limit_key();
+		$hits = (int) get_transient( $key );
+		set_transient( $key, $hits + 1, HOUR_IN_SECONDS );
+	}
+
+	/**
+	 * Handle the public application POST before anything is rendered, so a
+	 * successful submit can redirect (post/redirect/get — no double sends).
+	 * On failure we fall through and the shortcode re-renders with errors.
+	 */
+	public static function maybe_handle_application() {
+		if ( is_admin() ) return;
+		if ( empty( $_POST['tfpa_action'] ) ) return;
+		if ( sanitize_key( wp_unslash( $_POST['tfpa_action'] ) ) !== 'apply' ) return;
+
+		$post   = wp_unslash( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification -- nonce checked immediately below
+		$errors = array();
+
+		// ── Nonce ──
+		$nonce = isset( $post['tfpa_nonce'] ) ? (string) $post['tfpa_nonce'] : '';
+		if ( ! wp_verify_nonce( $nonce, 'tfpa_apply' ) ) {
+			$errors['_'] = 'This page was open for a while and the security token expired. Please send the form again.';
+		}
+
+		// ── Honeypot + minimum fill time (silent bot filters) ──
+		if ( ! empty( $post['tfpa_company_url'] ) ) {
+			// A bot filled the hidden field. Pretend it worked.
+			wp_safe_redirect( add_query_arg( 'tfpa', 'ok', self::apply_page_url() ) );
+			exit;
+		}
+		$started = isset( $post['tfpa_t'] ) ? (int) $post['tfpa_t'] : 0;
+		if ( $started > 0 && ( time() - $started ) < self::APPLY_MIN_SECONDS ) {
+			wp_safe_redirect( add_query_arg( 'tfpa', 'ok', self::apply_page_url() ) );
+			exit;
+		}
+
+		// ── Rate limit ──
+		if ( empty( $errors ) && self::rate_limited() ) {
+			$errors['_'] = 'We have received several applications from this connection already. Please try again in an hour, or email ' . self::studio_email() . '.';
+		}
+
+		$values = self::sanitize_application( $post );
+
+		// ── Required fields ──
+		if ( $values['business_name'] === '' ) {
+			$errors['business_name'] = 'Please tell us the name of your business.';
+		}
+		if ( $values['email'] === '' ) {
+			$errors['email'] = 'An email address is required — it is how we reach you.';
+		} elseif ( ! is_email( $values['email'] ) ) {
+			$errors['email'] = 'That email address does not look right.';
+		}
+		if ( $values['website'] !== '' && ! self::looks_like_url( $values['website'] ) ) {
+			$errors['website'] = 'Please give a full web address, starting with https://';
+		}
+		if ( $values['sample_url'] !== '' && ! self::looks_like_url( $values['sample_url'] ) ) {
+			$errors['sample_url'] = 'Please give a full link, starting with https://';
+		}
+
+		// ── Already applied? ──
+		if ( empty( $errors ) && $values['email'] !== '' && self::has_pending_application( $values['email'] ) ) {
+			$errors['_'] = 'We already have an application from this email address and it is being reviewed. We will be in touch shortly.';
+		}
+
+		if ( ! empty( $errors ) ) {
+			self::$apply_errors = $errors;
+			self::$apply_values = $values;
+			return;
+		}
+
+		$id = self::insert_request( $values );
+		self::bump_rate_limit();
+
+		if ( ! $id ) {
+			self::$apply_errors = array( '_' => 'Something went wrong saving your application. Please try again, or email ' . self::studio_email() . '.' );
+			self::$apply_values = $values;
+			return;
+		}
+
+		$row = self::get_request( $id );
+		if ( $row ) {
+			self::send_application_received_email( $row );
+			self::send_studio_application_email( $row );
+		}
+
+		wp_safe_redirect( add_query_arg( 'tfpa', 'ok', self::apply_page_url() ) );
+		exit;
+	}
+
+	private static function studio_email() {
+		if ( class_exists( 'TwellerFlow2_Notifications' ) ) {
+			return TwellerFlow2_Notifications::STUDIO_EMAIL;
+		}
+		return get_option( 'admin_email', '' );
+	}
+
+	private static function looks_like_url( $url ) {
+		$url = trim( (string) $url );
+		if ( $url === '' ) return false;
+		if ( ! preg_match( '#^https?://#i', $url ) ) return false;
+		return (bool) filter_var( $url, FILTER_VALIDATE_URL );
+	}
+
+	/** Prefix a bare handle with @, strip a pasted profile URL down to it. */
+	private static function clean_handle( $value ) {
+		$value = trim( sanitize_text_field( (string) $value ) );
+		if ( $value === '' ) return '';
+		if ( preg_match( '#^https?://#i', $value ) ) {
+			$path = trim( (string) wp_parse_url( $value, PHP_URL_PATH ), '/' );
+			if ( $path !== '' ) $value = $path;
+		}
+		$value = ltrim( $value, '@' );
+		return substr( $value, 0, 180 );
+	}
+
+	private static function sanitize_application( $post ) {
+		$get = function( $key ) use ( $post ) {
+			return isset( $post[ $key ] ) ? (string) $post[ $key ] : '';
+		};
+
+		$services = array();
+		if ( isset( $post['services'] ) && is_array( $post['services'] ) ) {
+			$allowed = array_keys( self::service_options() );
+			foreach ( $post['services'] as $s ) {
+				$s = sanitize_key( (string) $s );
+				if ( in_array( $s, $allowed, true ) && ! in_array( $s, $services, true ) ) $services[] = $s;
+			}
+		}
+
+		return array(
+			'business_name'     => substr( sanitize_text_field( $get( 'business_name' ) ), 0, 180 ),
+			'contact_name'      => substr( sanitize_text_field( $get( 'contact_name' ) ), 0, 180 ),
+			'email'             => sanitize_email( $get( 'email' ) ),
+			'phone'             => substr( sanitize_text_field( $get( 'phone' ) ), 0, 55 ),
+			'website'           => esc_url_raw( trim( $get( 'website' ) ) ),
+			'instagram'         => self::clean_handle( $get( 'instagram' ) ),
+			'facebook'          => self::clean_handle( $get( 'facebook' ) ),
+			'social_other'      => substr( sanitize_text_field( $get( 'social_other' ) ), 0, 180 ),
+			'address'           => sanitize_textarea_field( $get( 'address' ) ),
+			'country'           => substr( sanitize_text_field( $get( 'country' ) ), 0, 110 ),
+			'years_in_business' => max( 0, min( 200, (int) $get( 'years_in_business' ) ) ),
+			'services'          => implode( ',', $services ),
+			'turnaround'        => substr( sanitize_text_field( $get( 'turnaround' ) ), 0, 150 ),
+			'capacity'          => substr( sanitize_text_field( $get( 'capacity' ) ), 0, 150 ),
+			'sample_url'        => esc_url_raw( trim( $get( 'sample_url' ) ) ),
+			'equipment'         => sanitize_textarea_field( $get( 'equipment' ) ),
+			'papers'            => substr( sanitize_text_field( $get( 'papers' ) ), 0, 240 ),
+			'business_reg'      => substr( sanitize_text_field( $get( 'business_reg' ) ), 0, 110 ),
+			'color_managed'     => empty( $post['color_managed'] ) ? 0 : 1,
+			'does_delivery'     => empty( $post['does_delivery'] ) ? 0 : 1,
+			'referral'          => substr( sanitize_text_field( $get( 'referral' ) ), 0, 180 ),
+			'message'           => sanitize_textarea_field( $get( 'message' ) ),
+		);
+	}
+
+	private static function has_pending_application( $email ) {
+		global $wpdb;
+		if ( ! self::requests_table_exists() ) return false;
+
+		$table = self::requests_table();
+		$found = $wpdb->get_var( $wpdb->prepare(
+			"SELECT id FROM `{$table}` WHERE email = %s AND status = %s LIMIT 1",
+			sanitize_email( (string) $email ),
+			'new'
+		) );
+		return ! empty( $found );
+	}
+
+	private static function insert_request( $values ) {
+		global $wpdb;
+		if ( ! self::requests_table_exists() ) {
+			self::create_requests_table();
+			if ( ! self::requests_table_exists() ) return 0;
+		}
+
+		$data = array_merge( $values, array(
+			'status'     => 'new',
+			'ip'         => self::client_ip(),
+			'created_at' => current_time( 'mysql' ),
+		) );
+
+		$formats = array();
+		foreach ( $data as $key => $value ) {
+			$formats[] = in_array( $key, array( 'years_in_business', 'color_managed', 'does_delivery' ), true ) ? '%d' : '%s';
+		}
+
+		$ok = $wpdb->insert( self::requests_table(), $data, $formats );
+		return $ok ? (int) $wpdb->insert_id : 0;
+	}
+
+	// ── Shortcode: [tweller_provider_apply] ────────────
+
+	public static function render_apply_shortcode( $atts ) {
+		unset( $atts );
+		wp_enqueue_style( 'tweller-flow-2-provider-apply' );
+
+		$submitted = isset( $_GET['tfpa'] ) && sanitize_key( wp_unslash( $_GET['tfpa'] ) ) === 'ok';
+		if ( $submitted && empty( self::$apply_errors ) ) {
+			return self::render_apply_success();
+		}
+		return self::render_apply_form();
+	}
+
+	private static function render_apply_success() {
+		ob_start();
+		?>
+		<div class="tfpa tfpa--centered">
+			<div class="tfpa__card tfpa__card--done">
+				<div class="tfpa__brand">
+					<span class="tfpa__brand-name">TWELLER</span>
+					<span class="tfpa__brand-sub">Studios &middot; Print Partners</span>
+				</div>
+				<div class="tfpa__tick" aria-hidden="true">&#10003;</div>
+				<h1 class="tfpa__done-title">Application received</h1>
+				<p class="tfpa__done-body">Thank you for putting your lab forward. We read every application by hand, so give us a few days &mdash; you will hear from us by email either way.</p>
+				<p class="tfpa__done-body tfpa__done-body--muted">If your application is approved we will set up your partner dashboard and send you a sign-in link.</p>
+				<p class="tfpa__done-foot"><a href="<?php echo esc_url( home_url( '/' ) ); ?>">Back to twellerstudios.com</a></p>
+			</div>
+		</div>
+		<?php
+		return ob_get_clean();
+	}
+
+	private static function apply_value( $key, $default = '' ) {
+		if ( isset( self::$apply_values[ $key ] ) ) return self::$apply_values[ $key ];
+		return $default;
+	}
+
+	private static function apply_error( $key ) {
+		return isset( self::$apply_errors[ $key ] ) ? self::$apply_errors[ $key ] : '';
+	}
+
+	private static function apply_error_html( $key ) {
+		$err = self::apply_error( $key );
+		if ( $err === '' ) return '';
+		return '<span class="tfpa__err" role="alert">' . esc_html( $err ) . '</span>';
+	}
+
+	private static function apply_invalid_class( $key ) {
+		return self::apply_error( $key ) !== '' ? ' tfpa__input--invalid' : '';
+	}
+
+	private static function render_apply_form() {
+		$selected_services = array_filter( array_map( 'trim', explode( ',', (string) self::apply_value( 'services', '' ) ) ) );
+
+		ob_start();
+		?>
+		<div class="tfpa">
+			<header class="tfpa__top">
+				<div class="tfpa__brand">
+					<span class="tfpa__brand-name">TWELLER</span>
+					<span class="tfpa__brand-sub">Studios &middot; Print Partners</span>
+				</div>
+			</header>
+
+			<div class="tfpa__hero">
+				<h1 class="tfpa__title">Become a print partner</h1>
+				<p class="tfpa__lede">We hand our clients&rsquo; finished work to a small number of trusted labs in Trinidad &amp; Tobago. If you print, frame, mount or bind to a professional standard, tell us about your shop.</p>
+				<ul class="tfpa__points">
+					<li>Print-ready files, colour-managed, delivered as one package per job</li>
+					<li>Your own dashboard &mdash; jobs, files, delivery labels, barcode sign-off</li>
+					<li>We never share your pricing, and you never see our client&rsquo;s details</li>
+				</ul>
+			</div>
+
+			<?php if ( self::apply_error( '_' ) !== '' ) : ?>
+				<div class="tfpa__alert" role="alert"><?php echo esc_html( self::apply_error( '_' ) ); ?></div>
+			<?php elseif ( ! empty( self::$apply_errors ) ) : ?>
+				<div class="tfpa__alert" role="alert">Please check the highlighted fields below.</div>
+			<?php endif; ?>
+
+			<form class="tfpa__form" method="post" action="<?php echo esc_url( self::apply_page_url() ); ?>" novalidate>
+				<?php wp_nonce_field( 'tfpa_apply', 'tfpa_nonce' ); ?>
+				<input type="hidden" name="tfpa_action" value="apply">
+				<input type="hidden" name="tfpa_t" value="<?php echo esc_attr( time() ); ?>">
+
+				<div class="tfpa__hp" aria-hidden="true">
+					<label>Company URL<input type="text" name="tfpa_company_url" tabindex="-1" autocomplete="off" value=""></label>
+				</div>
+
+				<section class="tfpa__section">
+					<h2 class="tfpa__h2">Your business</h2>
+
+					<label class="tfpa__field">
+						<span class="tfpa__label">Business name <span class="tfpa__req">*</span></span>
+						<input type="text" name="business_name" class="tfpa__input<?php echo esc_attr( self::apply_invalid_class( 'business_name' ) ); ?>" required
+							value="<?php echo esc_attr( self::apply_value( 'business_name' ) ); ?>" autocomplete="organization">
+						<?php echo self::apply_error_html( 'business_name' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper ?>
+					</label>
+
+					<div class="tfpa__grid">
+						<label class="tfpa__field">
+							<span class="tfpa__label">Contact person</span>
+							<input type="text" name="contact_name" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'contact_name' ) ); ?>" autocomplete="name">
+						</label>
+
+						<label class="tfpa__field">
+							<span class="tfpa__label">Email <span class="tfpa__req">*</span></span>
+							<input type="email" name="email" class="tfpa__input<?php echo esc_attr( self::apply_invalid_class( 'email' ) ); ?>" required
+								value="<?php echo esc_attr( self::apply_value( 'email' ) ); ?>" autocomplete="email">
+							<?php echo self::apply_error_html( 'email' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper ?>
+						</label>
+					</div>
+
+					<div class="tfpa__grid">
+						<label class="tfpa__field">
+							<span class="tfpa__label">Phone / WhatsApp</span>
+							<input type="tel" name="phone" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'phone' ) ); ?>" autocomplete="tel" placeholder="+1 868 000 0000">
+						</label>
+
+						<label class="tfpa__field">
+							<span class="tfpa__label">Website</span>
+							<input type="url" name="website" class="tfpa__input<?php echo esc_attr( self::apply_invalid_class( 'website' ) ); ?>"
+								value="<?php echo esc_attr( self::apply_value( 'website' ) ); ?>" placeholder="https://">
+							<?php echo self::apply_error_html( 'website' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper ?>
+						</label>
+					</div>
+
+					<div class="tfpa__grid tfpa__grid--3">
+						<label class="tfpa__field">
+							<span class="tfpa__label">Instagram</span>
+							<input type="text" name="instagram" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'instagram' ) ); ?>" placeholder="@yourlab">
+						</label>
+						<label class="tfpa__field">
+							<span class="tfpa__label">Facebook</span>
+							<input type="text" name="facebook" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'facebook' ) ); ?>" placeholder="yourlab">
+						</label>
+						<label class="tfpa__field">
+							<span class="tfpa__label">Other social</span>
+							<input type="text" name="social_other" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'social_other' ) ); ?>" placeholder="TikTok, LinkedIn&hellip;">
+						</label>
+					</div>
+
+					<label class="tfpa__field">
+						<span class="tfpa__label">Business address</span>
+						<textarea name="address" rows="3" class="tfpa__input tfpa__textarea" placeholder="Street, city"><?php echo esc_textarea( self::apply_value( 'address' ) ); ?></textarea>
+					</label>
+
+					<div class="tfpa__grid tfpa__grid--3">
+						<label class="tfpa__field">
+							<span class="tfpa__label">Country / region</span>
+							<input type="text" name="country" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'country', 'Trinidad & Tobago' ) ); ?>">
+						</label>
+						<label class="tfpa__field">
+							<span class="tfpa__label">Years in business</span>
+							<input type="number" name="years_in_business" class="tfpa__input" min="0" max="200" inputmode="numeric"
+								value="<?php echo esc_attr( self::apply_value( 'years_in_business' ) ); ?>">
+						</label>
+						<label class="tfpa__field">
+							<span class="tfpa__label">Business registration no.</span>
+							<input type="text" name="business_reg" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'business_reg' ) ); ?>" placeholder="Optional">
+						</label>
+					</div>
+				</section>
+
+				<section class="tfpa__section">
+					<h2 class="tfpa__h2">What you produce</h2>
+
+					<fieldset class="tfpa__field tfpa__fieldset">
+						<legend class="tfpa__label">Services offered</legend>
+						<div class="tfpa__checks">
+							<?php foreach ( self::service_options() as $key => $label ) : ?>
+								<label class="tfpa__check">
+									<input type="checkbox" name="services[]" value="<?php echo esc_attr( $key ); ?>"
+										<?php checked( in_array( $key, $selected_services, true ) ); ?>>
+									<span><?php echo esc_html( $label ); ?></span>
+								</label>
+							<?php endforeach; ?>
+						</div>
+					</fieldset>
+
+					<div class="tfpa__grid">
+						<label class="tfpa__field">
+							<span class="tfpa__label">Typical turnaround</span>
+							<input type="text" name="turnaround" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'turnaround' ) ); ?>" placeholder="e.g. 3&ndash;5 working days">
+						</label>
+						<label class="tfpa__field">
+							<span class="tfpa__label">Capacity</span>
+							<input type="text" name="capacity" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'capacity' ) ); ?>" placeholder="e.g. 500 prints a week">
+						</label>
+					</div>
+
+					<label class="tfpa__field">
+						<span class="tfpa__label">Papers &amp; finishes</span>
+						<input type="text" name="papers" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'papers' ) ); ?>" placeholder="Lustre, metallic, fine art rag, matte laminate&hellip;">
+					</label>
+
+					<label class="tfpa__field">
+						<span class="tfpa__label">Sample of your work</span>
+						<input type="url" name="sample_url" class="tfpa__input<?php echo esc_attr( self::apply_invalid_class( 'sample_url' ) ); ?>"
+							value="<?php echo esc_attr( self::apply_value( 'sample_url' ) ); ?>" placeholder="https:// a portfolio, Drive folder or gallery">
+						<?php echo self::apply_error_html( 'sample_url' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper ?>
+					</label>
+
+					<label class="tfpa__field">
+						<span class="tfpa__label">Equipment &amp; lab notes</span>
+						<textarea name="equipment" rows="4" class="tfpa__input tfpa__textarea" placeholder="Printers, mounting and framing kit, in-house vs outsourced work"><?php echo esc_textarea( self::apply_value( 'equipment' ) ); ?></textarea>
+					</label>
+
+					<label class="tfpa__check tfpa__check--row">
+						<input type="checkbox" name="color_managed" value="1" <?php checked( (int) self::apply_value( 'color_managed', 0 ), 1 ); ?>>
+						<span>We are colour managed &mdash; calibrated displays and ICC profiles for our papers</span>
+					</label>
+
+					<label class="tfpa__check tfpa__check--row">
+						<input type="checkbox" name="does_delivery" value="1" <?php checked( (int) self::apply_value( 'does_delivery', 0 ), 1 ); ?>>
+						<span>We can deliver finished orders straight to the customer</span>
+					</label>
+				</section>
+
+				<section class="tfpa__section">
+					<h2 class="tfpa__h2">Anything else</h2>
+
+					<label class="tfpa__field">
+						<span class="tfpa__label">Tell us about your shop</span>
+						<textarea name="message" rows="5" class="tfpa__input tfpa__textarea" placeholder="What you are proud of, who you already print for, why this would be a good fit"><?php echo esc_textarea( self::apply_value( 'message' ) ); ?></textarea>
+					</label>
+
+					<label class="tfpa__field">
+						<span class="tfpa__label">How did you hear about us?</span>
+						<input type="text" name="referral" class="tfpa__input" value="<?php echo esc_attr( self::apply_value( 'referral' ) ); ?>">
+					</label>
+				</section>
+
+				<div class="tfpa__submit">
+					<button type="submit" class="tfpa__btn">Send my application</button>
+					<p class="tfpa__fine">We will only use these details to review your application and to contact you about printing for Tweller Studios.</p>
+				</div>
+			</form>
+		</div>
+		<?php
+		return ob_get_clean();
+	}
+
+	// ── Admin: Provider Requests ───────────────────────
+
+	private static function requests_url( $args = array() ) {
+		return add_query_arg(
+			array_merge( array( 'page' => self::ADMIN_PAGE_REQUESTS ), $args ),
+			admin_url( 'admin.php' )
+		);
+	}
+
+	public static function handle_request_actions() {
+		if ( ! is_admin() ) return;
+		if ( empty( $_POST['tfpa_admin_action'] ) ) return;
+
+		$action = sanitize_key( wp_unslash( $_POST['tfpa_admin_action'] ) );
+		if ( ! in_array( $action, array( 'approve', 'approve_link', 'reject', 'delete' ), true ) ) return;
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Permission denied.' ) );
+		}
+		check_admin_referer( 'tfpa_' . $action );
+
+		$id    = isset( $_POST['request_id'] ) ? (int) $_POST['request_id'] : 0;
+		$notes = isset( $_POST['review_notes'] )
+			? sanitize_textarea_field( wp_unslash( $_POST['review_notes'] ) )
+			: '';
+
+		if ( $action === 'delete' ) {
+			global $wpdb;
+			if ( self::requests_table_exists() && $id > 0 ) {
+				$wpdb->delete( self::requests_table(), array( 'id' => $id ), array( '%d' ) );
+			}
+			wp_safe_redirect( self::requests_url( array( 'tfpa_msg' => 'deleted' ) ) );
+			exit;
+		}
+
+		if ( $action === 'reject' ) {
+			$error = self::reject_request( $id, $notes );
+			wp_safe_redirect( $error === ''
+				? self::requests_url( array( 'tfpa_msg' => 'rejected', 'request' => $id ) )
+				: self::requests_url( array( 'tfpa_error' => rawurlencode( $error ), 'request' => $id ) ) );
+			exit;
+		}
+
+		$error = self::approve_request( $id, $notes, ( $action === 'approve_link' ) ? 'link' : 'create' );
+		wp_safe_redirect( $error === ''
+			? self::requests_url( array( 'tfpa_msg' => 'approved', 'request' => $id ) )
+			: self::requests_url( array( 'tfpa_error' => rawurlencode( $error ), 'request' => $id ) ) );
+		exit;
+	}
+
+	/**
+	 * Claim an application for review. The UPDATE is conditional on the row
+	 * still being 'new', so two admins pressing Approve at the same moment
+	 * cannot both provision an account.
+	 *
+	 * @return bool true when this call is the one that claimed it.
+	 */
+	private static function claim_request( $id, $status, $notes ) {
+		global $wpdb;
+		if ( ! self::requests_table_exists() ) return false;
+
+		$table = self::requests_table();
+		$rows  = $wpdb->query( $wpdb->prepare(
+			"UPDATE `{$table}` SET status = %s, reviewed_at = %s, reviewed_by = %d, review_notes = %s WHERE id = %d AND status = %s",
+			$status,
+			current_time( 'mysql' ),
+			get_current_user_id(),
+			$notes,
+			(int) $id,
+			'new'
+		) );
+		return ( (int) $rows === 1 );
+	}
+
+	private static function release_request( $id ) {
+		global $wpdb;
+		if ( ! self::requests_table_exists() ) return;
+		$table = self::requests_table();
+		$wpdb->query( $wpdb->prepare(
+			"UPDATE `{$table}` SET status = %s, reviewed_at = NULL, reviewed_by = 0 WHERE id = %d",
+			'new',
+			(int) $id
+		) );
+	}
+
+	/**
+	 * Approve an application: provider record + WordPress account + emails.
+	 *
+	 * @param int    $id
+	 * @param string $notes
+	 * @param string $mode 'create' (new login) or 'link' (adopt the existing
+	 *                     WordPress user that already owns this email).
+	 * @return string '' on success, otherwise a human error message.
+	 */
+	public static function approve_request( $id, $notes = '', $mode = 'create' ) {
+		$row = self::get_request( $id );
+		if ( ! $row ) return 'That application no longer exists.';
+		if ( $row->status !== 'new' ) {
+			return 'This application has already been ' . ( $row->status === 'approved' ? 'approved' : 'declined' ) . '.';
+		}
+
+		$email    = sanitize_email( (string) $row->email );
+		$existing = $email !== '' ? get_user_by( 'email', $email ) : false;
+
+		if ( $mode !== 'link' && $existing ) {
+			return 'A WordPress user already exists for ' . $email . '. Use “Approve &amp; link existing account” to connect it instead of creating a second login.';
+		}
+		if ( $mode === 'link' && ! $existing ) {
+			return 'There is no existing WordPress user for ' . $email . ' to link — approve normally to create one.';
+		}
+
+		if ( ! self::claim_request( $id, 'approved', $notes ) ) {
+			return 'This application was reviewed by someone else a moment ago.';
+		}
+
+		// ── Provider record ──
+		$providers = self::providers();
+		$ids       = array();
+		foreach ( $providers as $p ) { $ids[] = $p['id']; }
+
+		$name = (string) $row->business_name;
+		if ( $name === '' ) $name = 'Print partner ' . (int) $row->id;
+
+		$provider = array(
+			'id'            => self::unique_provider_id( $name, $ids ),
+			'name'          => $name,
+			'contact_name'  => (string) $row->contact_name,
+			'email'         => $email,
+			'phone'         => (string) $row->phone,
+			'address'       => (string) $row->address,
+			'notes'         => self::provider_notes_from_request( $row ),
+			'active'        => 1,
+			'default'       => 0,
+			'user_id'       => 0,
+			'does_delivery' => (int) $row->does_delivery ? 1 : 0,
+		);
+
+		// ── Account ──
+		$login = '';
+		$pass  = '';
+
+		if ( $mode === 'link' ) {
+			if ( self::user_taken( (int) $existing->ID, $provider['id'] ) ) {
+				self::release_request( $id );
+				return 'That WordPress user is already linked to another provider.';
+			}
+			if ( ! user_can( $existing->ID, self::CAP ) ) {
+				$existing->add_role( self::ROLE );
+			}
+			$provider['user_id'] = (int) $existing->ID;
+			$login               = $existing->user_login;
+		} else {
+			$login = self::unique_login_for( $name, $email );
+			$pass  = wp_generate_password( 18, true, false );
+
+			$display = (string) $row->contact_name !== '' ? (string) $row->contact_name : $name;
+			$new_id  = wp_insert_user( array(
+				'user_login'   => $login,
+				'user_email'   => $email,
+				'user_pass'    => $pass,
+				'display_name' => $display,
+				'first_name'   => (string) $row->contact_name,
+				'user_url'     => (string) $row->website,
+				'role'         => self::ROLE,
+			) );
+
+			if ( is_wp_error( $new_id ) ) {
+				self::release_request( $id );
+				return 'The provider login could not be created: ' . $new_id->get_error_message();
+			}
+
+			$provider['user_id'] = (int) $new_id;
+
+			// WordPress emails the lab a set-password link; the admin also
+			// sees the generated password once, below.
+			wp_send_new_user_notifications( (int) $new_id, 'both' );
+
+			set_transient( 'tf2pv_new_login_' . get_current_user_id(), array(
+				'login' => $login,
+				'pass'  => $pass,
+				'email' => $email,
+			), 5 * MINUTE_IN_SECONDS );
+		}
+
+		$providers[] = $provider;
+		self::save_providers( $providers );
+
+		self::link_request_record( $id, $provider['id'], (int) $provider['user_id'] );
+
+		$row = self::get_request( $id );
+		if ( $row ) {
+			self::send_approved_email( $row, $provider, $login );
+		}
+
+		return '';
+	}
+
+	public static function reject_request( $id, $notes = '' ) {
+		$row = self::get_request( $id );
+		if ( ! $row ) return 'That application no longer exists.';
+		if ( $row->status !== 'new' ) {
+			return 'This application has already been ' . ( $row->status === 'approved' ? 'approved' : 'declined' ) . '.';
+		}
+		if ( ! self::claim_request( $id, 'rejected', $notes ) ) {
+			return 'This application was reviewed by someone else a moment ago.';
+		}
+
+		$row = self::get_request( $id );
+		if ( $row ) self::send_rejected_email( $row, $notes );
+		return '';
+	}
+
+	private static function link_request_record( $id, $provider_id, $user_id ) {
+		global $wpdb;
+		if ( ! self::requests_table_exists() ) return;
+		$wpdb->update(
+			self::requests_table(),
+			array( 'provider_id' => (string) $provider_id, 'user_id' => (int) $user_id ),
+			array( 'id' => (int) $id ),
+			array( '%s', '%d' ),
+			array( '%d' )
+		);
+	}
+
+	/** Username from the business name, de-duplicated. Never a shared value. */
+	private static function unique_login_for( $name, $email ) {
+		$base = sanitize_user( sanitize_title( $name ), true );
+		if ( $base === '' && $email !== '' ) {
+			$base = sanitize_user( substr( $email, 0, (int) strpos( $email, '@' ) ), true );
+		}
+		if ( $base === '' ) $base = 'printpartner';
+		$base = substr( $base, 0, 40 );
+
+		$login = $base;
+		$n     = 2;
+		while ( username_exists( $login ) ) {
+			$login = $base . $n;
+			$n++;
+			if ( $n > 500 ) { $login = $base . wp_generate_password( 5, false, false ); break; }
+		}
+		return $login;
+	}
+
+	/** Everything worth keeping from the application, folded into the notes. */
+	private static function provider_notes_from_request( $row ) {
+		$bits = array();
+		if ( (string) $row->website !== '' )    $bits[] = 'Website: ' . $row->website;
+		if ( (string) $row->instagram !== '' )  $bits[] = 'Instagram: @' . $row->instagram;
+		if ( (string) $row->facebook !== '' )   $bits[] = 'Facebook: ' . $row->facebook;
+		if ( (string) $row->services !== '' )   $bits[] = 'Services: ' . self::services_label( $row->services );
+		if ( (string) $row->turnaround !== '' ) $bits[] = 'Turnaround: ' . $row->turnaround;
+		if ( (string) $row->capacity !== '' )   $bits[] = 'Capacity: ' . $row->capacity;
+		if ( (string) $row->papers !== '' )     $bits[] = 'Papers: ' . $row->papers;
+		if ( (int) $row->color_managed )        $bits[] = 'Colour managed: yes';
+		if ( (string) $row->equipment !== '' )  $bits[] = 'Equipment: ' . $row->equipment;
+		$bits[] = 'Approved from application #' . (int) $row->id . ' on ' . date_i18n( 'j M Y', current_time( 'timestamp' ) );
+
+		return sanitize_textarea_field( implode( "\n", $bits ) );
+	}
+
+	// ── Admin page ─────────────────────────────────────
+
+	public static function page_requests() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to view this page.' ) );
+		}
+		if ( ! self::requests_table_exists() ) self::create_requests_table();
+
+		$msg   = isset( $_GET['tfpa_msg'] ) ? sanitize_key( wp_unslash( $_GET['tfpa_msg'] ) ) : '';
+		$error = isset( $_GET['tfpa_error'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['tfpa_error'] ) ) ) : '';
+		$view  = isset( $_GET['request'] ) ? (int) $_GET['request'] : 0;
+		$tab   = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : 'new';
+
+		$messages = array(
+			'approved' => 'Application approved. The provider record and dashboard login have been created.',
+			'rejected' => 'Application declined and the applicant has been emailed.',
+			'deleted'  => 'Application deleted.',
+		);
+
+		echo '<div class="wrap"><h1>Provider Requests</h1>';
+		echo '<p style="max-width:780px; color:#50575e;">Print labs apply through <a href="' . esc_url( self::apply_page_url() ) . '" target="_blank" rel="noopener">'
+			. esc_html( self::apply_page_url() ) . '</a>. Approving an application creates the provider record <em>and</em> its dashboard login in one step.</p>';
+
+		if ( $error !== '' ) {
+			echo '<div class="notice notice-error"><p>' . wp_kses( $error, array( 'em' => array(), 'strong' => array() ) ) . '</p></div>';
+		}
+		if ( $msg !== '' && isset( $messages[ $msg ] ) ) {
+			echo '<div class="notice notice-success"><p>' . esc_html( $messages[ $msg ] ) . '</p></div>';
+		}
+
+		self::render_new_login_notice();
+
+		if ( $view > 0 ) {
+			self::render_request_detail( $view );
+			echo '</div>';
+			return;
+		}
+
+		self::render_request_tabs( $tab );
+		self::render_request_list( $tab );
+		echo '</div>';
+	}
+
+	/** One-time credentials block, shared with the Provider Accounts page. */
+	private static function render_new_login_notice() {
+		$key   = 'tf2pv_new_login_' . get_current_user_id();
+		$fresh = get_transient( $key );
+		if ( ! is_array( $fresh ) || empty( $fresh['login'] ) ) return;
+		delete_transient( $key );
+
+		echo '<div class="notice notice-success">'
+			. '<p style="margin-bottom:6px;"><strong>Provider login created.</strong> '
+			. 'WordPress has emailed ' . esc_html( (string) $fresh['email'] ) . ' a set-password link. '
+			. 'These credentials are shown once — copy them now if you want to pass them on directly:</p>'
+			. '<p style="font-family:ui-monospace,Menlo,Consolas,monospace; background:#fff; border:1px solid #dcdcde; border-radius:6px; padding:10px 12px; display:inline-block;">'
+			. 'Username: <strong>' . esc_html( (string) $fresh['login'] ) . '</strong><br>'
+			. 'Password: <strong>' . esc_html( (string) $fresh['pass'] ) . '</strong>'
+			. '</p>'
+			. '<p style="color:#646970; margin-top:6px;">Ask them to change it after their first sign-in.</p>'
+			. '</div>';
+	}
+
+	private static function render_request_tabs( $current ) {
+		// 'all' is not a real status, so count/list fall through to "everything".
+		$tabs = array_merge( array( 'all' => 'All' ), self::request_statuses() );
+
+		echo '<ul class="subsubsub" style="margin-bottom:12px;">';
+		$i = 0;
+		foreach ( $tabs as $key => $label ) {
+			$count = self::count_requests( $key );
+			$url   = self::requests_url( array( 'status' => $key ) );
+			$is    = ( (string) $key === (string) $current );
+			echo '<li>' . ( $i ? ' | ' : '' )
+				. '<a href="' . esc_url( $url ) . '"' . ( $is ? ' class="current"' : '' ) . '>'
+				. esc_html( $label ) . ' <span class="count">(' . (int) $count . ')</span></a></li>';
+			$i++;
+		}
+		echo '</ul><div style="clear:both;"></div>';
+	}
+
+	private static function status_pill( $status ) {
+		$labels = self::request_statuses();
+		$label  = isset( $labels[ $status ] ) ? $labels[ $status ] : ucfirst( (string) $status );
+		$colors = array(
+			'new'      => array( '#F8F1D8', '#7A5D00' ),
+			'approved' => array( '#E4F5E9', '#0A6B2D' ),
+			'rejected' => array( '#FBE9E9', '#8A1F1F' ),
+		);
+		$c = isset( $colors[ $status ] ) ? $colors[ $status ] : array( '#EEE', '#333' );
+
+		return '<span style="display:inline-block; padding:2px 10px; border-radius:999px; font-size:11.5px; font-weight:700; letter-spacing:0.4px; background:'
+			. esc_attr( $c[0] ) . '; color:' . esc_attr( $c[1] ) . ';">' . esc_html( $label ) . '</span>';
+	}
+
+	private static function render_request_list( $status ) {
+		$rows = self::get_requests( $status );
+
+		if ( empty( $rows ) ) {
+			echo '<p>No applications here yet.</p>';
+			return;
+		}
+
+		echo '<table class="widefat striped"><thead><tr>'
+			. '<th>Business</th><th>Contact</th><th>Services</th><th>Delivers</th><th>Received</th><th>Status</th><th></th>'
+			. '</tr></thead><tbody>';
+
+		foreach ( $rows as $r ) {
+			$detail = self::requests_url( array( 'request' => (int) $r->id ) );
+
+			echo '<tr>';
+			echo '<td><strong><a href="' . esc_url( $detail ) . '">' . esc_html( $r->business_name ) . '</a></strong>';
+			if ( (string) $r->country !== '' ) {
+				echo '<br><span style="color:#646970;">' . esc_html( $r->country ) . '</span>';
+			}
+			echo '</td>';
+			echo '<td>' . esc_html( $r->contact_name ) . '<br><span style="color:#646970;">' . esc_html( $r->email ) . '</span></td>';
+			echo '<td style="max-width:260px;">' . esc_html( self::services_label( $r->services ) ) . '</td>';
+			echo '<td>' . ( (int) $r->does_delivery ? 'Yes' : 'No' ) . '</td>';
+			echo '<td>' . esc_html( date_i18n( 'j M Y', strtotime( (string) $r->created_at ) ) ) . '</td>';
+			echo '<td>' . wp_kses_post( self::status_pill( (string) $r->status ) ) . '</td>';
+			echo '<td><a href="' . esc_url( $detail ) . '" class="button button-small">Review</a></td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
+	}
+
+	private static function detail_row( $label, $value_html ) {
+		if ( $value_html === '' ) return;
+		echo '<tr><th scope="row" style="width:210px;">' . esc_html( $label ) . '</th><td>'
+			. wp_kses( $value_html, array(
+				'a'      => array( 'href' => true, 'target' => true, 'rel' => true ),
+				'br'     => array(),
+				'strong' => array(),
+				'em'     => array(),
+				'span'   => array( 'style' => true ),
+				'code'   => array(),
+			) )
+			. '</td></tr>';
+	}
+
+	private static function link_html( $url, $label = '' ) {
+		$url = esc_url( (string) $url );
+		if ( $url === '' ) return '';
+		if ( $label === '' ) $label = (string) $url;
+		return '<a href="' . $url . '" target="_blank" rel="noopener noreferrer">' . esc_html( $label ) . '</a>';
+	}
+
+	private static function render_request_detail( $id ) {
+		$r = self::get_request( $id );
+		if ( ! $r ) {
+			echo '<div class="notice notice-error"><p>That application could not be found.</p></div>';
+			echo '<p><a href="' . esc_url( self::requests_url() ) . '" class="button">Back to all requests</a></p>';
+			return;
+		}
+
+		$existing_user = ( (string) $r->email !== '' ) ? get_user_by( 'email', (string) $r->email ) : false;
+
+		echo '<p><a href="' . esc_url( self::requests_url() ) . '">&larr; All requests</a></p>';
+		echo '<h2 style="margin-bottom:4px;">' . esc_html( $r->business_name ) . ' ' . wp_kses_post( self::status_pill( (string) $r->status ) ) . '</h2>';
+		echo '<p style="color:#646970; margin-top:0;">Application #' . (int) $r->id . ' &middot; received '
+			. esc_html( date_i18n( 'j M Y, g:i a', strtotime( (string) $r->created_at ) ) ) . '</p>';
+
+		echo '<table class="form-table"><tbody>';
+
+		self::detail_row( 'Business name', esc_html( (string) $r->business_name ) );
+		self::detail_row( 'Contact person', esc_html( (string) $r->contact_name ) );
+		self::detail_row( 'Email', (string) $r->email !== '' ? '<a href="mailto:' . esc_attr( $r->email ) . '">' . esc_html( $r->email ) . '</a>' : '' );
+		self::detail_row( 'Phone', (string) $r->phone !== '' ? '<a href="tel:' . esc_attr( preg_replace( '/[^0-9+]/', '', (string) $r->phone ) ) . '">' . esc_html( $r->phone ) . '</a>' : '' );
+		self::detail_row( 'Website', self::link_html( (string) $r->website ) );
+		self::detail_row( 'Instagram', (string) $r->instagram !== '' ? self::link_html( 'https://instagram.com/' . rawurlencode( (string) $r->instagram ), '@' . $r->instagram ) : '' );
+		self::detail_row( 'Facebook', (string) $r->facebook !== '' ? self::link_html( 'https://facebook.com/' . rawurlencode( (string) $r->facebook ), (string) $r->facebook ) : '' );
+		self::detail_row( 'Other social', esc_html( (string) $r->social_other ) );
+		self::detail_row( 'Address', nl2br( esc_html( (string) $r->address ) ) );
+		self::detail_row( 'Country / region', esc_html( (string) $r->country ) );
+		self::detail_row( 'Years in business', (int) $r->years_in_business > 0 ? esc_html( (string) (int) $r->years_in_business ) : '' );
+		self::detail_row( 'Business registration', esc_html( (string) $r->business_reg ) );
+		self::detail_row( 'Services offered', esc_html( self::services_label( (string) $r->services ) ) );
+		self::detail_row( 'Turnaround', esc_html( (string) $r->turnaround ) );
+		self::detail_row( 'Capacity', esc_html( (string) $r->capacity ) );
+		self::detail_row( 'Papers & finishes', esc_html( (string) $r->papers ) );
+		self::detail_row( 'Sample work', self::link_html( (string) $r->sample_url ) );
+		self::detail_row( 'Equipment / lab notes', nl2br( esc_html( (string) $r->equipment ) ) );
+		self::detail_row( 'Colour managed', (int) $r->color_managed ? 'Yes' : 'Not stated' );
+		self::detail_row( 'Delivers to customers', (int) $r->does_delivery ? 'Yes' : 'No — studio delivers' );
+		self::detail_row( 'Message', nl2br( esc_html( (string) $r->message ) ) );
+		self::detail_row( 'Heard about us via', esc_html( (string) $r->referral ) );
+		self::detail_row( 'Submitted from', esc_html( (string) $r->ip ) );
+
+		if ( $r->status !== 'new' ) {
+			$reviewer = (int) $r->reviewed_by ? get_userdata( (int) $r->reviewed_by ) : null;
+			self::detail_row( 'Reviewed', esc_html(
+				date_i18n( 'j M Y, g:i a', strtotime( (string) $r->reviewed_at ) )
+				. ( $reviewer ? ' by ' . $reviewer->display_name : '' )
+			) );
+			self::detail_row( 'Review notes', nl2br( esc_html( (string) $r->review_notes ) ) );
+			if ( (string) $r->provider_id !== '' ) {
+				self::detail_row( 'Provider record', '<a href="' . esc_url( self::admin_url_for( array( 'edit' => (string) $r->provider_id ) ) ) . '">' . esc_html( (string) $r->provider_id ) . '</a>' );
+			}
+		}
+
+		echo '</tbody></table>';
+
+		if ( $r->status !== 'new' ) {
+			echo '<form method="post" action="' . esc_url( admin_url( 'admin.php?page=' . self::ADMIN_PAGE_REQUESTS ) ) . '" style="margin-top:18px;">';
+			wp_nonce_field( 'tfpa_delete' );
+			echo '<input type="hidden" name="tfpa_admin_action" value="delete">';
+			echo '<input type="hidden" name="request_id" value="' . (int) $r->id . '">';
+			echo '<button type="submit" class="button" onclick="return confirm(\'Delete this application permanently?\');">Delete application</button>';
+			echo '</form>';
+			return;
+		}
+
+		// ── Decision ──
+		echo '<h2 style="margin-top:30px;">Decision</h2>';
+
+		if ( $existing_user ) {
+			echo '<div class="notice notice-warning inline" style="margin:0 0 14px; padding:10px 12px;"><p style="margin:0;">'
+				. '<strong>' . esc_html( (string) $r->email ) . '</strong> already belongs to the WordPress user <code>'
+				. esc_html( $existing_user->user_login ) . '</code>. Approving normally is blocked — link that account instead so the lab keeps one login.'
+				. '</p></div>';
+		}
+
+		$form_action = esc_url( admin_url( 'admin.php?page=' . self::ADMIN_PAGE_REQUESTS ) );
+
+		// Each decision is its own form so its nonce matches its action.
+		$approve_action = $existing_user ? 'approve_link' : 'approve';
+		$approve_label  = $existing_user ? 'Approve &amp; link existing account' : 'Approve &amp; create account';
+		$approve_confirm = $existing_user
+			? 'Approve this lab and link the existing WordPress account?'
+			: 'Approve this lab? A provider record and a new dashboard login will be created and emailed.';
+
+		echo '<form method="post" action="' . $form_action . '" style="max-width:760px;">';
+		wp_nonce_field( 'tfpa_' . $approve_action );
+		echo '<input type="hidden" name="tfpa_admin_action" value="' . esc_attr( $approve_action ) . '">';
+		echo '<input type="hidden" name="request_id" value="' . (int) $r->id . '">';
+		echo '<p><label for="tfpa-notes"><strong>Approval notes (optional)</strong></label><br>';
+		echo '<textarea id="tfpa-notes" name="review_notes" rows="3" class="large-text" placeholder="Kept on the application for your own records."></textarea></p>';
+		echo '<button type="submit" class="button button-primary" onclick="return confirm(\'' . esc_js( $approve_confirm ) . '\');">'
+			. wp_kses( $approve_label, array() ) . '</button>';
+		echo '</form>';
+
+		echo '<form method="post" action="' . $form_action . '" style="max-width:760px; margin-top:22px; padding-top:18px; border-top:1px solid #dcdcde;">';
+		wp_nonce_field( 'tfpa_reject' );
+		echo '<input type="hidden" name="tfpa_admin_action" value="reject">';
+		echo '<input type="hidden" name="request_id" value="' . (int) $r->id . '">';
+		echo '<p><label for="tfpa-notes-reject"><strong>Decline notes (optional)</strong></label><br>';
+		echo '<textarea id="tfpa-notes-reject" name="review_notes" rows="2" class="large-text" placeholder="Only included in the email if you write something here."></textarea></p>';
+		echo '<button type="submit" class="button" onclick="return confirm(\'Decline this application and email the applicant?\');">Decline application</button>';
+		echo '</form>';
+	}
+
+	// ── Emails (all branded through class-notifications) ──
+
+	private static function can_email() {
+		return class_exists( 'TwellerFlow2_Notifications' );
+	}
+
+	private static function mail( $to, $subject, $body ) {
+		if ( ! self::can_email() ) return false;
+		return TwellerFlow2_Notifications::send_raw( $to, $subject, $body );
+	}
+
+	private static function btn( $url, $label, $solid = true ) {
+		if ( ! self::can_email() ) return '';
+		if ( method_exists( 'TwellerFlow2_Notifications', 'email_button_row' ) ) {
+			return TwellerFlow2_Notifications::email_button_row( $url, $label, $solid );
+		}
+		return "<div style='text-align:center; margin:28px 0;'>"
+			. TwellerFlow2_Notifications::email_button( $url, $label, $solid )
+			. "</div>";
+	}
+
+	private static function card( $title, $inner ) {
+		if ( ! self::can_email() ) return $inner;
+		return TwellerFlow2_Notifications::email_card( $title, $inner );
+	}
+
+	private static function row( $label, $value ) {
+		if ( ! self::can_email() ) return '';
+		return TwellerFlow2_Notifications::email_detail_row( esc_html( $label ), esc_html( $value ) );
+	}
+
+	private static function first_name_of( $row ) {
+		$name = trim( (string) $row->contact_name );
+		if ( $name === '' ) $name = trim( (string) $row->business_name );
+		if ( $name === '' ) return 'there';
+		$parts = explode( ' ', $name );
+		return $parts[0];
+	}
+
+	/** Acknowledgement to the applicant. */
+	private static function send_application_received_email( $row ) {
+		if ( (string) $row->email === '' ) return false;
+
+		$first = esc_html( self::first_name_of( $row ) );
+		$body  = "
+			<h2 style='color:#101010; font-weight:600;'>We have your application</h2>
+			<p style='color:#3D3630;'>Hi {$first},</p>
+			<p style='color:#3D3630; line-height:1.7;'>Thank you for putting <strong>" . esc_html( (string) $row->business_name ) . "</strong> forward as a Tweller Studios print partner. Your application is with us and a person &mdash; not a robot &mdash; will read it.</p>
+			" . self::card( 'What you sent us',
+				self::row( 'Business', (string) $row->business_name )
+				. self::row( 'Contact', (string) $row->email )
+				. ( (string) $row->services !== '' ? self::row( 'Services', self::services_label( (string) $row->services ) ) : '' )
+				. ( (string) $row->turnaround !== '' ? self::row( 'Turnaround', (string) $row->turnaround ) : '' )
+				. self::row( 'Delivery', (int) $row->does_delivery ? 'You deliver to customers' : 'Studio delivers' )
+			) . "
+			<p style='color:#3D3630; line-height:1.7;'>If we would like to work with you we will email a sign-in link to your own partner dashboard, where your jobs, print-ready files and delivery labels live. If not, we will still write back.</p>
+			<p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
+		";
+
+		return self::mail( (string) $row->email, 'We received your print partner application', $body );
+	}
+
+	/** Heads-up to the studio, with a button straight into the review screen. */
+	private static function send_studio_application_email( $row ) {
+		$to = self::studio_email();
+		if ( $to === '' ) return false;
+
+		$review_url = self::requests_url( array( 'request' => (int) $row->id ) );
+
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>New print partner application</h2>
+			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $row->business_name ) . "</strong> has applied to print for Tweller Studios.</p>
+			" . self::card( 'Applicant',
+				self::row( 'Business', (string) $row->business_name )
+				. self::row( 'Contact', (string) $row->contact_name )
+				. self::row( 'Email', (string) $row->email )
+				. ( (string) $row->phone !== '' ? self::row( 'Phone', (string) $row->phone ) : '' )
+				. ( (string) $row->country !== '' ? self::row( 'Region', (string) $row->country ) : '' )
+				. ( (string) $row->services !== '' ? self::row( 'Services', self::services_label( (string) $row->services ) ) : '' )
+				. self::row( 'Delivers', (int) $row->does_delivery ? 'Yes' : 'No' )
+			) . "
+			" . self::btn( $review_url, 'Review this application' ) . "
+			<p style='color:#8A8178; font-size:13px; text-align:center;'>Approving creates the provider record and the dashboard login in one step.</p>
+		";
+
+		return self::mail( $to, 'New print partner application — ' . (string) $row->business_name, $body );
+	}
+
+	/** The welcome. Never carries a password — WordPress sends the set link. */
+	private static function send_approved_email( $row, $provider, $login ) {
+		if ( (string) $row->email === '' ) return false;
+
+		$first     = esc_html( self::first_name_of( $row ) );
+		$dashboard = self::page_url();
+
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>Welcome aboard</h2>
+			<p style='color:#3D3630;'>Hi {$first},</p>
+			<p style='color:#3D3630; line-height:1.7;'>Good news &mdash; <strong>" . esc_html( (string) $provider['name'] ) . "</strong> has been approved as a Tweller Studios print partner. Your dashboard is live and ready for your first job.</p>
+
+			" . self::btn( $dashboard, 'Open your partner dashboard' ) . "
+
+			" . self::card( 'Your account',
+				self::row( 'Username', (string) $login )
+				. self::row( 'Sign in with', (string) $row->email )
+				. self::row( 'Delivery', ! empty( $provider['does_delivery'] ) ? 'You deliver to customers' : 'Tweller Studios delivers' )
+			) . "
+
+			<p style='color:#3D3630; line-height:1.7;'>A separate email from the website carries a link to set your password. If it has not arrived, use <em>Forgot your password?</em> on the sign-in screen.</p>
+
+			" . self::card( 'What happens next', "
+				<ol style='color:#3D3630; margin:0; padding-left:20px; line-height:1.9;'>
+					<li>We send you a job &mdash; you get an email with the print-ready package.</li>
+					<li>Sign in, download the ZIP, and mark the job <strong>Printing</strong>.</li>
+					<li>When it is boxed, mark it <strong>Ready</strong>. Print the label if you are delivering.</li>
+					<li>Scan the barcode on hand-over and the job closes itself out.</li>
+				</ol>
+			" ) . "
+
+			<p style='color:#3D3630; line-height:1.7;'>You will only ever see what you need to print a job &mdash; never our client&rsquo;s name, email or what they paid.</p>
+			<p style='color:#3D3630;'>Welcome to the team,<br><strong>The Tweller Studios Team</strong></p>
+		";
+
+		return self::mail( (string) $row->email, 'You are in — welcome to the Tweller Studios print partners', $body );
+	}
+
+	private static function send_rejected_email( $row, $notes = '' ) {
+		if ( (string) $row->email === '' ) return false;
+
+		$first  = esc_html( self::first_name_of( $row ) );
+		$notes  = trim( (string) $notes );
+		$note_block = '';
+		if ( $notes !== '' ) {
+			$note_block = self::card( 'A note from the studio',
+				"<p style='margin:0; color:#3D3630; line-height:1.7;'>" . nl2br( esc_html( $notes ) ) . "</p>"
+			);
+		}
+
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>Thank you for applying</h2>
+			<p style='color:#3D3630;'>Hi {$first},</p>
+			<p style='color:#3D3630; line-height:1.7;'>Thank you for offering to print for Tweller Studios, and for the time you spent on your application. We are not able to take on <strong>" . esc_html( (string) $row->business_name ) . "</strong> as a print partner right now.</p>
+			{$note_block}
+			<p style='color:#3D3630; line-height:1.7;'>This is not a judgement on your work &mdash; we keep the partner list deliberately small. Do get in touch again if what you offer changes; we are always happy to take another look.</p>
+			<p style='color:#3D3630;'>With thanks,<br><strong>The Tweller Studios Team</strong></p>
+		";
+
+		return self::mail( (string) $row->email, 'Your print partner application', $body );
 	}
 }

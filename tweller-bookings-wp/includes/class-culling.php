@@ -1510,10 +1510,12 @@ class TwellerFlow2_Culling {
                     </div>";
             }
             if ( $wipay_url ) {
+                // Brand gold button via the shared helper — this was a
+                // hard-coded blue anchor that ignored the email design system.
                 $payment_html .= "
                     <div style='margin-bottom:16px;'>
-                        <strong style='display:block; color:#374151; margin-bottom:6px;'>Pay Online (Credit / Debit Card)</strong>
-                        <a href='" . esc_url( $wipay_url ) . "' style='display:inline-block; background:#1D4ED8; color:#fff; padding:12px 28px; border-radius:8px; text-decoration:none; font-size:15px; font-weight:600;'>Pay via WiPay</a>
+                        <strong style='display:block; color:#374151; margin-bottom:6px;'>Pay Online (Credit / Debit Card)</strong>"
+                        . TwellerFlow2_Notifications::email_button( $wipay_url, 'Pay via WiPay' ) . "
                     </div>";
             }
 
@@ -1574,9 +1576,7 @@ class TwellerFlow2_Culling {
             </div>
 
             <p style='font-size:14px; color:#374151;'>You can track your session progress anytime:</p>
-            <div style='text-align:center; margin:20px 0;'>
-                <a href='{$tracker_url}' style='display:inline-block; background:#0A0A0A; color:#fff; padding:14px 32px; border-radius:8px; text-decoration:none; font-size:15px; font-weight:600; letter-spacing:-0.01em;'>Track My Session</a>
-            </div>
+            " . TwellerFlow2_Notifications::email_button_row( $tracker_url, 'Track My Session' ) . "
 
             <p style='font-size:13px; color:#9CA3AF; text-align:center; margin-top:24px;'>Questions? Reply to this email — we're happy to help! 😊</p>
         ";

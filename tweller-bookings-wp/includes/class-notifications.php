@@ -19,8 +19,17 @@ class TwellerFlow2_Notifications {
     const C_TEXT   = '#3D3630';
     const C_MUTED  = '#8A8178';
 
-    /** System font stack used across all email markup */
-    const FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+    /**
+     * System font stack used across all email markup.
+     *
+     * DELIBERATELY UNQUOTED. Every inline style in this plugin's emails is
+     * written inside a single-quoted HTML attribute (style='…'), so a quoted
+     * family name like 'Segoe UI' would close the attribute early and throw
+     * the rest of the declaration away — which is exactly why CTA buttons
+     * were arriving as plain blue links. Unquoted multi-word family names
+     * are valid CSS, so this stack is safe in both quoting styles.
+     */
+    const FONT_STACK = "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif";
 
     public static function configure_smtp( $phpmailer ) {
         $smtp = get_option( 'tweller_flow_2_smtp', array() );

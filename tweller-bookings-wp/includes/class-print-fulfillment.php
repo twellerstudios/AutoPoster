@@ -185,6 +185,7 @@ class TwellerFlow2_Print_Fulfillment {
 			'sends'            => array(),
 			'delivered_at'     => '',
 			'delivered_via'    => '',
+			'label_printed_at' => '', // studio opened the 4x6 shipping label
 			// ── Provider portal ──
 			'provider_id'      => '',   // lab currently responsible for the job
 			'assigned_at'      => '',
@@ -234,6 +235,86 @@ class TwellerFlow2_Print_Fulfillment {
 	public static function set_fulfillment( $order_id, $fulfillment ) {
 		if ( ! is_array( $fulfillment ) ) return false;
 		return self::save_fulfillment( (int) $order_id, $fulfillment );
+	}
+
+	/**
+	 * The single source of truth for "where is this order in fulfilment?".
+	 *
+	 * Only `delivered_at` ever produces a delivered reading. An order that has
+	 * merely been emailed to a lab reports "Sent to {lab} — awaiting
+	 * production", never "Delivered": sending hands the job over, it does not
+	 * complete it.
+	 *
+	 * @return array{key:string, label:string, short:string, tone:string}
+	 */
+	public static function fulfillment_stage( $order ) {
+		$f    = self::get_fulfillment( $order );
+		$prov = self::get_provider( $f['provider_id'] );
+		$name = $prov ? $prov['name'] : '';
+		if ( $name === '' && ! empty( $f['sends'] ) ) {
+			$last = end( $f['sends'] );
+			if ( is_array( $last ) ) $name = (string) ( $last['provider_name'] ?? '' );
+		}
+		if ( $name === '' ) $name = 'the provider';
+
+		$build = is_array( $f['build'] ) ? $f['build'] : null;
+		$built = $build && ! empty( $build['done'] );
+
+		if ( (string) $f['delivered_at'] !== '' ) {
+			return array(
+				'key'   => 'delivered',
+				'label' => 'Delivered ' . date_i18n( 'M j, Y g:ia', strtotime( (string) $f['delivered_at'] ) )
+					. ( $f['delivered_via'] === 'scan' ? ' (label scan)' : '' ),
+				'short' => 'Delivered',
+				'tone'  => 'done',
+			);
+		}
+		if ( (string) $f['shipped_at'] !== '' ) {
+			return array(
+				'key'   => 'shipped',
+				'label' => 'Shipped by ' . $name . ' ' . date_i18n( 'M j', strtotime( (string) $f['shipped_at'] ) ) . ' — awaiting delivery scan',
+				'short' => 'Shipped — awaiting delivery',
+				'tone'  => 'active',
+			);
+		}
+		if ( (string) $f['ready_at'] !== '' ) {
+			return array(
+				'key'   => 'ready',
+				'label' => $name . ' marked this job ready ' . date_i18n( 'M j', strtotime( (string) $f['ready_at'] ) ) . ' — awaiting collection',
+				'short' => 'Ready at ' . $name,
+				'tone'  => 'active',
+			);
+		}
+		if ( (string) $f['started_at'] !== '' ) {
+			return array(
+				'key'   => 'printing',
+				'label' => $name . ' started printing ' . date_i18n( 'M j', strtotime( (string) $f['started_at'] ) ),
+				'short' => 'In production at ' . $name,
+				'tone'  => 'active',
+			);
+		}
+		if ( ! empty( $f['sends'] ) || (string) $f['provider_id'] !== '' ) {
+			return array(
+				'key'   => 'sent',
+				'label' => 'Sent to ' . $name . ' — awaiting production',
+				'short' => 'Sent to ' . $name . ' — awaiting production',
+				'tone'  => 'active',
+			);
+		}
+		if ( $built ) {
+			return array(
+				'key'   => 'built',
+				'label' => 'Print files built — not sent to a provider yet',
+				'short' => 'Files built — not sent',
+				'tone'  => 'idle',
+			);
+		}
+		return array(
+			'key'   => 'none',
+			'label' => 'Print files have not been built yet',
+			'short' => 'Not started',
+			'tone'  => 'idle',
+		);
 	}
 
 	/** Provider id currently responsible for an order ('' when unassigned). */
@@ -1210,6 +1291,462 @@ class TwellerFlow2_Print_Fulfillment {
 			. '<g fill="#000000">' . $rects . '</g></svg>';
 	}
 
+	// ── QR code (dependency-free, inline SVG) ──────────
+	//
+	// Byte mode, error-correction level M, versions 1–10 (payloads up to
+	// 213 bytes — the delivery payload is ~30–60). Phone cameras and the
+	// browser BarcodeDetector API read a QR far more reliably than a thin
+	// 1-D barcode, so this is the primary mark on the shipping label.
+	// No composer package, no external library, no remote API.
+
+	/** GF(256) exp/log tables for the Reed–Solomon maths (primitive 0x11D). */
+	private static function qr_gf() {
+		static $tables = null;
+		if ( $tables !== null ) return $tables;
+
+		$exp = array_fill( 0, 512, 0 );
+		$log = array_fill( 0, 256, 0 );
+		$x   = 1;
+		for ( $i = 0; $i < 255; $i++ ) {
+			$exp[ $i ] = $x;
+			$log[ $x ] = $i;
+			$x <<= 1;
+			if ( $x & 0x100 ) $x ^= 0x11D;
+		}
+		for ( $i = 255; $i < 512; $i++ ) $exp[ $i ] = $exp[ $i - 255 ];
+
+		$tables = array( $exp, $log );
+		return $tables;
+	}
+
+	/** Multiply two GF(256) values. */
+	private static function qr_mul( $a, $b ) {
+		$a = (int) $a;
+		$b = (int) $b;
+		if ( $a === 0 || $b === 0 ) return 0;
+		list( $exp, $log ) = self::qr_gf();
+		return $exp[ $log[ $a ] + $log[ $b ] ];
+	}
+
+	/**
+	 * Reed–Solomon block layout at error-correction level M.
+	 * version => array( ec_codewords_per_block, array( array( blocks, data_codewords ), … ) )
+	 */
+	private static function qr_blocks( $version ) {
+		$table = array(
+			1  => array( 10, array( array( 1, 16 ) ) ),
+			2  => array( 16, array( array( 1, 28 ) ) ),
+			3  => array( 26, array( array( 1, 44 ) ) ),
+			4  => array( 18, array( array( 2, 32 ) ) ),
+			5  => array( 24, array( array( 2, 43 ) ) ),
+			6  => array( 16, array( array( 4, 27 ) ) ),
+			7  => array( 18, array( array( 4, 31 ) ) ),
+			8  => array( 22, array( array( 2, 38 ), array( 2, 39 ) ) ),
+			9  => array( 22, array( array( 3, 36 ), array( 2, 37 ) ) ),
+			10 => array( 26, array( array( 4, 43 ), array( 1, 44 ) ) ),
+		);
+		return isset( $table[ $version ] ) ? $table[ $version ] : null;
+	}
+
+	/** Alignment-pattern centre coordinates per version. */
+	private static function qr_alignment( $version ) {
+		$table = array(
+			1  => array(),
+			2  => array( 6, 18 ),
+			3  => array( 6, 22 ),
+			4  => array( 6, 26 ),
+			5  => array( 6, 30 ),
+			6  => array( 6, 34 ),
+			7  => array( 6, 22, 38 ),
+			8  => array( 6, 24, 42 ),
+			9  => array( 6, 26, 46 ),
+			10 => array( 6, 28, 50 ),
+		);
+		return isset( $table[ $version ] ) ? $table[ $version ] : array();
+	}
+
+	/** Total data codewords available at level M for a version. */
+	private static function qr_data_codewords( $version ) {
+		$spec = self::qr_blocks( $version );
+		if ( ! $spec ) return 0;
+		$total = 0;
+		foreach ( $spec[1] as $group ) $total += $group[0] * $group[1];
+		return $total;
+	}
+
+	/** Smallest version that fits $len bytes; 0 when the payload is too long. */
+	private static function qr_version( $len ) {
+		for ( $v = 1; $v <= 10; $v++ ) {
+			$count_bits = ( $v < 10 ) ? 8 : 16;
+			if ( ( $len * 8 ) + 4 + $count_bits <= self::qr_data_codewords( $v ) * 8 ) return $v;
+		}
+		return 0;
+	}
+
+	/** Generator polynomial of the given degree (highest coefficient first). */
+	private static function qr_rs_generator( $degree ) {
+		list( $exp, ) = self::qr_gf();
+		$g = array( 1 );
+		for ( $i = 0; $i < $degree; $i++ ) {
+			$next = array_fill( 0, count( $g ) + 1, 0 );
+			foreach ( $g as $j => $coef ) {
+				$next[ $j ]     ^= $coef;
+				$next[ $j + 1 ] ^= self::qr_mul( $coef, $exp[ $i ] );
+			}
+			$g = $next;
+		}
+		return $g;
+	}
+
+	/** Reed–Solomon error-correction codewords for one data block. */
+	private static function qr_rs_ec( $data, $degree ) {
+		$g   = self::qr_rs_generator( $degree );
+		$n   = count( $data );
+		$res = array_merge( array_values( $data ), array_fill( 0, $degree, 0 ) );
+		for ( $i = 0; $i < $n; $i++ ) {
+			$coef = $res[ $i ];
+			if ( $coef === 0 ) continue;
+			for ( $j = 1; $j <= $degree; $j++ ) {
+				$res[ $i + $j ] ^= self::qr_mul( $g[ $j ], $coef );
+			}
+		}
+		return array_slice( $res, $n, $degree );
+	}
+
+	/** Mode indicator + character count + payload, as a bit string. */
+	private static function qr_bit_stream( $text, $version ) {
+		$len   = strlen( $text );
+		$count = ( $version < 10 ) ? 8 : 16;
+		$bits  = '0100' . str_pad( decbin( $len ), $count, '0', STR_PAD_LEFT );
+		for ( $i = 0; $i < $len; $i++ ) {
+			$bits .= str_pad( decbin( ord( $text[ $i ] ) ), 8, '0', STR_PAD_LEFT );
+		}
+		return $bits;
+	}
+
+	/** Final, interleaved codeword sequence (data blocks then EC blocks). */
+	private static function qr_codewords( $text, $version ) {
+		$spec = self::qr_blocks( $version );
+		if ( ! $spec ) return array();
+		list( $ec_per_block, $groups ) = $spec;
+
+		$total_data = self::qr_data_codewords( $version );
+		$capacity   = $total_data * 8;
+
+		$bits = self::qr_bit_stream( $text, $version );
+		$bits .= str_repeat( '0', max( 0, min( 4, $capacity - strlen( $bits ) ) ) );
+		if ( strlen( $bits ) % 8 !== 0 ) {
+			$bits .= str_repeat( '0', 8 - ( strlen( $bits ) % 8 ) );
+		}
+
+		$data = array();
+		foreach ( str_split( $bits, 8 ) as $byte ) $data[] = bindec( $byte );
+		$pad = array( 0xEC, 0x11 );
+		$i   = 0;
+		while ( count( $data ) < $total_data ) {
+			$data[] = $pad[ $i % 2 ];
+			$i++;
+		}
+
+		$blocks   = array();
+		$ecs      = array();
+		$pos      = 0;
+		$max_data = 0;
+		foreach ( $groups as $group ) {
+			for ( $b = 0; $b < $group[0]; $b++ ) {
+				$block    = array_slice( $data, $pos, $group[1] );
+				$pos     += $group[1];
+				$blocks[] = $block;
+				$ecs[]    = self::qr_rs_ec( $block, $ec_per_block );
+				if ( $group[1] > $max_data ) $max_data = $group[1];
+			}
+		}
+
+		$out = array();
+		for ( $i = 0; $i < $max_data; $i++ ) {
+			foreach ( $blocks as $block ) {
+				if ( isset( $block[ $i ] ) ) $out[] = $block[ $i ];
+			}
+		}
+		for ( $i = 0; $i < $ec_per_block; $i++ ) {
+			foreach ( $ecs as $ec ) $out[] = $ec[ $i ];
+		}
+		return $out;
+	}
+
+	/**
+	 * Finder, separator, timing, alignment, dark-module and version patterns.
+	 * Returns array( matrix, function-module mask, size ).
+	 */
+	private static function qr_function_matrix( $version ) {
+		$size = 17 + 4 * $version;
+		$m    = array_fill( 0, $size, array_fill( 0, $size, 0 ) );
+		$fn   = array_fill( 0, $size, array_fill( 0, $size, 0 ) );
+
+		// Finder patterns and their separators.
+		foreach ( array( array( 0, 0 ), array( 0, $size - 7 ), array( $size - 7, 0 ) ) as $origin ) {
+			for ( $dr = -1; $dr <= 7; $dr++ ) {
+				for ( $dc = -1; $dc <= 7; $dc++ ) {
+					$r = $origin[0] + $dr;
+					$c = $origin[1] + $dc;
+					if ( $r < 0 || $c < 0 || $r >= $size || $c >= $size ) continue;
+					$in_eye = ( $dr >= 0 && $dr <= 6 && $dc >= 0 && $dc <= 6 );
+					$dark   = $in_eye && ( $dr === 0 || $dr === 6 || $dc === 0 || $dc === 6
+						|| ( $dr >= 2 && $dr <= 4 && $dc >= 2 && $dc <= 4 ) );
+					$m[ $r ][ $c ]  = $dark ? 1 : 0;
+					$fn[ $r ][ $c ] = 1;
+				}
+			}
+		}
+
+		// Timing patterns.
+		for ( $i = 8; $i < $size - 8; $i++ ) {
+			$bit = ( $i % 2 === 0 ) ? 1 : 0;
+			$m[6][ $i ]  = $bit;
+			$fn[6][ $i ] = 1;
+			$m[ $i ][6]  = $bit;
+			$fn[ $i ][6] = 1;
+		}
+
+		// Alignment patterns (skipping the three that collide with finders).
+		$pos  = self::qr_alignment( $version );
+		$last = count( $pos ) - 1;
+		foreach ( $pos as $i => $r ) {
+			foreach ( $pos as $j => $c ) {
+				if ( ( $i === 0 && $j === 0 ) || ( $i === 0 && $j === $last ) || ( $i === $last && $j === 0 ) ) continue;
+				for ( $dr = -2; $dr <= 2; $dr++ ) {
+					for ( $dc = -2; $dc <= 2; $dc++ ) {
+						$m[ $r + $dr ][ $c + $dc ]  = ( max( abs( $dr ), abs( $dc ) ) === 1 ) ? 0 : 1;
+						$fn[ $r + $dr ][ $c + $dc ] = 1;
+					}
+				}
+			}
+		}
+
+		// Format-information areas are reserved now, written per mask later.
+		for ( $i = 0; $i <= 8; $i++ ) {
+			if ( $i !== 6 ) {
+				$fn[ $i ][8] = 1;
+				$fn[8][ $i ] = 1;
+			}
+		}
+		for ( $i = 0; $i < 8; $i++ ) {
+			$fn[8][ $size - 1 - $i ] = 1;
+			$fn[ $size - 1 - $i ][8] = 1;
+		}
+		$m[ $size - 8 ][8]  = 1; // always-dark module
+		$fn[ $size - 8 ][8] = 1;
+
+		// Version information (versions 7 and up).
+		if ( $version >= 7 ) {
+			$rem = $version;
+			for ( $i = 0; $i < 12; $i++ ) {
+				$rem = ( $rem << 1 ) ^ ( ( $rem >> 11 ) * 0x1F25 );
+			}
+			$vbits = ( $version << 12 ) | ( $rem & 0xFFF );
+			for ( $i = 0; $i < 18; $i++ ) {
+				$bit = ( $vbits >> $i ) & 1;
+				$a   = $size - 11 + ( $i % 3 );
+				$b   = intdiv( $i, 3 );
+				$m[ $b ][ $a ]  = $bit;
+				$fn[ $b ][ $a ] = 1;
+				$m[ $a ][ $b ]  = $bit;
+				$fn[ $a ][ $b ] = 1;
+			}
+		}
+
+		return array( $m, $fn, $size );
+	}
+
+	/** Zig-zag placement of the codeword bit stream around the function patterns. */
+	private static function qr_place_data( &$m, $fn, $size, $codewords ) {
+		$bits = '';
+		foreach ( $codewords as $cw ) {
+			$bits .= str_pad( decbin( (int) $cw ), 8, '0', STR_PAD_LEFT );
+		}
+		$len = strlen( $bits );
+		$idx = 0;
+		$dir = -1;
+		$row = $size - 1;
+
+		for ( $col = $size - 1; $col > 0; $col -= 2 ) {
+			if ( $col === 6 ) $col = 5; // skip the vertical timing column
+			while ( true ) {
+				for ( $i = 0; $i < 2; $i++ ) {
+					$c = $col - $i;
+					if ( empty( $fn[ $row ][ $c ] ) ) {
+						$m[ $row ][ $c ] = ( $idx < $len && $bits[ $idx ] === '1' ) ? 1 : 0;
+						$idx++;
+					}
+				}
+				$row += $dir;
+				if ( $row < 0 || $row >= $size ) {
+					$row -= $dir;
+					$dir  = -$dir;
+					break;
+				}
+			}
+		}
+	}
+
+	/** The eight standard data-mask conditions. */
+	private static function qr_mask_bit( $mask, $r, $c ) {
+		switch ( (int) $mask ) {
+			case 0: return ( ( $r + $c ) % 2 ) === 0;
+			case 1: return ( $r % 2 ) === 0;
+			case 2: return ( $c % 3 ) === 0;
+			case 3: return ( ( $r + $c ) % 3 ) === 0;
+			case 4: return ( ( intdiv( $r, 2 ) + intdiv( $c, 3 ) ) % 2 ) === 0;
+			case 5: return ( ( ( $r * $c ) % 2 ) + ( ( $r * $c ) % 3 ) ) === 0;
+			case 6: return ( ( ( ( $r * $c ) % 2 ) + ( ( $r * $c ) % 3 ) ) % 2 ) === 0;
+			default: return ( ( ( ( $r + $c ) % 2 ) + ( ( $r * $c ) % 3 ) ) % 2 ) === 0;
+		}
+	}
+
+	/** 15-bit BCH format information for EC level M and the chosen mask. */
+	private static function qr_format_bits( $mask ) {
+		$data = ( 0x00 << 3 ) | ( (int) $mask & 7 ); // level M = 0b00
+		$rem  = $data;
+		for ( $i = 0; $i < 10; $i++ ) {
+			$rem = ( $rem << 1 ) ^ ( ( $rem >> 9 ) * 0x537 );
+		}
+		return ( ( $data << 10 ) | ( $rem & 0x3FF ) ) ^ 0x5412;
+	}
+
+	private static function qr_write_format( &$m, $size, $mask ) {
+		$bits = self::qr_format_bits( $mask );
+
+		for ( $i = 0; $i <= 5; $i++ )  $m[ $i ][8] = ( $bits >> $i ) & 1;
+		$m[7][8] = ( $bits >> 6 ) & 1;
+		$m[8][8] = ( $bits >> 7 ) & 1;
+		$m[8][7] = ( $bits >> 8 ) & 1;
+		for ( $i = 9; $i < 15; $i++ ) $m[8][ 14 - $i ] = ( $bits >> $i ) & 1;
+
+		for ( $i = 0; $i < 8; $i++ )  $m[8][ $size - 1 - $i ] = ( $bits >> $i ) & 1;
+		for ( $i = 8; $i < 15; $i++ ) $m[ $size - 15 + $i ][8] = ( $bits >> $i ) & 1;
+
+		$m[ $size - 8 ][8] = 1; // always dark
+	}
+
+	/** Standard mask-selection penalty (rules 1–4). Lower is better. */
+	private static function qr_penalty( $m, $size ) {
+		$score = 0;
+
+		for ( $pass = 0; $pass < 2; $pass++ ) {
+			for ( $i = 0; $i < $size; $i++ ) {
+				$line = array();
+				for ( $j = 0; $j < $size; $j++ ) {
+					$line[] = ( $pass === 0 ) ? $m[ $i ][ $j ] : $m[ $j ][ $i ];
+				}
+
+				// Rule 1 — runs of five or more identical modules.
+				$run = 1;
+				for ( $j = 1; $j < $size; $j++ ) {
+					if ( $line[ $j ] === $line[ $j - 1 ] ) {
+						$run++;
+					} else {
+						if ( $run >= 5 ) $score += 3 + ( $run - 5 );
+						$run = 1;
+					}
+				}
+				if ( $run >= 5 ) $score += 3 + ( $run - 5 );
+
+				// Rule 3 — finder-like 1:1:3:1:1 patterns with a light margin.
+				$s = implode( '', $line );
+				$score += 40 * substr_count( $s, '10111010000' );
+				$score += 40 * substr_count( $s, '00001011101' );
+			}
+		}
+
+		// Rule 2 — 2x2 blocks of one colour.
+		for ( $r = 0; $r < $size - 1; $r++ ) {
+			for ( $c = 0; $c < $size - 1; $c++ ) {
+				$v = $m[ $r ][ $c ];
+				if ( $v === $m[ $r ][ $c + 1 ] && $v === $m[ $r + 1 ][ $c ] && $v === $m[ $r + 1 ][ $c + 1 ] ) {
+					$score += 3;
+				}
+			}
+		}
+
+		// Rule 4 — deviation from a 50% dark ratio.
+		$dark = 0;
+		for ( $r = 0; $r < $size; $r++ ) $dark += array_sum( $m[ $r ] );
+		$total = $size * $size;
+		$score += 10 * intdiv( (int) abs( ( $dark * 20 ) - ( $total * 10 ) ), $total );
+
+		return $score;
+	}
+
+	/**
+	 * Full QR matrix for $text: byte mode, level M, best of the eight masks.
+	 * @return array{size:int, version:int, matrix:array<int, array<int,int>>}|null
+	 */
+	private static function qr_matrix( $text ) {
+		$text    = (string) $text;
+		$version = self::qr_version( strlen( $text ) );
+		if ( $version < 1 ) return null;
+
+		$codewords = self::qr_codewords( $text, $version );
+		list( $base, $fn, $size ) = self::qr_function_matrix( $version );
+		self::qr_place_data( $base, $fn, $size, $codewords );
+
+		$best       = null;
+		$best_score = null;
+		for ( $mask = 0; $mask < 8; $mask++ ) {
+			$candidate = $base;
+			for ( $r = 0; $r < $size; $r++ ) {
+				for ( $c = 0; $c < $size; $c++ ) {
+					if ( empty( $fn[ $r ][ $c ] ) && self::qr_mask_bit( $mask, $r, $c ) ) {
+						$candidate[ $r ][ $c ] ^= 1;
+					}
+				}
+			}
+			self::qr_write_format( $candidate, $size, $mask );
+
+			$score = self::qr_penalty( $candidate, $size );
+			if ( $best_score === null || $score < $best_score ) {
+				$best_score = $score;
+				$best       = $candidate;
+			}
+		}
+
+		return array( 'size' => $size, 'version' => $version, 'matrix' => $best );
+	}
+
+	/**
+	 * Inline SVG QR code, quiet zone included. Returns '' when the payload
+	 * is longer than a version-10 symbol can carry (213 bytes).
+	 *
+	 * @param string $text Payload to encode.
+	 * @param int    $px   Rendered edge length in CSS pixels.
+	 */
+	public static function qr_svg( $text, $px = 180 ) {
+		$qr = self::qr_matrix( $text );
+		if ( ! $qr ) return '';
+
+		$size  = (int) $qr['size'];
+		$quiet = 4; // the specification's minimum quiet zone
+		$dim   = $size + ( 2 * $quiet );
+		$px    = max( 60, (int) $px );
+
+		// One rect per horizontal run of dark modules keeps the SVG small.
+		$rects = '';
+		for ( $r = 0; $r < $size; $r++ ) {
+			$c = 0;
+			while ( $c < $size ) {
+				if ( empty( $qr['matrix'][ $r ][ $c ] ) ) { $c++; continue; }
+				$start = $c;
+				while ( $c < $size && ! empty( $qr['matrix'][ $r ][ $c ] ) ) $c++;
+				$rects .= '<rect x="' . ( $start + $quiet ) . '" y="' . ( $r + $quiet ) . '" width="' . ( $c - $start ) . '" height="1"/>';
+			}
+		}
+
+		return '<svg class="tf2-qr" xmlns="http://www.w3.org/2000/svg" width="' . $px . '" height="' . $px . '" '
+			. 'viewBox="0 0 ' . $dim . ' ' . $dim . '" role="img" aria-label="Order QR code" shape-rendering="crispEdges">'
+			. '<rect x="0" y="0" width="' . $dim . '" height="' . $dim . '" fill="#FFFFFF"/>'
+			. '<g fill="#000000">' . $rects . '</g></svg>';
+	}
+
 	// ── Shipping label ─────────────────────────────────
 
 	public static function render_label_html( $order ) {
@@ -1220,7 +1757,10 @@ class TwellerFlow2_Print_Fulfillment {
 		foreach ( $items as $it ) { $pieces += max( 1, (int) ( $it['qty'] ?? 1 ) ); }
 
 		$payload   = self::scan_payload( (string) $order->order_ref );
-		$barcode   = self::barcode_svg( $payload, 78, 2 );
+		$qr        = self::qr_svg( $payload, 180 );
+		// The QR is the primary mark; the 1-D code stays only as a small
+		// secondary strip for desk scanners that expect a linear symbol.
+		$barcode   = self::barcode_svg( $payload, 40, 1 );
 		$delivered = ! empty( $fulfillment['delivered_at'] );
 
 		$address = trim( (string) $fulfillment['delivery_address'] );
@@ -1245,15 +1785,18 @@ class TwellerFlow2_Print_Fulfillment {
 	.to { font-size:15px; font-weight:700; line-height:1.25; margin:0 0 3px; }
 	.addr { font-size:11.5px; line-height:1.5; color:#3D3630; white-space:pre-line; margin:0; }
 	.phone { font-size:12px; font-weight:600; margin-top:5px; }
-	.rule { border-top:1px solid #ECE9E2; margin:0.13in 0; }
+	.rule { border-top:1px solid #ECE9E2; margin:0.11in 0; }
 	.row { display:flex; gap:0.18in; }
 	.row > div { flex:1; }
 	.big { font-size:13px; font-weight:700; letter-spacing:0.5px; }
 	.notes { font-size:9.5px; color:#3D3630; line-height:1.45; margin:0.06in 0 0; }
-	.bc { margin-top:auto; text-align:center; padding-top:0.1in; }
-	.bc svg { width:100%; height:0.82in; display:block; }
-	.tok { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:8.5px; letter-spacing:0.6px; color:#101010; margin-top:3px; word-break:break-all; }
-	.hint { font-size:7.5px; color:#8A8178; margin-top:2px; }
+	.mark { margin-top:auto; text-align:center; padding-top:0.08in; }
+	.mark .qr { width:1.8in; height:1.8in; display:block; margin:0 auto; }
+	.ref { font-size:19px; font-weight:800; letter-spacing:1.2px; margin:4px 0 1px; line-height:1.1; }
+	.tok { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:8px; letter-spacing:0.4px; color:#3D3630; margin:0; word-break:break-all; }
+	.bc { margin-top:5px; }
+	.bc svg { width:100%; height:0.26in; display:block; }
+	.hint { font-size:7.5px; color:#8A8178; margin-top:3px; }
 	.done { position:absolute; }
 	.stamp { display:inline-block; border:2px solid #065F46; color:#065F46; font-size:9px; font-weight:800; letter-spacing:2px; padding:2px 8px; border-radius:4px; text-transform:uppercase; }
 	.actions { text-align:center; margin:14px auto 24px; }
@@ -1275,10 +1818,6 @@ class TwellerFlow2_Print_Fulfillment {
 
 	<div class="row">
 		<div>
-			<p class="lbl">Order</p>
-			<p class="big"><?php echo esc_html( $order->order_ref ); ?></p>
-		</div>
-		<div>
 			<p class="lbl">Pieces</p>
 			<p class="big"><?php echo (int) $pieces; ?></p>
 		</div>
@@ -1295,10 +1834,14 @@ class TwellerFlow2_Print_Fulfillment {
 		<p class="notes"><span class="stamp">Delivered <?php echo esc_html( date_i18n( 'j M Y', strtotime( (string) $fulfillment['delivered_at'] ) ) ); ?></span></p>
 	<?php endif; ?>
 
-	<div class="bc">
-		<?php echo $barcode; // phpcs:ignore WordPress.Security.EscapeOutput -- generated SVG, numeric attributes only ?>
+	<div class="mark">
+		<?php if ( $qr !== '' ) : ?>
+			<?php echo str_replace( 'class="tf2-qr"', 'class="qr"', $qr ); // phpcs:ignore WordPress.Security.EscapeOutput -- generated SVG, numeric attributes only ?>
+		<?php endif; ?>
+		<p class="ref"><?php echo esc_html( $order->order_ref ); ?></p>
 		<p class="tok"><?php echo esc_html( $payload ); ?></p>
-		<p class="hint">Scan on delivery to close this order</p>
+		<div class="bc"><?php echo $barcode; // phpcs:ignore WordPress.Security.EscapeOutput -- generated SVG, numeric attributes only ?></div>
+		<p class="hint">Scan the QR code on delivery to close this order</p>
 	</div>
 </div>
 

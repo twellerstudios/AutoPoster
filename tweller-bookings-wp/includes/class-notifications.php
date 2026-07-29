@@ -101,18 +101,97 @@ class TwellerFlow2_Notifications {
     // ── Reusable branded building blocks ─────────────────
 
     /**
-     * Primary (solid gold, dark text) or secondary (quiet outline) button.
-     * Inline-styled anchor + .tf2e-btn class so the wrapper's media query
-     * can stretch it full-width on small screens.
+     * THE call-to-action button. This is the single button implementation in
+     * the plugin — never hand-write an <a> for a CTA inside an email body.
+     *
+     * Bulletproof, in the boring email sense:
+     *   • table-based (email clients ignore flex, and many strip <div> margins)
+     *   • solid gold #C9A227 with near-black #101010 bold text for primary,
+     *     a quiet white/outlined variant for secondary actions
+     *   • padding baked onto the anchor AND the cell, so it still looks like a
+     *     button when the anchor's padding is dropped
+     *   • a real VML <v:roundrect> fallback for Outlook 2007–2019 (Word engine)
+     *   • .tf2e-btn / .tf2e-btn-wrap classes so wrap_email_html()'s media query
+     *     stretches it edge-to-edge on a phone
+     *
+     * @param string $url   Destination.
+     * @param string $label Button text (plain text — it is escaped here).
+     * @param bool   $solid true = primary gold, false = secondary outline.
+     * @param string $align left|center|right (default centre).
+     * @return string
      */
-    public static function email_button( $url, $label, $solid = true ) {
-        $base = 'display:inline-block; padding:14px 34px; border-radius:8px; font-family:' . self::FONT_STACK . '; font-size:14px; font-weight:700; text-decoration:none; letter-spacing:0.3px; line-height:1.3;';
+    public static function email_button( $url, $label, $solid = true, $align = 'center' ) {
+        $url = esc_url( (string) $url );
+        if ( $url === '' ) return '';
+
+        $label = trim( wp_strip_all_tags( (string) $label ) );
+        if ( $label === '' ) $label = 'Open';
+        $label = esc_html( $label );
+
+        $align = in_array( $align, array( 'left', 'center', 'right' ), true ) ? $align : 'center';
+        $font  = self::FONT_STACK;
+
         if ( $solid ) {
-            $style = $base . ' background:' . self::C_GOLD . '; color:' . self::C_BLACK . ';';
+            $bg     = self::C_GOLD;
+            $stroke = self::C_GOLD;
+            $weight = '700';
+            $size   = '15px';
+            $shadow = ' box-shadow:0 1px 2px rgba(16,16,16,0.16);';
         } else {
-            $style = $base . ' background:' . self::C_CARD . '; color:' . self::C_BLACK . '; border:1px solid #D8D2C6; font-weight:600;';
+            $bg     = self::C_CARD;
+            $stroke = '#D8D2C6';
+            $weight = '600';
+            $size   = '14px';
+            $shadow = '';
         }
-        return "<a href='{$url}' class='tf2e-btn' style='{$style}'>{$label}</a>";
+        $fg = self::C_BLACK;
+
+        // Outlook needs a fixed pixel width; approximate from the label.
+        $chars = function_exists( 'mb_strlen' )
+            ? mb_strlen( html_entity_decode( $label, ENT_QUOTES, 'UTF-8' ) )
+            : strlen( $label );
+        $vml_w = max( 190, min( 460, ( $chars * 9 ) + 70 ) );
+
+        $vml = '<!--[if mso]>'
+            . '<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"'
+            . ' href="' . $url . '" style="height:48px;v-text-anchor:middle;width:' . (int) $vml_w . 'px;"'
+            . ' arcsize="17%" stroke="t" strokecolor="' . $stroke . '" fillcolor="' . $bg . '">'
+            . '<w:anchorlock/>'
+            . '<center style="color:' . $fg . ';font-family:Arial,Helvetica,sans-serif;font-size:' . $size . ';font-weight:bold;">' . $label . '</center>'
+            . '</v:roundrect>'
+            . '<![endif]-->';
+
+        $a_style = 'display:inline-block; padding:14px 28px; border-radius:8px;'
+            . ' background:' . $bg . '; color:' . $fg . ';'
+            . ' border:1px solid ' . $stroke . ';'
+            . ' font-family:' . $font . '; font-size:' . $size . '; font-weight:' . $weight . ';'
+            . ' text-decoration:none; text-align:center; letter-spacing:0.3px; line-height:1.25;'
+            . ' mso-hide:all;' . $shadow;
+
+        $margin = ( $align === 'center' ) ? 'margin:0 auto;' : 'margin:0;';
+
+        return "
+            <table role='presentation' class='tf2e-btn-wrap' border='0' cellpadding='0' cellspacing='0' align='{$align}' style='border-collapse:separate; {$margin}'>
+                <tr>
+                    <td class='tf2e-btn-cell' align='center' bgcolor='{$bg}' style='border-radius:8px; background:{$bg}; mso-padding-alt:0;'>
+                        {$vml}
+                        <!--[if !mso]><!-- -->
+                        <a href='{$url}' class='tf2e-btn' style='{$a_style}'>{$label}</a>
+                        <!--<![endif]-->
+                    </td>
+                </tr>
+            </table>";
+    }
+
+    /**
+     * A CTA button on its own centred row — the standard way to drop a primary
+     * action between paragraphs of an email body.
+     */
+    public static function email_button_row( $url, $label, $solid = true, $margin = 30 ) {
+        $button = self::email_button( $url, $label, $solid );
+        if ( $button === '' ) return '';
+        $margin = max( 0, (int) $margin );
+        return "<table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'><tr><td align='center' style='padding:{$margin}px 0;'>{$button}</td></tr></table>";
     }
 
     /**
@@ -189,9 +268,7 @@ class TwellerFlow2_Notifications {
                         <p style='margin:6px 0; color:" . self::C_TEXT . "; line-height:1.7;'>Once you've made the transfer, simply upload a screenshot of your receipt through your client portal below — we'll verify it and confirm your booking right away. Until then, your date is held for you.</p>
                     " ) . "
 
-                    <div style='text-align:center; margin:30px 0;'>
-                        " . self::email_button( $tracker_url, 'Open My Client Portal' ) . "
-                    </div>
+                    " . self::email_button_row( $tracker_url, 'Open My Client Portal' ) . "
 
                     <p style='text-align:center; color:" . self::C_MUTED . "; font-size:13px;'>Your shoot code: <strong style='color:" . self::C_BLACK . ";'>{$session->tracking_code}</strong></p>
 
@@ -206,9 +283,7 @@ class TwellerFlow2_Notifications {
                     <h2 style='color:" . self::C_BLACK . "; font-weight:600;'>Editing complete</h2>
                     <p style='color:" . self::C_TEXT . ";'>Hi {$session->client_name},</p>
                     <p style='color:" . self::C_TEXT . "; line-height:1.7;'>Wonderful news — we've finished editing your photos and your gallery will be ready very soon. We can't wait for you to see them.</p>
-                    <div style='text-align:center; margin:30px 0;'>
-                        " . self::email_button( $tracker_url, 'Track My Session' ) . "
-                    </div>
+                    " . self::email_button_row( $tracker_url, 'Track My Session' ) . "
                 ",
             ),
 
@@ -219,9 +294,7 @@ class TwellerFlow2_Notifications {
                     <p style='color:" . self::C_TEXT . ";'>Hi {$session->client_name},</p>
                     <p style='color:" . self::C_TEXT . "; line-height:1.7;'>The moment you've been waiting for — your <strong>{$pkg_name}</strong> photos are ready to view and download.</p>
 
-                    <div style='text-align:center; margin:32px 0;'>
-                        " . self::email_button( $tracker_url, 'View Your Album' ) . "
-                    </div>
+                    " . self::email_button_row( $tracker_url, 'View Your Album', true, 32 ) . "
 
                     " . self::email_card( 'Gallery Tips', "
                         <ul style='color:" . self::C_TEXT . "; margin:0; padding-left:20px; line-height:1.9;'>
@@ -235,12 +308,12 @@ class TwellerFlow2_Notifications {
 
                     " . self::email_card( 'Love Them in Print?', "
                         <p style='margin:6px 0 14px; color:" . self::C_TEXT . "; line-height:1.7;'>Turn your favourites into professional prints, gallery canvases and layflat photobooks — order straight from your gallery and pick up or arrange delivery in Trinidad &amp; Tobago.</p>
-                        " . self::email_button( $prints_url, 'Order Prints' ) . "
+                        " . self::email_button_row( $prints_url, 'Order Prints', true, 6 ) . "
                     " ) . "
 
                     " . self::email_card( 'Share the Love', "
                         <p style='margin:6px 0 14px; color:" . self::C_TEXT . ";'>If you enjoyed your experience, a review would mean the world to us.</p>
-                        " . self::email_button( $review_url, 'Leave Us a Review', false ) . "
+                        " . self::email_button_row( $review_url, 'Leave Us a Review', false, 6 ) . "
                     " ) . "
 
                     <p style='text-align:center; color:" . self::C_MUTED . "; font-size:12px; margin-top:24px;'>Shoot code: <strong style='color:" . self::C_BLACK . ";'>{$session->tracking_code}</strong></p>
@@ -274,9 +347,7 @@ class TwellerFlow2_Notifications {
 
             <p style='color:" . self::C_TEXT . "; line-height:1.7;'>The confirmed calendar event is attached to this email — if you use Gmail or Apple Calendar it will update automatically, replacing the earlier tentative hold.</p>
 
-            <div style='text-align:center; margin:30px 0;'>
-                " . self::email_button( $tracker_url, 'Track My Session' ) . "
-            </div>
+            " . self::email_button_row( $tracker_url, 'Track My Session' ) . "
 
             <p style='text-align:center; color:" . self::C_MUTED . "; font-size:13px;'>Your shoot code: <strong style='color:" . self::C_BLACK . ";'>{$session->tracking_code}</strong></p>
 
@@ -333,8 +404,11 @@ class TwellerFlow2_Notifications {
                     .tf2e-header { padding: 28px 22px !important; }
                     .tf2e-body   { padding: 28px 22px !important; }
                     .tf2e-footer { padding: 22px 18px !important; }
-                    .tf2e-btn    { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; }
+                    .tf2e-btn-wrap { width: 100% !important; }
+                    .tf2e-btn-cell { width: 100% !important; display: block !important; }
+                    .tf2e-btn    { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; padding: 15px 18px !important; font-size: 16px !important; }
                 }
+                a.tf2e-btn:hover { opacity: 0.92; }
             </style>
         </head>
         <body style="margin:0; padding:0; background:' . self::C_IVORY . '; -webkit-text-size-adjust:100%; font-family:' . $font . ';">

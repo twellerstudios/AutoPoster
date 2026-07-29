@@ -33,6 +33,15 @@ class TwellerFlow2_Prints {
     const PUBLIC_RATE_LIMIT    = 10;       // orders/hour/IP (public upload)
     const GALLERY_RATE_LIMIT   = 20;       // orders/hour/IP (gallery cart)
 
+    /**
+     * Non-printable line items. They are real lines on the order — they
+     * carry money and must be summed by every consumer — but they have no
+     * photo, so the file builder and the provider costing skip them.
+     */
+    const ITEM_CROP_SERVICE = 'crop_service';
+    const ITEM_DELIVERY     = 'delivery_fee';
+    const ITEM_MEETUP       = 'meetup';
+
     public static function init() {
         add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
         add_shortcode( 'tweller_prints', array( __CLASS__, 'render_shortcode' ) );
@@ -59,7 +68,7 @@ class TwellerFlow2_Prints {
             'new'       => 'New / awaiting payment',
             'confirmed' => 'Payment confirmed',
             'printing'  => 'Printing',
-            'ready'     => 'Ready for pickup',
+            'ready'     => 'Ready to hand over',
             'completed' => 'Completed',
             'cancelled' => 'Cancelled',
         );
@@ -256,10 +265,15 @@ class TwellerFlow2_Prints {
         return null;
     }
 
+    /** Meet-up points offered at checkout when the customer isn't taking delivery. */
+    public static function default_meetup_points() {
+        return array( 'Heartland Plaza', 'Sun Plaza', 'Prize Plaza', 'Xtra Plaza' );
+    }
+
     public static function get_settings() {
         $defaults = array(
             'notify_email'         => get_option( 'admin_email' ),
-            'pickup_note'          => "Prints are usually ready for pickup at Tweller Studios within 7–10 business days. Delivery across Trinidad & Tobago can be arranged — we'll confirm the details with you after your order.",
+            'pickup_note'          => "Prints are usually ready within 7–10 business days. We'll meet you at your chosen meet-up point, or deliver anywhere in Trinidad & Tobago for a flat fee.",
             'payment_instructions' => '',
             'hero_headline'        => 'Your memories, beautifully printed.',
             'hero_subheadline'     => 'Museum-grade prints, gallery canvases and handcrafted albums — delivered across Trinidad & Tobago.',
@@ -271,17 +285,88 @@ class TwellerFlow2_Prints {
             'crop_service_fee'     => 0,
             'crop_service_label'   => 'Let us crop them for you',
             'crop_service_note'    => 'Our editors will centre and crop every photo for the size you chose — the same way we prepare prints in studio.',
+            // Fulfilment. Meet-up is free at one of the points below;
+            // delivery is a flat fee. Both are editable here, never in code.
+            'delivery_fee'         => 40,
+            'delivery_label'       => 'Delivery',
+            'meetup_label'         => 'Meet-up',
+            'meetup_points'        => self::default_meetup_points(),
+            // Studio addresses that also get print-partner approval alerts.
+            'partner_alert_emails' => 'hello@twellerstudios.com, stephen.twellerstudios@gmail.com',
         );
         $saved = get_option( self::OPT_SETTINGS, array() );
         if ( ! is_array( $saved ) ) $saved = array();
         $merged = array_merge( $defaults, $saved );
         // Never let a blank save wipe the storefront copy
-        foreach ( array( 'hero_headline', 'hero_subheadline', 'pickup_note' ) as $key ) {
+        foreach ( array( 'hero_headline', 'hero_subheadline', 'pickup_note', 'delivery_label', 'meetup_label' ) as $key ) {
             if ( trim( (string) $merged[ $key ] ) === '' ) {
                 $merged[ $key ] = $defaults[ $key ];
             }
         }
+        $merged['delivery_fee']  = max( 0, round( (float) $merged['delivery_fee'], 2 ) );
+        $merged['meetup_points'] = self::sanitize_meetup_points( $merged['meetup_points'] );
+        if ( empty( $merged['meetup_points'] ) ) {
+            $merged['meetup_points'] = $defaults['meetup_points'];
+        }
         return $merged;
+    }
+
+    /**
+     * Meet-up points from either a textarea (one per line) or an array.
+     * Returns a clean, de-duplicated, re-indexed list of plain strings.
+     */
+    public static function sanitize_meetup_points( $raw ) {
+        if ( is_string( $raw ) ) {
+            $raw = preg_split( '/[\r\n]+/', $raw );
+        }
+        if ( ! is_array( $raw ) ) return array();
+
+        $out = array();
+        foreach ( $raw as $point ) {
+            if ( is_array( $point ) ) continue;
+            $point = trim( sanitize_text_field( (string) $point ) );
+            if ( $point === '' ) continue;
+            if ( in_array( $point, $out, true ) ) continue;
+            $out[] = $point;
+        }
+        return $out;
+    }
+
+    /** Flat delivery fee (TTD). Always read from settings, never from the client. */
+    public static function get_delivery_fee() {
+        $settings = self::get_settings();
+        return max( 0, round( (float) $settings['delivery_fee'], 2 ) );
+    }
+
+    public static function get_meetup_points() {
+        $settings = self::get_settings();
+        return $settings['meetup_points'];
+    }
+
+    /**
+     * A customer-supplied meet-up point is only accepted when it matches a
+     * configured point exactly — we never invent a place to meet someone.
+     */
+    public static function match_meetup_point( $wanted ) {
+        $wanted = trim( (string) $wanted );
+        if ( $wanted === '' ) return '';
+        foreach ( self::get_meetup_points() as $point ) {
+            if ( strcasecmp( $point, $wanted ) === 0 ) return $point;
+        }
+        return '';
+    }
+
+    /** Extra studio addresses for print-partner alerts (settings-driven). */
+    public static function get_partner_alert_emails() {
+        $settings = self::get_settings();
+        $out      = array();
+        foreach ( preg_split( '/[,;\s]+/', (string) $settings['partner_alert_emails'] ) as $email ) {
+            $email = sanitize_email( trim( $email ) );
+            if ( $email !== '' && is_email( $email ) && ! in_array( $email, $out, true ) ) {
+                $out[] = $email;
+            }
+        }
+        return $out;
     }
 
     /** Bank transfer details shown at checkout / in emails (falls back to booking banking info). */
@@ -368,6 +453,13 @@ class TwellerFlow2_Prints {
             'fee'     => (float) $s['crop_service_fee'],
             'label'   => (string) $s['crop_service_label'],
             'note'    => (string) $s['crop_service_note'],
+        );
+        // The fee shown at checkout is the same number insert_order() charges.
+        $defaults['fulfilment'] = array(
+            'deliveryFee'   => self::get_delivery_fee(),
+            'deliveryLabel' => (string) $s['delivery_label'],
+            'meetupLabel'   => (string) $s['meetup_label'],
+            'meetupPoints'  => array_values( self::get_meetup_points() ),
         );
         wp_localize_script( 'tweller-flow-2-prints', 'twellerFlow2Prints', array_merge( $defaults, $config ) );
     }
@@ -468,7 +560,7 @@ class TwellerFlow2_Prints {
                 <ol class="tf2-shop__steps">
                     <li class="tf2-shop__step"><span class="tf2-shop__step-num">1</span><strong>Upload your photos</strong><span>Add your favourites straight from your phone or computer.</span></li>
                     <li class="tf2-shop__step"><span class="tf2-shop__step-num">2</span><strong>Choose sizes &amp; finishes</strong><span>Prints, canvas or albums — see a live preview of every size.</span></li>
-                    <li class="tf2-shop__step"><span class="tf2-shop__step-num">3</span><strong>We print</strong><span>Pay by card or bank transfer, then pickup or delivery across T&amp;T.</span></li>
+                    <li class="tf2-shop__step"><span class="tf2-shop__step-num">3</span><strong>We print</strong><span>Pay by card or bank transfer, then meet us at a plaza or take delivery across T&amp;T.</span></li>
                 </ol>
             </section>
 
@@ -519,7 +611,8 @@ class TwellerFlow2_Prints {
         }
 
         $settings      = self::get_settings();
-        $items         = self::get_order_items( $order );
+        $summary       = self::order_summary( $order );
+        $fulfilment    = self::get_order_fulfilment( $order );
         $payment_text  = self::get_payment_instructions();
         $wipay_ok      = class_exists( 'TwellerFlow2_WiPay' ) && TwellerFlow2_WiPay::is_enabled();
         $wipay_url     = $wipay_ok ? TwellerFlow2_WiPay::checkout_url( 'print', $order->order_ref ) : '';
@@ -564,7 +657,7 @@ class TwellerFlow2_Prints {
             'new'       => 'New',
             'confirmed' => 'Payment confirmed',
             'printing'  => 'Printing',
-            'ready'     => 'Ready for pickup',
+            'ready'     => 'Ready',
             'completed' => 'Completed',
         );
         $step_keys   = array_keys( $steps );
@@ -607,20 +700,18 @@ class TwellerFlow2_Prints {
             <?php endif; ?>
 
             <div class="tf2-portal__card">
-                <p class="tf2-portal__label">Items</p>
-                <?php foreach ( $items as $it ) :
-                    $line = (float) ( $it['price'] ?? 0 ) * max( 1, (int) ( $it['qty'] ?? 1 ) ); ?>
-                    <div class="tf2-portal__item">
-                        <?php if ( ! empty( $it['thumb_url'] ) ) : ?>
-                            <img class="tf2-portal__item-thumb" src="<?php echo esc_url( $it['thumb_url'] ); ?>" alt="">
-                        <?php else : ?>
-                            <span class="tf2-portal__item-thumb tf2-portal__item-thumb--blank"></span>
-                        <?php endif; ?>
-                        <span class="tf2-portal__item-info">
-                            <span class="tf2-portal__item-name"><?php echo esc_html( $it['product_name'] ?? '' ); ?></span>
-                            <span class="tf2-portal__item-file"><?php echo esc_html( $it['filename'] ?? '' ); ?> × <?php echo (int) ( $it['qty'] ?? 1 ); ?></span>
+                <p class="tf2-portal__label">Order summary</p>
+                <?php foreach ( $summary['groups'] as $g ) :
+                    $label = self::summary_label( $g );
+                    $meta = '× ' . (int) $g['qty'] . ' @ TT$ ' . number_format( $g['unit'], 2 );
+                    if ( empty( $g['service'] ) && (int) $g['photos'] > 1 ) $meta .= ' · ' . (int) $g['photos'] . ' photos';
+                ?>
+                    <div class="tf2-portal__line">
+                        <span class="tf2-portal__line-info">
+                            <span class="tf2-portal__line-name"><?php echo esc_html( $label ); ?></span>
+                            <span class="tf2-portal__line-meta"><?php echo esc_html( $meta ); ?></span>
                         </span>
-                        <span class="tf2-portal__item-price">TT$ <?php echo esc_html( number_format( $line, 2 ) ); ?></span>
+                        <span class="tf2-portal__line-price">TT$ <?php echo esc_html( number_format( $g['line'], 2 ) ); ?></span>
                     </div>
                 <?php endforeach; ?>
                 <div class="tf2-portal__total"><span>Total</span><strong>TT$ <?php echo esc_html( number_format( (float) $order->subtotal, 2 ) ); ?></strong></div>
@@ -670,7 +761,12 @@ class TwellerFlow2_Prints {
             <?php endif; ?>
 
             <div class="tf2-portal__card">
-                <p class="tf2-portal__label">Pickup &amp; delivery</p>
+                <p class="tf2-portal__label">Getting it to you</p>
+                <?php if ( $fulfilment['mode'] === 'delivery' ) : ?>
+                    <p class="tf2-portal__note"><strong>Delivery</strong> — TT$ <?php echo esc_html( number_format( $fulfilment['fee'], 2 ) ); ?>, included in your total.</p>
+                <?php elseif ( $fulfilment['mode'] === 'meetup' ) : ?>
+                    <p class="tf2-portal__note"><strong>Meet-up (free)</strong> — <?php echo esc_html( $fulfilment['location'] ); ?>. We'll confirm a time with you once your prints are ready.</p>
+                <?php endif; ?>
                 <p class="tf2-portal__note"><?php echo esc_html( $settings['pickup_note'] ); ?></p>
                 <?php if ( $order->notes ) : ?>
                     <p class="tf2-portal__note"><strong>Your notes:</strong> <?php echo esc_html( $order->notes ); ?></p>
@@ -816,19 +912,21 @@ class TwellerFlow2_Prints {
         }
 
         $order_id = self::insert_order( array(
-            'session_id'     => $session ? (int) $session->id : null,
-            'session_code'   => $session ? $session->tracking_code : null,
-            'customer_name'  => $name,
-            'customer_email' => $email,
-            'customer_phone' => $phone,
-            'items'          => $items,
-            'notes'          => $notes,
-            'source'         => 'gallery',
-            'crop_service'   => ! empty( $request->get_param( 'crop_service' ) ),
-            'fulfilment'     => $request->get_param( 'fulfilment' ),
-            'shipping'       => $request->get_param( 'shipping' ),
+            'session_id'      => $session ? (int) $session->id : null,
+            'session_code'    => $session ? $session->tracking_code : null,
+            'customer_name'   => $name,
+            'customer_email'  => $email,
+            'customer_phone'  => $phone,
+            'items'           => $items,
+            'notes'           => $notes,
+            'source'          => 'gallery',
+            'crop_service'    => ! empty( $request->get_param( 'crop_service' ) ),
+            'fulfilment'      => $request->get_param( 'fulfilment' ),
+            'meetup_location' => sanitize_text_field( (string) $request->get_param( 'meetup_location' ) ),
+            'shipping'        => $request->get_param( 'shipping' ),
         ));
 
+        if ( is_wp_error( $order_id ) ) return $order_id;
         if ( ! $order_id ) {
             return new WP_Error( 'save_failed', 'Could not save your order. Please try again.', array( 'status' => 500 ) );
         }
@@ -953,7 +1051,9 @@ class TwellerFlow2_Prints {
                 'filename'     => $saved[ $file_index ]['filename'],
                 'photo_url'    => $saved[ $file_index ]['url'],
                 'thumb_url'    => $saved[ $file_index ]['thumb_url'],
-                'crop'         => sanitize_text_field( $row['crop'] ?? '' ),
+                // {x,y,w,h,zoom} — a string cast here used to store the
+                // literal "Array" and throw the customer's crop away.
+                'crop'         => self::sanitize_crop( isset( $row['crop'] ) ? $row['crop'] : null ),
             );
         }
 
@@ -961,21 +1061,32 @@ class TwellerFlow2_Prints {
             return new WP_Error( 'no_items', 'No valid products were selected.', array( 'status' => 400 ) );
         }
 
+        // A dropped line is an under-billed order — refuse instead.
+        if ( count( $items ) !== count( $raw_items ) ) {
+            return new WP_Error(
+                'items_rejected',
+                sprintf( 'Only %d of %d items could be verified. Nothing has been charged — please try again.', count( $items ), count( $raw_items ) ),
+                array( 'status' => 400 )
+            );
+        }
+
         $order_id = self::insert_order( array(
-            'order_ref'      => $order_ref,
-            'session_id'     => null,
-            'session_code'   => null,
-            'customer_name'  => $name,
-            'customer_email' => $email,
-            'customer_phone' => $phone,
-            'items'          => $items,
-            'notes'          => $notes,
-            'source'         => 'public',
-            'crop_service'   => ! empty( $_POST['crop_service'] ),
-            'fulfilment'     => isset( $_POST['fulfilment'] ) ? $_POST['fulfilment'] : '',
-            'shipping'       => isset( $_POST['shipping'] ) ? json_decode( wp_unslash( $_POST['shipping'] ), true ) : null,
+            'order_ref'       => $order_ref,
+            'session_id'      => null,
+            'session_code'    => null,
+            'customer_name'   => $name,
+            'customer_email'  => $email,
+            'customer_phone'  => $phone,
+            'items'           => $items,
+            'notes'           => $notes,
+            'source'          => 'public',
+            'crop_service'    => ! empty( $_POST['crop_service'] ),
+            'fulfilment'      => isset( $_POST['fulfilment'] ) ? sanitize_text_field( wp_unslash( $_POST['fulfilment'] ) ) : '',
+            'meetup_location' => isset( $_POST['meetup_location'] ) ? sanitize_text_field( wp_unslash( $_POST['meetup_location'] ) ) : '',
+            'shipping'        => isset( $_POST['shipping'] ) ? json_decode( wp_unslash( $_POST['shipping'] ), true ) : null,
         ));
 
+        if ( is_wp_error( $order_id ) ) return $order_id;
         if ( ! $order_id ) {
             return new WP_Error( 'save_failed', 'Could not save your order. Please try again.', array( 'status' => 500 ) );
         }
@@ -1283,6 +1394,160 @@ class TwellerFlow2_Prints {
         return is_array( $items ) ? $items : array();
     }
 
+    // ── Money & the one order summary ──────────────────
+
+    /**
+     * Is this line a fee/service rather than something we print?
+     * Fees are real money on the order; they simply have no photo, so the
+     * file builder and the provider costing skip them.
+     */
+    public static function is_service_item( $item ) {
+        if ( ! is_array( $item ) ) return false;
+        if ( isset( $item['category'] ) && (string) $item['category'] === 'service' ) return true;
+        $id = isset( $item['product_id'] ) ? (string) $item['product_id'] : '';
+        return in_array( $id, array( self::ITEM_CROP_SERVICE, self::ITEM_DELIVERY, self::ITEM_MEETUP ), true );
+    }
+
+    /** Only the printable lines — used by the file builder and the lab. */
+    public static function printable_items( $items ) {
+        $out = array();
+        foreach ( (array) $items as $item ) {
+            if ( self::is_service_item( $item ) ) continue;
+            $out[] = $item;
+        }
+        return array_values( $out );
+    }
+
+    /**
+     * THE order total. Everything that computes money — insert_order(),
+     * the email summary, the portal — goes through this, in integer cents,
+     * so no consumer can drift from the stored subtotal by a rounding step.
+     */
+    public static function items_total( $items ) {
+        $cents = 0;
+        foreach ( (array) $items as $item ) {
+            if ( ! is_array( $item ) ) continue;
+            $unit  = (int) round( ( (float) ( isset( $item['price'] ) ? $item['price'] : 0 ) ) * 100 );
+            $qty   = max( 1, (int) ( isset( $item['qty'] ) ? $item['qty'] : 1 ) );
+            $cents += $unit * $qty;
+        }
+        return $cents / 100;
+    }
+
+    /**
+     * THE grouped order summary — one implementation shared by the customer
+     * email, the studio alert, the status emails, the customer portal and
+     * the provider job email. A 116-photo order is five or six rows here,
+     * never 116, and the rows always add up to the stored subtotal.
+     *
+     * @return array{groups:array,pieces:int,photos:int,total:float}
+     */
+    public static function summarize_items( $items ) {
+        $products = array();
+        $services = array();
+        $pieces   = 0;
+        $photos   = 0;
+
+        foreach ( (array) $items as $item ) {
+            if ( ! is_array( $item ) ) continue;
+
+            $qty     = max( 1, (int) ( isset( $item['qty'] ) ? $item['qty'] : 1 ) );
+            $unit    = round( (float) ( isset( $item['price'] ) ? $item['price'] : 0 ), 2 );
+            $service = self::is_service_item( $item );
+            $name    = trim( (string) ( isset( $item['product_name'] ) ? $item['product_name'] : '' ) );
+            if ( $name === '' ) $name = $service ? 'Service' : 'Print';
+
+            $key  = ( isset( $item['product_id'] ) ? (string) $item['product_id'] : $name ) . '|' . number_format( $unit, 2, '.', '' );
+            $into = $service ? 'services' : 'products';
+
+            if ( ! isset( ${$into}[ $key ] ) ) {
+                $product = ( ! $service && isset( $item['product_id'] ) ) ? self::get_product( (string) $item['product_id'] ) : null;
+                $size    = '';
+                if ( $product && ! empty( $product['width_in'] ) && ! empty( $product['height_in'] ) ) {
+                    $size = self::trim_number( $product['width_in'] ) . '×' . self::trim_number( $product['height_in'] ) . '"';
+                }
+                ${$into}[ $key ] = array(
+                    'product_id' => isset( $item['product_id'] ) ? (string) $item['product_id'] : '',
+                    'label'      => $name,
+                    'size'       => $size,
+                    'unit'       => $unit,
+                    'qty'        => 0,
+                    'photos'     => 0,
+                    'line'       => 0.0,
+                    'service'    => $service ? 1 : 0,
+                );
+            }
+
+            ${$into}[ $key ]['qty']    += $qty;
+            ${$into}[ $key ]['photos'] += 1;
+            // "Pieces" means physical prints. A delivery fee or crop-service
+            // line is not a piece — counting it told the studio and the lab
+            // there was one more print in the box than there really was.
+            if ( ! $service ) {
+                $pieces += $qty;
+                $photos += 1;
+            }
+        }
+
+        // Line totals from the same integer-cent arithmetic as items_total().
+        foreach ( array( 'products', 'services' ) as $bucket ) {
+            foreach ( ${$bucket} as $key => $group ) {
+                ${$bucket}[ $key ]['line'] = ( (int) round( $group['unit'] * 100 ) * (int) $group['qty'] ) / 100;
+            }
+        }
+
+        return array(
+            'groups' => array_values( array_merge( array_values( $products ), array_values( $services ) ) ),
+            'pieces' => $pieces,
+            'photos' => $photos,
+            'total'  => self::items_total( $items ),
+        );
+    }
+
+    public static function order_summary( $order ) {
+        return self::summarize_items( self::get_order_items( $order ) );
+    }
+
+    /** Row label for one summary group — the size only when it isn't already in the name. */
+    public static function summary_label( $group ) {
+        $label = (string) ( isset( $group['label'] ) ? $group['label'] : '' );
+        $size  = (string) ( isset( $group['size'] ) ? $group['size'] : '' );
+        if ( $size !== '' && strpos( $label, rtrim( $size, '"' ) ) === false ) {
+            $label .= ' · ' . $size;
+        }
+        return $label;
+    }
+
+    /** 8.00 → "8", 11.50 → "11.5" */
+    private static function trim_number( $n ) {
+        $s = rtrim( rtrim( number_format( (float) $n, 2, '.', '' ), '0' ), '.' );
+        return $s === '' ? '0' : $s;
+    }
+
+    /**
+     * How this order is being handed over, read back off its own line items
+     * so admin, emails and the app never disagree with what was charged.
+     *
+     * @return array{mode:string,label:string,location:string,fee:float}
+     */
+    public static function get_order_fulfilment( $order ) {
+        $out = array( 'mode' => '', 'label' => '', 'location' => '', 'fee' => 0.0 );
+        foreach ( self::get_order_items( $order ) as $item ) {
+            if ( ! is_array( $item ) ) continue;
+            $id = isset( $item['product_id'] ) ? (string) $item['product_id'] : '';
+            if ( $id === self::ITEM_DELIVERY ) {
+                $out['mode']  = 'delivery';
+                $out['label'] = (string) ( isset( $item['product_name'] ) ? $item['product_name'] : 'Delivery' );
+                $out['fee']   = round( (float) ( isset( $item['price'] ) ? $item['price'] : 0 ), 2 );
+            } elseif ( $id === self::ITEM_MEETUP ) {
+                $out['mode']     = 'meetup';
+                $out['label']    = (string) ( isset( $item['product_name'] ) ? $item['product_name'] : 'Meet-up' );
+                $out['location'] = (string) ( isset( $item['meetup_location'] ) ? $item['meetup_location'] : '' );
+            }
+        }
+        return $out;
+    }
+
     private static function format_order( $row ) {
         $payment = null;
         if ( isset( $row->payment ) && $row->payment ) {
@@ -1298,6 +1563,10 @@ class TwellerFlow2_Prints {
             'customer_email'           => $row->customer_email,
             'customer_phone'           => $row->customer_phone,
             'items'                    => self::get_order_items( $row ),
+            // The app shows the same grouped summary and the same fee lines
+            // as the emails and the portal — one shared source of truth.
+            'summary'                  => self::order_summary( $row ),
+            'fulfilment'               => self::get_order_fulfilment( $row ),
             'subtotal'                 => (float) $row->subtotal,
             'status'                   => $row->status,
             'status_label'             => self::get_status_label( $row->status ),
@@ -1373,64 +1642,136 @@ class TwellerFlow2_Prints {
         return $out;
     }
 
-    private static function insert_order( $data ) {
-        global $wpdb;
-        $table = $wpdb->prefix . self::TABLE_ORDERS;
+    /**
+     * Build the definitive line-item list for an order: the customer's
+     * photos, then the crop service, then exactly one fulfilment line
+     * (meet-up at TT$0 or delivery at the settings fee). Everything that
+     * carries money is a line item, so every downstream consumer — emails,
+     * admin, portal, provider view, economics — sums the same list.
+     *
+     * @return array|WP_Error
+     */
+    private static function build_order_items( $data ) {
+        $items = isset( $data['items'] ) && is_array( $data['items'] ) ? array_values( $data['items'] ) : array();
+        if ( empty( $items ) ) {
+            return new WP_Error( 'no_items', 'This order has no items.', array( 'status' => 400 ) );
+        }
+        if ( count( $items ) > self::MAX_ORDER_ITEMS ) {
+            return new WP_Error(
+                'too_many_items',
+                sprintf( 'This order has %d items, more than the %d we can take in one go. Please split it into two orders.', count( $items ), self::MAX_ORDER_ITEMS ),
+                array( 'status' => 400 )
+            );
+        }
 
-        $items = $data['items'];
+        $settings = self::get_settings();
 
         // "We'll crop it for you" — recorded as its own line so it shows up
         // in totals, emails, the admin order and the app. Free until a fee
         // is set under Print Store → Settings → Cropping Service.
-        if ( ! empty( $data['crop_service'] ) ) {
-            $settings = self::get_settings();
-            if ( ! empty( $settings['crop_service_enabled'] ) ) {
-                $items[] = array(
-                    'product_id'   => 'crop_service',
-                    'product_name' => (string) $settings['crop_service_label'],
-                    'category'     => 'service',
-                    'price'        => (float) $settings['crop_service_fee'],
-                    'qty'          => 1,
-                    'filename'     => '',
-                    'photo_url'    => '',
-                    'thumb_url'    => '',
-                    'crop'         => null,
+        if ( ! empty( $data['crop_service'] ) && ! empty( $settings['crop_service_enabled'] ) ) {
+            $items[] = array(
+                'product_id'   => self::ITEM_CROP_SERVICE,
+                'product_name' => (string) $settings['crop_service_label'],
+                'category'     => 'service',
+                'price'        => max( 0, round( (float) $settings['crop_service_fee'], 2 ) ),
+                'qty'          => 1,
+                'filename'     => '',
+                'photo_url'    => '',
+                'thumb_url'    => '',
+                'crop'         => null,
+            );
+        }
+
+        // Fulfilment. The fee ALWAYS comes from the settings — a client that
+        // posts its own delivery price is simply ignored.
+        $mode = ( isset( $data['fulfilment'] ) && (string) $data['fulfilment'] === 'delivery' ) ? 'delivery' : 'meetup';
+
+        if ( $mode === 'delivery' ) {
+            $items[] = array(
+                'product_id'   => self::ITEM_DELIVERY,
+                'product_name' => (string) $settings['delivery_label'],
+                'category'     => 'service',
+                'price'        => self::get_delivery_fee(),
+                'qty'          => 1,
+                'filename'     => '',
+                'photo_url'    => '',
+                'thumb_url'    => '',
+                'crop'         => null,
+            );
+        } else {
+            $location = self::match_meetup_point( isset( $data['meetup_location'] ) ? $data['meetup_location'] : '' );
+            if ( $location === '' ) {
+                return new WP_Error(
+                    'bad_meetup',
+                    'Please choose one of our meet-up points, or select delivery instead.',
+                    array( 'status' => 400 )
                 );
             }
+            $items[] = array(
+                'product_id'      => self::ITEM_MEETUP,
+                'product_name'    => trim( (string) $settings['meetup_label'] ) . ' — ' . $location,
+                'category'        => 'service',
+                'price'           => 0.0,
+                'qty'             => 1,
+                'filename'        => '',
+                'photo_url'       => '',
+                'thumb_url'       => '',
+                'crop'            => null,
+                'meetup_location' => $location,
+            );
         }
 
-        $subtotal = 0;
-        foreach ( $items as $item ) {
-            $subtotal += $item['price'] * $item['qty'];
-        }
+        return $items;
+    }
 
-        // Delivery choice + address, appended to the order notes so it
-        // reaches the studio, the emails and the app with no schema change.
-        $notes = (string) $data['notes'];
-        $fulfil = ( isset( $data['fulfilment'] ) && $data['fulfilment'] === 'delivery' ) ? 'delivery' : 'pickup';
-        if ( $fulfil === 'delivery' ) {
-            $sh = is_array( $data['shipping'] ?? null ) ? $data['shipping'] : array();
+    /** Human-readable fulfilment block appended to the order notes. */
+    private static function fulfilment_note( $items, $shipping ) {
+        $fulfil = self::get_order_fulfilment( (object) array( 'items' => wp_json_encode( $items ) ) );
+
+        if ( $fulfil['mode'] === 'delivery' ) {
+            $sh    = is_array( $shipping ) ? $shipping : array();
             $lines = array();
             foreach ( array( 'address1', 'address2', 'city', 'region' ) as $k ) {
-                $v = sanitize_text_field( (string) ( $sh[ $k ] ?? '' ) );
+                $v = sanitize_text_field( (string) ( isset( $sh[ $k ] ) ? $sh[ $k ] : '' ) );
                 if ( $v !== '' ) $lines[] = $v;
             }
-            $note = sanitize_text_field( (string) ( $sh['note'] ?? '' ) );
-            $block = "DELIVERY REQUESTED\n" . implode( ', ', $lines );
-            if ( $note !== '' ) $block .= "\nNotes: " . $note;
-            $notes = $notes !== '' ? $notes . "\n\n" . $block : $block;
-        } else {
-            $notes = $notes !== '' ? $notes . "\n\nPICKUP at the studio" : 'PICKUP at the studio';
+            $note  = sanitize_text_field( (string) ( isset( $sh['note'] ) ? $sh['note'] : '' ) );
+            $block = "DELIVERY REQUESTED (TT$ " . number_format( $fulfil['fee'], 2 ) . ")";
+            if ( ! empty( $lines ) ) $block .= "\n" . implode( ', ', $lines );
+            if ( $note !== '' )      $block .= "\nNotes: " . $note;
+            return $block;
         }
+
+        return 'MEET-UP at ' . $fulfil['location'];
+    }
+
+    /**
+     * @return int|WP_Error New order id, or the reason nothing was saved.
+     */
+    private static function insert_order( $data ) {
+        global $wpdb;
+        $table = $wpdb->prefix . self::TABLE_ORDERS;
+
+        $items = self::build_order_items( $data );
+        if ( is_wp_error( $items ) ) return $items;
+
+        $subtotal = self::items_total( $items );
+
+        // Delivery / meet-up detail, appended to the order notes so it
+        // reaches the studio, the emails and the app with no schema change.
+        $notes = (string) ( isset( $data['notes'] ) ? $data['notes'] : '' );
+        $block = self::fulfilment_note( $items, isset( $data['shipping'] ) ? $data['shipping'] : null );
+        $notes = $notes !== '' ? $notes . "\n\n" . $block : $block;
 
         $now = current_time( 'mysql' );
         $ok  = $wpdb->insert( $table, array(
             'order_ref'      => ! empty( $data['order_ref'] ) ? $data['order_ref'] : self::generate_order_ref(),
-            'session_id'     => $data['session_id'],
-            'session_code'   => $data['session_code'],
+            'session_id'     => isset( $data['session_id'] ) ? $data['session_id'] : null,
+            'session_code'   => isset( $data['session_code'] ) ? $data['session_code'] : null,
             'customer_name'  => $data['customer_name'],
             'customer_email' => $data['customer_email'],
-            'customer_phone' => $data['customer_phone'],
+            'customer_phone' => isset( $data['customer_phone'] ) ? $data['customer_phone'] : '',
             'items'          => wp_json_encode( $items ),
             'subtotal'       => round( $subtotal, 2 ),
             'status'         => 'new',
@@ -1440,7 +1781,329 @@ class TwellerFlow2_Prints {
             'updated_at'     => $now,
         ));
 
-        return $ok ? $wpdb->insert_id : 0;
+        if ( ! $ok ) {
+            return new WP_Error( 'save_failed', 'Could not save your order. Please try again.', array( 'status' => 500 ) );
+        }
+        return (int) $wpdb->insert_id;
+    }
+
+    // ── Studio-initiated orders ("Send to print lab") ──
+
+    /**
+     * Turn a session's gallery into a real print order without the studio
+     * having to pose as the customer.
+     *
+     * The order is built with exactly the same line-item shape as a customer
+     * order — catalog pricing, the same fulfilment line, the same crop line —
+     * so the summary, the emails, the portal, the ZIP builder and the
+     * provider economics all work on it unchanged. It is attached to the
+     * session (session_id + session_code) and to the customer's email, so
+     * portal_url() opens it in that customer's order portal and it shows up
+     * in the mobile app like any other order.
+     *
+     * @param array $args session_id, product_id, qty, photo_ids, fulfilment,
+     *                    meetup_location, shipping, notes, provider_id,
+     *                    notify_customer.
+     * @return array|WP_Error {order_id, order_ref, portal_url, pieces, subtotal, provider_note}
+     */
+    public static function create_studio_order( $args ) {
+        $args = array_merge( array(
+            'session_id'      => 0,
+            'product_id'      => '',
+            'qty'             => 1,
+            'photo_ids'       => array(),
+            'fulfilment'      => 'meetup',
+            'meetup_location' => '',
+            'shipping'        => null,
+            'notes'           => '',
+            'provider_id'     => '',
+            'notify_customer' => false,
+        ), (array) $args );
+
+        if ( ! class_exists( 'TwellerFlow2_Session' ) || ! class_exists( 'TwellerFlow2_Gallery' ) ) {
+            return new WP_Error( 'unavailable', 'Sessions and galleries are unavailable on this site.' );
+        }
+
+        $session = TwellerFlow2_Session::get( (int) $args['session_id'] );
+        if ( ! $session ) {
+            return new WP_Error( 'bad_session', 'That session could not be found.' );
+        }
+        if ( ! is_email( $session->client_email ) ) {
+            return new WP_Error( 'no_email', 'This session has no valid client email, so the order could not be linked to their portal. Add one on the session first.' );
+        }
+
+        $product = self::get_product( sanitize_text_field( (string) $args['product_id'] ) );
+        if ( ! $product || empty( $product['active'] ) ) {
+            return new WP_Error( 'bad_product', 'Choose a product that is active in the print catalog.' );
+        }
+
+        $qty = max( 1, min( 50, (int) $args['qty'] ) );
+
+        $photos = TwellerFlow2_Gallery::get_photos( (int) $session->id );
+        if ( empty( $photos ) ) {
+            return new WP_Error( 'no_photos', 'That gallery has no photos yet.' );
+        }
+
+        $wanted = array();
+        foreach ( (array) $args['photo_ids'] as $pid ) {
+            $pid = (int) $pid;
+            if ( $pid > 0 ) $wanted[ $pid ] = true;
+        }
+
+        $gallery_url = TwellerFlow2_Gallery::get_gallery_url( $session->tracking_code );
+        $items       = array();
+        foreach ( $photos as $photo ) {
+            if ( ! empty( $wanted ) && empty( $wanted[ (int) $photo->id ] ) ) continue;
+            $items[] = array(
+                'product_id'   => (string) $product['id'],
+                'product_name' => (string) $product['name'],
+                'category'     => (string) $product['category'],
+                'price'        => round( (float) $product['price'], 2 ),
+                'qty'          => $qty,
+                'filename'     => (string) $photo->filename,
+                'photo_id'     => (int) $photo->id,
+                'photo_url'    => $gallery_url . '/' . rawurlencode( $photo->filename ),
+                'thumb_url'    => $gallery_url . '/thumbs/' . rawurlencode( $photo->filename ),
+                'crop'         => null,
+            );
+        }
+
+        if ( empty( $items ) ) {
+            return new WP_Error( 'no_photos', 'None of the selected photos are in that gallery.' );
+        }
+
+        $user  = wp_get_current_user();
+        $notes = trim( sanitize_textarea_field( (string) $args['notes'] ) );
+        $stamp = 'Sent to the print lab by ' . ( ( $user && $user->exists() ) ? $user->display_name : 'the studio' )
+            . ' from the ' . $session->tracking_code . ' gallery.';
+        $notes = $notes !== '' ? $notes . "\n\n" . $stamp : $stamp;
+
+        $order_id = self::insert_order( array(
+            'session_id'      => (int) $session->id,
+            'session_code'    => (string) $session->tracking_code,
+            'customer_name'   => (string) $session->client_name,
+            'customer_email'  => (string) $session->client_email,
+            'customer_phone'  => (string) $session->client_phone,
+            'items'           => $items,
+            'notes'           => $notes,
+            'source'          => 'studio',
+            'crop_service'    => false,
+            'fulfilment'      => (string) $args['fulfilment'],
+            'meetup_location' => (string) $args['meetup_location'],
+            'shipping'        => $args['shipping'],
+        ));
+
+        if ( is_wp_error( $order_id ) ) return $order_id;
+        if ( ! $order_id ) {
+            return new WP_Error( 'save_failed', 'The print order could not be saved.' );
+        }
+
+        $order   = self::get_order( $order_id );
+        $summary = self::order_summary( $order );
+
+        if ( ! empty( $args['notify_customer'] ) ) {
+            self::send_customer_confirmation( $order );
+        }
+
+        $provider_note = self::hand_off_to_provider( $order, sanitize_key( (string) $args['provider_id'] ) );
+
+        return array(
+            'order_id'      => (int) $order_id,
+            'order_ref'     => (string) $order->order_ref,
+            'portal_url'    => self::portal_url( $order ),
+            'pieces'        => (int) $summary['pieces'],
+            'subtotal'      => round( (float) $order->subtotal, 2 ),
+            'provider_note' => $provider_note,
+        );
+    }
+
+    /**
+     * Build the print files and hand the job to a provider. The builder is
+     * chunked, so we give it a bounded slice of this request — if the job is
+     * too big to finish here the order simply waits in Print Store → Orders
+     * with its files half-built, and the studio finishes the send there.
+     */
+    private static function hand_off_to_provider( $order, $provider_id ) {
+        if ( $provider_id === '' ) return '';
+        if ( ! class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
+            return 'The fulfilment module is unavailable, so nothing was sent to a provider.';
+        }
+
+        $deadline = microtime( true ) + 20;
+        $build    = null;
+        do {
+            $build = TwellerFlow2_Print_Fulfillment::build_chunk( (int) $order->id );
+        } while ( is_array( $build ) && empty( $build['done'] ) && microtime( true ) < $deadline );
+
+        if ( ! is_array( $build ) || empty( $build['done'] ) ) {
+            return 'The print files are still building — open the order in Print Store → Orders to finish sending it.';
+        }
+
+        $sent = TwellerFlow2_Print_Fulfillment::send_to_provider( (int) $order->id, $provider_id, '' );
+        if ( is_wp_error( $sent ) ) {
+            return 'The order was created, but sending it to the provider failed: ' . $sent->get_error_message();
+        }
+        return 'Sent to the print lab.';
+    }
+
+    /** Providers available for the "Send to print lab" pickers. */
+    public static function provider_choices() {
+        if ( ! class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) return array();
+        $out = array();
+        foreach ( (array) TwellerFlow2_Print_Fulfillment::get_providers( true ) as $p ) {
+            if ( empty( $p['id'] ) ) continue;
+            $out[ (string) $p['id'] ] = (string) $p['name'];
+        }
+        return $out;
+    }
+
+    /**
+     * The "Send to print lab" panel, shared by the session detail screen and
+     * the galleries screen so both entry points behave identically.
+     *
+     * @param object $session     Session row.
+     * @param int    $photo_count Photos in that gallery.
+     * @param string $redirect    'session' or 'galleries'.
+     */
+    public static function render_send_to_lab_panel( $session, $photo_count, $redirect = 'session' ) {
+        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! $session || (int) $photo_count < 1 ) return;
+
+        $products  = self::get_active_products();
+        $providers = self::provider_choices();
+        $settings  = self::get_settings();
+        $uid       = 'tf2lab-' . (int) $session->id . '-' . sanitize_key( $redirect );
+        ?>
+        <div class="tf2-printlab" id="tf2-print-lab-<?php echo (int) $session->id; ?>">
+            <form method="post" class="tf2-printlab__form">
+                <?php wp_nonce_field( 'tweller_flow_2_studio_print_order' ); ?>
+                <input type="hidden" name="tweller_flow_2_studio_print_order" value="1">
+                <input type="hidden" name="session_id" value="<?php echo (int) $session->id; ?>">
+                <input type="hidden" name="redirect_to" value="<?php echo esc_attr( $redirect ); ?>">
+
+                <div class="tf2-printlab__head">
+                    <strong>Send to print lab</strong>
+                    <span>Creates a real print order for <?php echo esc_html( $session->client_name ); ?> from all <?php echo (int) $photo_count; ?> photos in this gallery.</span>
+                </div>
+
+                <div class="tf2-printlab__row">
+                    <label>
+                        <span>Product / size</span>
+                        <select name="product_id" required>
+                            <?php foreach ( $products as $p ) : ?>
+                                <option value="<?php echo esc_attr( $p['id'] ); ?>">
+                                    <?php echo esc_html( $p['name'] . ' — TT$ ' . number_format( (float) $p['price'], 2 ) ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Copies of each photo</span>
+                        <input type="number" name="qty" value="1" min="1" max="50" step="1">
+                    </label>
+                    <label>
+                        <span>Print lab (optional)</span>
+                        <select name="provider_id">
+                            <option value="">— create the order only —</option>
+                            <?php foreach ( $providers as $pid => $pname ) : ?>
+                                <option value="<?php echo esc_attr( $pid ); ?>"><?php echo esc_html( $pname ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="tf2-printlab__row">
+                    <label>
+                        <span>Hand-over</span>
+                        <select name="fulfilment" id="<?php echo esc_attr( $uid ); ?>-mode">
+                            <option value="meetup">Meet-up (free)</option>
+                            <option value="delivery">Delivery — TT$ <?php echo esc_html( number_format( self::get_delivery_fee(), 2 ) ); ?></option>
+                        </select>
+                    </label>
+                    <label id="<?php echo esc_attr( $uid ); ?>-point">
+                        <span>Meet-up point</span>
+                        <select name="meetup_location">
+                            <?php foreach ( self::get_meetup_points() as $point ) : ?>
+                                <option value="<?php echo esc_attr( $point ); ?>"><?php echo esc_html( $point ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label id="<?php echo esc_attr( $uid ); ?>-addr" style="display:none;">
+                        <span>Delivery address</span>
+                        <input type="text" name="ship_address1" maxlength="160" placeholder="Street address, town">
+                    </label>
+                </div>
+
+                <div class="tf2-printlab__row">
+                    <label class="tf2-printlab__grow">
+                        <span>Note on the order (optional)</span>
+                        <input type="text" name="notes" maxlength="500" placeholder="Anything the lab or the client should know">
+                    </label>
+                    <?php if ( is_email( $session->client_email ) ) : ?>
+                        <label class="tf2-printlab__check">
+                            <input type="checkbox" name="notify_customer" value="1">
+                            Email <?php echo esc_html( $session->client_email ); ?> their order confirmation
+                        </label>
+                    <?php else : ?>
+                        <span class="tf2-printlab__check tf2-printlab__warn">Add a client email to this session first — the order has to belong to someone.</span>
+                    <?php endif; ?>
+                </div>
+
+                <p class="tf2-printlab__foot">
+                    <button type="submit" class="tf2-btn tf2-btn--primary tf2-btn--sm">Send to print lab</button>
+                    <span>Priced from the catalog, plus <?php echo esc_html( trim( (string) $settings['delivery_label'] ) ); ?> when chosen — the client sees it in their order portal.</span>
+                </p>
+            </form>
+        </div>
+        <?php
+        // The galleries screen renders one panel per gallery — the shared
+        // stylesheet only needs to go out once.
+        static $css_done = false;
+        if ( $css_done ) {
+            self::send_to_lab_script( $uid );
+            return;
+        }
+        $css_done = true;
+        ?>
+        <style>
+        .tf2-printlab { border:1px solid #E5E7EB; border-radius:10px; padding:14px 16px; background:#FAFAFA; margin-top:14px; }
+        .tf2-printlab__head { display:flex; flex-direction:column; gap:2px; margin-bottom:10px; }
+        .tf2-printlab__head strong { font-size:14px; color:#111827; }
+        .tf2-printlab__head span { font-size:12px; color:#6B7280; }
+        .tf2-printlab__row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:10px; align-items:flex-end; }
+        .tf2-printlab__row label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:#6B7280; min-width:0; }
+        .tf2-printlab__row label > span { font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+        .tf2-printlab__row select, .tf2-printlab__row input[type=text], .tf2-printlab__row input[type=number] {
+            padding:6px 9px; border:1px solid #D1D5DB; border-radius:6px; font-size:13px; font-family:inherit; max-width:100%;
+        }
+        .tf2-printlab__grow { flex:1 1 260px; }
+        .tf2-printlab__grow input { width:100%; }
+        .tf2-printlab__check { display:flex; flex-direction:row !important; align-items:center; gap:6px !important; font-size:12px; color:#374151; }
+        .tf2-printlab__warn { color:#B45309; }
+        .tf2-printlab__foot { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0; }
+        .tf2-printlab__foot span { font-size:11.5px; color:#9CA3AF; }
+        </style>
+        <?php
+        self::send_to_lab_script( $uid );
+    }
+
+    /** Meet-up ↔ delivery field toggle for one "Send to print lab" panel. */
+    private static function send_to_lab_script( $uid ) {
+        ?>
+        <script>
+        (function() {
+            var mode  = document.getElementById('<?php echo esc_js( $uid ); ?>-mode');
+            var point = document.getElementById('<?php echo esc_js( $uid ); ?>-point');
+            var addr  = document.getElementById('<?php echo esc_js( $uid ); ?>-addr');
+            if (!mode || !point || !addr) return;
+            mode.addEventListener('change', function() {
+                var delivery = mode.value === 'delivery';
+                point.style.display = delivery ? 'none' : '';
+                addr.style.display  = delivery ? '' : 'none';
+            });
+        })();
+        </script>
+        <?php
     }
 
     public static function generate_order_ref() {
@@ -1499,35 +2162,93 @@ class TwellerFlow2_Prints {
 
     // ── Emails ─────────────────────────────────────────
 
-    /** Branded items table for order emails */
-    private static function items_table_html( $order ) {
-        $items = self::get_order_items( $order );
-        $rows  = '';
-        foreach ( $items as $item ) {
-            $thumb = '';
-            if ( ! empty( $item['thumb_url'] ) ) {
-                $thumb = "<img src='" . esc_url( $item['thumb_url'] ) . "' alt='' width='54' style='width:54px; height:54px; object-fit:cover; border-radius:6px; display:block;'>";
+    /**
+     * THE order table for every email and the customer portal.
+     *
+     * One row per product/size — never one row per photo, so a 116-photo
+     * order is a handful of readable lines instead of a 116-row wall of
+     * thumbnails. Delivery / meet-up and the crop service are rows of their
+     * own, and the total is summarize_items()'s total, which is computed
+     * from the same integer-cent arithmetic that produced the stored
+     * subtotal. If the two ever disagree the stored subtotal wins and the
+     * mismatch is shown rather than hidden.
+     *
+     * @param object $order
+     * @param array  $args  show_prices: false for the white-label lab email.
+     */
+    public static function order_summary_html( $order, $args = array() ) {
+        $args = array_merge( array( 'show_prices' => true ), (array) $args );
+        $show = ! empty( $args['show_prices'] );
+
+        $summary = self::order_summary( $order );
+        $stored  = isset( $order->subtotal ) ? round( (float) $order->subtotal, 2 ) : $summary['total'];
+
+        $rows   = '';
+        $pieces = 0;
+        foreach ( $summary['groups'] as $g ) {
+            // The lab never sees the fee lines — they print nothing.
+            if ( ! $show && ! empty( $g['service'] ) ) continue;
+            if ( empty( $g['service'] ) ) $pieces += (int) $g['qty'];
+
+            $label = self::summary_label( $g );
+            $meta  = '&times; ' . (int) $g['qty'];
+            if ( $show ) {
+                $meta .= ' @ TT$ ' . number_format( $g['unit'], 2 );
             }
-            $line_total = number_format( $item['price'] * $item['qty'], 2 );
+            if ( empty( $g['service'] ) && (int) $g['photos'] > 1 ) {
+                $meta .= ' &middot; ' . (int) $g['photos'] . ' photos';
+            }
+
             $rows .= "
                 <tr>
-                    <td style='padding:8px 10px 8px 0; vertical-align:middle; width:54px;'>{$thumb}</td>
-                    <td style='padding:8px 10px 8px 0; vertical-align:middle;'>
-                        <span style='color:#101010; font-weight:600; font-size:14px;'>" . esc_html( $item['product_name'] ) . "</span><br>
-                        <span style='color:#8A8178; font-size:12px;'>" . esc_html( $item['filename'] ) . " &times; " . intval( $item['qty'] ) . "</span>
-                    </td>
-                    <td style='padding:8px 0; vertical-align:middle; text-align:right; white-space:nowrap; color:#3D3630; font-weight:600; font-size:14px;'>TT$ {$line_total}</td>
+                    <td style='padding:9px 10px 9px 0; border-bottom:1px solid #ECE9E2; vertical-align:top;'>
+                        <span style='color:#101010; font-weight:600; font-size:14px;'>" . esc_html( $label ) . "</span><br>
+                        <span style='color:#8A8178; font-size:12px;'>{$meta}</span>
+                    </td>";
+            if ( $show ) {
+                $rows .= "
+                    <td style='padding:9px 0; border-bottom:1px solid #ECE9E2; text-align:right; white-space:nowrap; vertical-align:top; color:#3D3630; font-weight:600; font-size:14px;'>TT$ " . number_format( $g['line'], 2 ) . "</td>";
+            }
+            $rows .= "
                 </tr>";
         }
-        $subtotal = number_format( (float) $order->subtotal, 2 );
-        return "
-            <table style='width:100%; border-collapse:collapse;'>
-                {$rows}
+
+        if ( $show ) {
+            $foot = "
                 <tr>
-                    <td colspan='2' style='padding:12px 10px 0 0; border-top:1px solid #ECE9E2; color:#101010; font-weight:700; font-size:14px;'>Subtotal</td>
-                    <td style='padding:12px 0 0; border-top:1px solid #ECE9E2; text-align:right; color:#101010; font-weight:700; font-size:15px;'>TT$ {$subtotal}</td>
-                </tr>
+                    <td style='padding:13px 10px 0 0; color:#101010; font-weight:700; font-size:14px;'>Total</td>
+                    <td style='padding:13px 0 0; text-align:right; color:#101010; font-weight:700; font-size:16px;'>TT$ " . number_format( $stored, 2 ) . "</td>
+                </tr>";
+            if ( abs( $summary['total'] - $stored ) >= 0.01 ) {
+                $foot .= "
+                <tr>
+                    <td colspan='2' style='padding:8px 0 0; color:#B91C1C; font-size:12px;'>The lines above total TT$ " . number_format( $summary['total'], 2 ) . " — please contact us before paying.</td>
+                </tr>";
+            }
+        } else {
+            $foot = "
+                <tr>
+                    <td style='padding:13px 10px 0 0; color:#101010; font-weight:700; font-size:14px;'>Total pieces</td>
+                </tr>";
+        }
+
+        $pieces_row = '';
+        if ( ! $show ) {
+            $pieces_row = "
+                <tr>
+                    <td style='padding:2px 0 0; color:#101010; font-weight:700; font-size:16px;'>" . (int) $pieces . "</td>
+                </tr>";
+        }
+
+        return "
+            <table role='presentation' style='width:100%; border-collapse:collapse;' cellpadding='0' cellspacing='0' border='0'>
+                {$rows}{$foot}{$pieces_row}
             </table>";
+    }
+
+    /** Back-compat alias — every caller now gets the grouped summary. */
+    private static function items_table_html( $order ) {
+        return self::order_summary_html( $order );
     }
 
     public static function send_customer_confirmation( $order ) {
@@ -1580,7 +2301,15 @@ class TwellerFlow2_Prints {
         if ( $order->customer_phone ) {
             $meta .= TwellerFlow2_Notifications::email_detail_row( 'Phone', esc_html( $order->customer_phone ) );
         }
-        $meta .= TwellerFlow2_Notifications::email_detail_row( 'Source', $order->source === 'gallery' ? 'Client gallery' : 'Public upload' );
+        $sources = array( 'gallery' => 'Client gallery', 'public' => 'Public upload', 'studio' => 'Studio (sent to print lab)' );
+        $meta .= TwellerFlow2_Notifications::email_detail_row( 'Source', isset( $sources[ $order->source ] ) ? $sources[ $order->source ] : esc_html( (string) $order->source ) );
+
+        $fulfilment = self::get_order_fulfilment( $order );
+        if ( $fulfilment['mode'] === 'delivery' ) {
+            $meta .= TwellerFlow2_Notifications::email_detail_row( 'Fulfilment', 'Delivery — TT$ ' . number_format( $fulfilment['fee'], 2 ) );
+        } elseif ( $fulfilment['mode'] === 'meetup' ) {
+            $meta .= TwellerFlow2_Notifications::email_detail_row( 'Fulfilment', 'Meet-up — ' . esc_html( $fulfilment['location'] ) );
+        }
         if ( $order->session_code ) {
             $meta .= TwellerFlow2_Notifications::email_detail_row( 'Shoot code', esc_html( $order->session_code ) );
         }
@@ -1609,6 +2338,16 @@ class TwellerFlow2_Prints {
         $first_name = trim( explode( ' ', trim( $order->customer_name ) )[0] );
         $settings   = self::get_settings();
 
+        // "Ready" means different things depending on how they're getting it.
+        $fulfilment = self::get_order_fulfilment( $order );
+        if ( $fulfilment['mode'] === 'delivery' ) {
+            $ready_line = "It's printed, packed and ready — we'll be in touch to arrange your delivery.";
+        } elseif ( $fulfilment['mode'] === 'meetup' ) {
+            $ready_line = "It's printed, packed and ready — we'll confirm a time to meet you at <strong>" . esc_html( $fulfilment['location'] ) . "</strong>.";
+        } else {
+            $ready_line = "It's printed, packed and ready.";
+        }
+
         $copy = array(
             'confirmed' => array(
                 'subject' => "Payment confirmed — your print order is in production, {$first_name}",
@@ -1621,9 +2360,9 @@ class TwellerFlow2_Prints {
                 'line'    => "Your order <strong>" . esc_html( $order->order_ref ) . "</strong> is being printed right now. We'll let you know the moment it's ready.",
             ),
             'ready' => array(
-                'subject' => "Your prints are ready for pickup, {$first_name} ✨",
-                'heading' => 'Ready for pickup',
-                'line'    => "The moment you've been waiting for — your order <strong>" . esc_html( $order->order_ref ) . "</strong> is printed, packed and ready.<br><br>" . esc_html( $settings['pickup_note'] ),
+                'subject' => "Your prints are ready, {$first_name} ✨",
+                'heading' => 'Ready',
+                'line'    => "The moment you've been waiting for — your order <strong>" . esc_html( $order->order_ref ) . "</strong> is done. " . $ready_line . "<br><br>" . esc_html( $settings['pickup_note'] ),
             ),
             'completed' => array(
                 'subject' => "Enjoy your prints, {$first_name}!",
@@ -1852,9 +2591,53 @@ class TwellerFlow2_Prints {
                 'crop_service_fee'     => max( 0, (float) ( $_POST['prints_crop_service_fee'] ?? 0 ) ),
                 'crop_service_label'   => sanitize_text_field( $_POST['prints_crop_service_label'] ?? '' ),
                 'crop_service_note'    => sanitize_textarea_field( $_POST['prints_crop_service_note'] ?? '' ),
+                'delivery_fee'         => max( 0, round( (float) ( $_POST['prints_delivery_fee'] ?? 0 ), 2 ) ),
+                'delivery_label'       => sanitize_text_field( $_POST['prints_delivery_label'] ?? '' ),
+                'meetup_label'         => sanitize_text_field( $_POST['prints_meetup_label'] ?? '' ),
+                'meetup_points'        => self::sanitize_meetup_points( wp_unslash( $_POST['prints_meetup_points'] ?? '' ) ),
+                'partner_alert_emails' => sanitize_text_field( $_POST['prints_partner_alert_emails'] ?? '' ),
             ));
 
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-prints&view=settings&saved=1' ) );
+            exit;
+        }
+
+        // "Send to print lab" — studio-initiated order from a session gallery.
+        // Available from the session detail screen and the galleries screen.
+        if ( isset( $_POST['tweller_flow_2_studio_print_order'] ) ) {
+            check_admin_referer( 'tweller_flow_2_studio_print_order' );
+            if ( ! current_user_can( 'manage_options' ) ) {
+                wp_die( 'You are not allowed to create print orders.' );
+            }
+
+            $session_id = intval( $_POST['session_id'] ?? 0 );
+            $redirect   = ( isset( $_POST['redirect_to'] ) && $_POST['redirect_to'] === 'galleries' ) ? 'galleries' : 'session';
+
+            $result = self::create_studio_order( array(
+                'session_id'      => $session_id,
+                'product_id'      => sanitize_text_field( wp_unslash( $_POST['product_id'] ?? '' ) ),
+                'qty'             => intval( $_POST['qty'] ?? 1 ),
+                'fulfilment'      => sanitize_text_field( wp_unslash( $_POST['fulfilment'] ?? 'meetup' ) ),
+                'meetup_location' => sanitize_text_field( wp_unslash( $_POST['meetup_location'] ?? '' ) ),
+                'shipping'        => array( 'address1' => sanitize_text_field( wp_unslash( $_POST['ship_address1'] ?? '' ) ) ),
+                'notes'           => sanitize_textarea_field( wp_unslash( $_POST['notes'] ?? '' ) ),
+                'provider_id'     => sanitize_key( wp_unslash( $_POST['provider_id'] ?? '' ) ),
+                'notify_customer' => ! empty( $_POST['notify_customer'] ),
+            ));
+
+            $base = $redirect === 'galleries'
+                ? admin_url( 'admin.php?page=tweller-flow-2-galleries' )
+                : admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $session_id );
+
+            if ( is_wp_error( $result ) ) {
+                wp_redirect( add_query_arg( 'printlab_error', rawurlencode( $result->get_error_message() ), $base ) );
+                exit;
+            }
+
+            wp_redirect( add_query_arg( array(
+                'printlab'      => rawurlencode( $result['order_ref'] ),
+                'printlab_note' => rawurlencode( $result['provider_note'] ),
+            ), $base ) );
             exit;
         }
 

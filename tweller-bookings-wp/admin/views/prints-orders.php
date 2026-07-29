@@ -132,7 +132,7 @@
             <?php foreach ( (array) $orders as $order ) :
                 $items = TwellerFlow2_Prints::get_order_items( $order );
                 $qty_total = 0;
-                foreach ( $items as $it ) { $qty_total += (int) ( $it['qty'] ?? 0 ); }
+                foreach ( TwellerFlow2_Prints::printable_items( $items ) as $it ) { $qty_total += (int) ( $it['qty'] ?? 0 ); }
                 $delete_url = wp_nonce_url(
                     admin_url( 'admin.php?page=tweller-flow-2-prints&action=delete_print_order&order_id=' . (int) $order->id ),
                     'tweller_flow_2_delete_print_order_' . (int) $order->id
@@ -170,7 +170,12 @@
                         <span style="color:#9CA3AF; font-size:12px;"><?php echo esc_html( $order->customer_email ); ?></span>
                     </td>
                     <td>
-                        <?php if ( $order->source === 'gallery' ) : ?>
+                        <?php if ( $order->source === 'studio' ) : ?>
+                            <span class="tf2-badge tf2-badge--booked">Studio</span>
+                            <?php if ( $order->session_code ) : ?>
+                                <br><span style="color:#9CA3AF; font-size:11px;"><?php echo esc_html( $order->session_code ); ?></span>
+                            <?php endif; ?>
+                        <?php elseif ( $order->source === 'gallery' ) : ?>
                             <span class="tf2-badge tf2-badge--delivered">Gallery</span>
                             <?php if ( $order->session_code ) : ?>
                                 <br><span style="color:#9CA3AF; font-size:11px;"><?php echo esc_html( $order->session_code ); ?></span>
@@ -198,29 +203,62 @@
                         <div style="display:flex; flex-wrap:wrap; gap:24px; padding:8px 4px 14px;">
                             <div style="flex:1 1 380px; min-width:300px;">
                                 <h4 style="margin:8px 0;">Items</h4>
+                                <?php
+                                // The SAME grouped summary the customer and the
+                                // lab see — one row per size, not one per photo,
+                                // and the rows always add up to the stored total.
+                                $summary = TwellerFlow2_Prints::order_summary( $order );
+                                ?>
                                 <table style="width:100%; border-collapse:collapse;">
-                                    <?php foreach ( $items as $it ) : ?>
+                                    <?php foreach ( $summary['groups'] as $g ) : ?>
                                     <tr style="border-bottom:1px solid #EEF0F3;">
-                                        <td style="padding:6px 8px 6px 0; width:48px;">
-                                            <?php if ( ! empty( $it['thumb_url'] ) ) : ?>
-                                                <a href="<?php echo esc_url( $it['photo_url'] ?: $it['thumb_url'] ); ?>" target="_blank">
-                                                    <img src="<?php echo esc_url( $it['thumb_url'] ); ?>" alt="" style="width:44px; height:44px; object-fit:cover; border-radius:6px; display:block;">
-                                                </a>
-                                            <?php endif; ?>
-                                        </td>
                                         <td style="padding:6px 8px 6px 0;">
-                                            <strong><?php echo esc_html( $it['product_name'] ?? '' ); ?></strong><br>
+                                            <strong><?php echo esc_html( TwellerFlow2_Prints::summary_label( $g ) ); ?></strong><br>
                                             <span style="color:#9CA3AF; font-size:12px;">
-                                                <?php echo esc_html( $it['filename'] ?? '' ); ?> &times; <?php echo (int) ( $it['qty'] ?? 1 ); ?>
-                                                <?php if ( ! empty( $it['crop'] ) ) : ?> · <?php echo esc_html( $it['crop'] ); ?><?php endif; ?>
+                                                &times; <?php echo (int) $g['qty']; ?> @ TT$ <?php echo esc_html( number_format( $g['unit'], 2 ) ); ?>
+                                                <?php if ( empty( $g['service'] ) && (int) $g['photos'] > 1 ) : ?>
+                                                    &middot; <?php echo (int) $g['photos']; ?> photos
+                                                <?php endif; ?>
                                             </span>
                                         </td>
                                         <td style="padding:6px 0; text-align:right; white-space:nowrap;">
-                                            TT$ <?php echo esc_html( number_format( (float) ( $it['price'] ?? 0 ) * (int) ( $it['qty'] ?? 1 ), 2 ) ); ?>
+                                            TT$ <?php echo esc_html( number_format( $g['line'], 2 ) ); ?>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
+                                    <tr>
+                                        <td style="padding:9px 8px 0 0;"><strong>Total</strong></td>
+                                        <td style="padding:9px 0 0; text-align:right; white-space:nowrap;">
+                                            <strong>TT$ <?php echo esc_html( number_format( (float) $order->subtotal, 2 ) ); ?></strong>
+                                            <?php if ( abs( $summary['total'] - (float) $order->subtotal ) >= 0.01 ) : ?>
+                                                <br><span style="color:#B91C1C; font-size:11.5px;">lines total TT$ <?php echo esc_html( number_format( $summary['total'], 2 ) ); ?></span>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
                                 </table>
+
+                                <?php
+                                $photo_items = TwellerFlow2_Prints::printable_items( $items );
+                                $shown       = array_slice( $photo_items, 0, 60 );
+                                if ( ! empty( $shown ) ) : ?>
+                                    <details style="margin-top:10px;">
+                                        <summary style="cursor:pointer; font-size:12.5px; color:#4B5563;">
+                                            Photos (<?php echo count( $photo_items ); ?>)
+                                        </summary>
+                                        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(44px,1fr)); gap:5px; margin-top:8px;">
+                                            <?php foreach ( $shown as $it ) : ?>
+                                                <?php if ( ! empty( $it['thumb_url'] ) ) : ?>
+                                                    <a href="<?php echo esc_url( ! empty( $it['photo_url'] ) ? $it['photo_url'] : $it['thumb_url'] ); ?>" target="_blank" title="<?php echo esc_attr( (string) ( $it['filename'] ?? '' ) ); ?>">
+                                                        <img src="<?php echo esc_url( $it['thumb_url'] ); ?>" alt="" loading="lazy" style="width:100%; aspect-ratio:1; object-fit:cover; border-radius:5px; display:block;">
+                                                    </a>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </div>
+                                        <?php if ( count( $photo_items ) > count( $shown ) ) : ?>
+                                            <p style="margin:6px 0 0; color:#9CA3AF; font-size:11.5px;">+ <?php echo count( $photo_items ) - count( $shown ); ?> more</p>
+                                        <?php endif; ?>
+                                    </details>
+                                <?php endif; ?>
                                 <?php if ( $order->notes ) : ?>
                                     <p style="margin:10px 0 0; color:#374151; font-size:13px;"><strong>Notes:</strong> <?php echo esc_html( $order->notes ); ?></p>
                                 <?php endif; ?>

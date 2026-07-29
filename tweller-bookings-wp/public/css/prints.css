@@ -1464,6 +1464,42 @@ a.tf2p-btn {
     white-space: nowrap;
 }
 
+/* Grouped order summary — one line per size, never one per photo */
+.tf2-portal__line {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--tf2p-gray-100);
+}
+
+.tf2-portal__line-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tf2-portal__line-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--tf2p-black);
+}
+
+.tf2-portal__line-meta {
+    font-size: 11.5px;
+    color: var(--tf2p-gray-500);
+}
+
+.tf2-portal__line-price {
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tf2p-gray-700);
+    white-space: nowrap;
+}
+
 .tf2-portal__total {
     display: flex;
     align-items: center;
@@ -1671,8 +1707,21 @@ a.tf2p-btn {
     min-height: 0;
 }
 
+/*
+ * Sheet footer.
+ *
+ * The summary and the two buttons compete for the same row. With the
+ * summary at `flex:1 1 auto` (so min-width:auto) and the actions at
+ * `flex:none`, neither side could give, and at 360px the gold button —
+ * "Review & crop" — ran 37px past the sheet edge. Measured, not guessed:
+ * footer content was 397px inside a 360px box. So: the summary may shrink
+ * to nothing, the buttons may shrink too, and below 560px the footer
+ * stacks and the two buttons share the row evenly.
+ */
 .tf2p-flow__foot {
     flex: none;
+    box-sizing: border-box;
+    max-width: 100%;
     padding: 12px 20px calc(14px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--tf2p-gray-200);
     background: var(--tf2p-white);
@@ -1682,18 +1731,50 @@ a.tf2p-btn {
 }
 .tf2p-flow__summary {
     margin: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     font-size: 13px;
     font-weight: 600;
     color: var(--tf2p-gray-700);
     line-height: 1.35;
+    overflow-wrap: anywhere;
 }
 .tf2p-flow__actions {
     display: flex;
     gap: 8px;
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+.tf2p-flow__actions .tf2p-btn {
+    min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
 }
 .tf2p-flow__next { min-width: 132px; }
+
+@media (max-width: 560px) {
+    .tf2p-flow__foot {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+    .tf2p-flow__summary { flex: none; }
+    .tf2p-flow__actions { width: 100%; }
+    .tf2p-flow__actions .tf2p-btn {
+        flex: 1 1 0;
+        padding-left: 14px;
+        padding-right: 14px;
+        /* A long label shrinks its own text rather than the sheet */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+        line-height: 1.2;
+    }
+    .tf2p-flow__next { min-width: 0; }
+}
 
 .tf2p-close {
     position: absolute;
@@ -2529,7 +2610,7 @@ a.tf2p-btn {
 .tf2p-field-row { display: flex; gap: 10px; }
 .tf2p-field-row .tf2p-field { flex: 1 1 0; min-width: 0; }
 
-/* Pickup vs delivery */
+/* Meet-up vs delivery */
 .tf2p-fulfil { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
 .tf2p-fulfil__opt {
     display: flex;
@@ -2566,11 +2647,36 @@ a.tf2p-btn {
     border-radius: 50%;
     background: var(--tf2p-gold);
 }
-.tf2p-fulfil__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tf2p-fulfil__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
 .tf2p-fulfil__title { font-size: 13.5px; font-weight: 700; color: var(--tf2p-black); }
 .tf2p-fulfil__note { font-size: 12px; color: var(--tf2p-gray-500); }
+/* Price tag on the fulfilment choice — the fee is never a surprise */
+.tf2p-fulfil__tag {
+    flex: none;
+    margin-left: auto;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--tf2p-black);
+    white-space: nowrap;
+}
 
+.tf2p-meet { margin-bottom: 14px; }
 .tf2p-ship { border-top: 1px solid var(--tf2p-gray-200); padding-top: 14px; margin-bottom: 4px; }
+
+/* Fee lines (crop service, meet-up / delivery) above the total */
+.tf2p-fees:empty { display: none; }
+.tf2p-fee {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--tf2p-gray-700);
+}
+.tf2p-fee:first-child { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--tf2p-gray-200); }
+.tf2p-fee__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tf2p-fee__amt { flex: none; font-weight: 700; color: var(--tf2p-black); white-space: nowrap; }
 
 /* Cart line — readable: name, unit price, qty, line total */
 .tf2p-citem__info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

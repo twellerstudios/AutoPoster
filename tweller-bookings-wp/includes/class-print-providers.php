@@ -382,6 +382,20 @@ class TwellerFlow2_Print_Providers {
 		return is_array( $items ) ? $items : array();
 	}
 
+	/**
+	 * What the lab actually prints — fee lines (delivery, meet-up, crop
+	 * service) are stripped, so piece counts and the job breakdown a
+	 * provider sees only ever describe real prints.
+	 */
+	private static function printable_items( $order ) {
+		$out = array();
+		foreach ( self::order_items( $order ) as $item ) {
+			if ( self::is_service_item( $item ) ) continue;
+			$out[] = $item;
+		}
+		return array_values( $out );
+	}
+
 	/** Fulfilment array for an order — works even without the fulfilment class. */
 	public static function fulfillment( $order ) {
 		if ( class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
@@ -564,6 +578,13 @@ class TwellerFlow2_Print_Providers {
 	 */
 	public static function provider_cost_for_item( $provider, $item ) {
 		if ( ! is_array( $provider ) || ! is_array( $item ) ) return null;
+
+		// Fee lines (delivery, meet-up, crop service) are money the studio
+		// collects, not something the lab prints. They cost the provider
+		// nothing and must never be counted as "unpriced" — that flag means
+		// "we don't know what to pay this lab for a real print".
+		if ( self::is_service_item( $item ) ) return 0.0;
+
 		$prices     = isset( $provider['prices'] ) && is_array( $provider['prices'] ) ? $provider['prices'] : array();
 		$product_id = sanitize_key( (string) ( isset( $item['product_id'] ) ? $item['product_id'] : '' ) );
 		if ( $product_id === '' || ! isset( $prices[ $product_id ] ) ) return null;
@@ -581,6 +602,14 @@ class TwellerFlow2_Print_Providers {
 	 * @param array|null $provider Resolved from the order's own assignment when omitted.
 	 * @return array{value:float, provider_cost:float, unpriced_items:int, margin:float, provider_id:string}
 	 */
+	/** Fee/service line rather than a printable good. */
+	private static function is_service_item( $item ) {
+		if ( class_exists( 'TwellerFlow2_Prints' ) ) {
+			return TwellerFlow2_Prints::is_service_item( $item );
+		}
+		return is_array( $item ) && isset( $item['category'] ) && (string) $item['category'] === 'service';
+	}
+
 	public static function order_economics( $order, $provider = null ) {
 		$value = ( $order && isset( $order->subtotal ) ) ? round( (float) $order->subtotal, 2 ) : 0.0;
 
@@ -1740,10 +1769,15 @@ if ( count( $parts ) !== 2 ) {
 	 */
 	private static function order_payload( $order, $provider, $detail = false ) {
 		$f     = self::fulfillment( $order );
-		$items = self::order_items( $order );
+		$items = self::printable_items( $order );
 
+		// Printable pieces only — a delivery or crop-service line is not
+		// something the lab puts in the box.
+		$piece_items = class_exists( 'TwellerFlow2_Prints' )
+			? TwellerFlow2_Prints::printable_items( $items )
+			: $items;
 		$pieces = 0;
-		foreach ( $items as $it ) { $pieces += max( 1, (int) ( isset( $it['qty'] ) ? $it['qty'] : 1 ) ); }
+		foreach ( $piece_items as $it ) { $pieces += max( 1, (int) ( isset( $it['qty'] ) ? $it['qty'] : 1 ) ); }
 
 		$build     = is_array( $f['build'] ) ? $f['build'] : null;
 		$built     = $build && ! empty( $build['done'] );
@@ -2622,6 +2656,8 @@ if ( count( $parts ) !== 2 ) {
 		$row = self::get_request( $id );
 		if ( $row ) {
 			self::send_approved_email( $row, $provider, $login );
+			// …and tell the studio, so an approval never happens silently.
+			self::send_studio_approved_email( $row, $provider, $login );
 		}
 
 		return '';
@@ -3046,6 +3082,58 @@ if ( count( $parts ) !== 2 ) {
 		";
 
 		return self::mail( (string) $row->email, 'You are in — welcome to the Tweller Studios print partners', $body );
+	}
+
+	/**
+	 * Every studio address that should hear about a print-partner approval:
+	 * the configured print-store notification email, plus the extra
+	 * addresses from Print Store → Settings (hello@ and stephen. by default,
+	 * editable there), plus the hard studio inbox as a last resort.
+	 */
+	private static function studio_alert_recipients() {
+		$out = array();
+
+		if ( class_exists( 'TwellerFlow2_Prints' ) ) {
+			$settings = TwellerFlow2_Prints::get_settings();
+			if ( ! empty( $settings['notify_email'] ) && is_email( $settings['notify_email'] ) ) {
+				$out[] = $settings['notify_email'];
+			}
+			foreach ( TwellerFlow2_Prints::get_partner_alert_emails() as $email ) {
+				$out[] = $email;
+			}
+		}
+
+		$fallback = self::studio_email();
+		if ( $fallback !== '' && is_email( $fallback ) ) $out[] = $fallback;
+
+		$unique = array();
+		foreach ( $out as $email ) {
+			$key = strtolower( $email );
+			if ( ! isset( $unique[ $key ] ) ) $unique[ $key ] = $email;
+		}
+		return array_values( $unique );
+	}
+
+	/** Short, branded heads-up to the studio when a partner is approved. */
+	private static function send_studio_approved_email( $row, $provider, $login ) {
+		$to = self::studio_alert_recipients();
+		if ( empty( $to ) ) return false;
+
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>Print partner approved</h2>
+			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $provider['name'] ) . "</strong> is now a Tweller Studios print partner. Their dashboard login has been created and the welcome email is on its way to them.</p>
+			" . self::card( 'Partner',
+				self::row( 'Business', (string) $provider['name'] )
+				. self::row( 'Contact', (string) $provider['contact_name'] )
+				. self::row( 'Email', (string) $provider['email'] )
+				. self::row( 'Username', (string) $login )
+				. self::row( 'Delivery', ! empty( $provider['does_delivery'] ) ? 'Partner delivers' : 'Tweller Studios delivers' )
+			) . "
+			" . self::btn( self::admin_url_for(), 'Set their print pricing' ) . "
+			<p style='color:#8A8178; font-size:13px; text-align:center;'>Jobs can only be costed once their per-product prices are set.</p>
+		";
+
+		return self::mail( $to, 'Print partner approved — ' . (string) $provider['name'], $body );
 	}
 
 	private static function send_rejected_email( $row, $notes = '' ) {

@@ -375,6 +375,24 @@ class TwellerFlow2_Print_Fulfillment {
 		return TwellerFlow2_Prints::get_order_by_ref( (string) $order_ref );
 	}
 
+	/**
+	 * Printable lines only. Fee lines (delivery, meet-up, crop service) are
+	 * real money on the order but have no photo, so they must never reach
+	 * the renderer, the manifest, the piece counts or the ZIP.
+	 */
+	private static function printable_items( $order ) {
+		$items = self::order_items( $order );
+		if ( class_exists( 'TwellerFlow2_Prints' ) ) {
+			return TwellerFlow2_Prints::printable_items( $items );
+		}
+		$out = array();
+		foreach ( $items as $item ) {
+			if ( is_array( $item ) && isset( $item['category'] ) && $item['category'] === 'service' ) continue;
+			$out[] = $item;
+		}
+		return array_values( $out );
+	}
+
 	private static function order_items( $order ) {
 		if ( ! class_exists( 'TwellerFlow2_Prints' ) ) return array();
 		$items = TwellerFlow2_Prints::get_order_items( $order );
@@ -657,7 +675,7 @@ class TwellerFlow2_Print_Fulfillment {
 	 * changes the cached job is rebuilt from scratch.
 	 */
 	private static function items_hash( $order ) {
-		$items = self::order_items( $order );
+		$items = self::printable_items( $order );
 		$sig   = array( 'v' => self::VERSION, 'items' => array() );
 		foreach ( $items as $it ) {
 			$product = self::product_for_item( $it );
@@ -859,7 +877,7 @@ class TwellerFlow2_Print_Fulfillment {
 		if ( ! $order ) return array( 'done' => true, 'error' => 'Order not found.' );
 
 		$fulfillment = self::get_fulfillment( $order );
-		$items       = self::order_items( $order );
+		$items       = self::printable_items( $order );
 		$hash        = self::items_hash( $order );
 
 		$build = $fulfillment['build'];
@@ -1751,7 +1769,7 @@ class TwellerFlow2_Print_Fulfillment {
 
 	public static function render_label_html( $order ) {
 		$fulfillment = self::get_fulfillment( $order );
-		$items       = self::order_items( $order );
+		$items       = self::printable_items( $order );
 
 		$pieces = 0;
 		foreach ( $items as $it ) { $pieces += max( 1, (int) ( $it['qty'] ?? 1 ) ); }
@@ -2115,25 +2133,21 @@ class TwellerFlow2_Print_Fulfillment {
 			rest_url( 'tweller-flow-2/v1/prints/job/' . rawurlencode( $order->order_ref ) )
 		);
 
-		// WHITE LABEL: no customer identity anywhere in this email.
-		$rows  = '';
-		foreach ( (array) $build['files'] as $f ) {
-			if ( ! empty( $f['error'] ) ) continue;
-			$flag = '';
-			if ( ! empty( $f['very_low_dpi'] ) ) {
-				$flag = " <span style='background:#FEE2E2; color:#B91C1C; font-size:10px; font-weight:700; padding:1px 5px; border-radius:4px;'>LOW RES</span>";
-			}
-			$rows .= "
-				<tr>
-					<td style='padding:7px 10px 7px 0; border-bottom:1px solid #ECE9E2; font-size:12.5px; color:#101010;'>"
-						. esc_html( $f['product_name'] ) . "<br><span style='color:#8A8178; font-size:11px;'>" . esc_html( $f['file'] ) . "</span></td>
-					<td style='padding:7px 10px; border-bottom:1px solid #ECE9E2; font-size:12.5px; color:#3D3630; white-space:nowrap;'>"
-						. esc_html( self::size_label( $f['width_in'], $f['height_in'] ) ) . "&Prime;</td>
-					<td style='padding:7px 10px; border-bottom:1px solid #ECE9E2; font-size:12.5px; color:#3D3630; white-space:nowrap;'>"
-						. (int) $f['dpi'] . " dpi{$flag}</td>
-					<td style='padding:7px 0; border-bottom:1px solid #ECE9E2; text-align:right; font-weight:700; font-size:13px; color:#101010;'>&times; "
-						. (int) $f['qty'] . "</td>
-				</tr>";
+		// WHITE LABEL: no customer identity, and no retail prices, anywhere
+		// in this email. The item block is the SAME grouped summary the
+		// customer sees — one row per size, never one row per photo — with
+		// the money column switched off, so a 116-photo job is a handful of
+		// lines and the piece counts can't drift from the customer's copy.
+		$items_block = '';
+		if ( class_exists( 'TwellerFlow2_Prints' ) ) {
+			$items_block = TwellerFlow2_Prints::order_summary_html( $order, array( 'show_prices' => false ) );
+		}
+
+		// Per-file detail stays where it belongs: manifest.csv in the ZIP.
+		$low = (int) $stats['low'] + (int) $stats['very_low'];
+		if ( $low > 0 ) {
+			$items_block .= "<p style='margin:14px 0 0; color:#B91C1C; font-size:12.5px; line-height:1.6;'>"
+				. $low . ' file' . ( $low === 1 ? ' is' : 's are' ) . " below our preferred resolution — they are flagged in <strong>manifest.csv</strong>. Please print as supplied.</p>";
 		}
 
 		$meta  = TwellerFlow2_Notifications::email_detail_row( 'Job reference', esc_html( $order->order_ref ) );
@@ -2171,7 +2185,7 @@ class TwellerFlow2_Print_Fulfillment {
 				" . TwellerFlow2_Notifications::email_button( esc_url( $zip_url ), 'Download print files (ZIP)' ) . "
 			</div>
 
-			" . TwellerFlow2_Notifications::email_card( 'Items', "<table style='width:100%; border-collapse:collapse;'>{$rows}</table>" ) . "
+			" . TwellerFlow2_Notifications::email_card( 'Items', $items_block ) . "
 			{$note_block}
 			" . TwellerFlow2_Notifications::email_card( 'File Specification', $spec ) . "
 			" . TwellerFlow2_Notifications::email_card( 'Instructions', $instructions ) . "
@@ -2675,7 +2689,7 @@ class TwellerFlow2_Print_Fulfillment {
 		$order_id    = (int) $order->id;
 		$fulfillment = self::get_fulfillment( $order );
 		$build       = $fulfillment['build'];
-		$items       = self::order_items( $order );
+		$items       = self::printable_items( $order );
 		$hash_now    = self::items_hash( $order );
 		$is_stale    = is_array( $build ) && ( $build['hash'] ?? '' ) !== $hash_now;
 		$is_built    = is_array( $build ) && ! empty( $build['done'] ) && ! $is_stale;

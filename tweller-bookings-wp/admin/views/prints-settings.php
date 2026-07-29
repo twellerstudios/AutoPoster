@@ -119,6 +119,41 @@
             </div>
         </div>
 
+        <!-- ══════════ DELIVERY & MEET-UP ══════════ -->
+        <div class="tf2-card tf2-mb-6">
+            <h2 style="margin-top:0;">Delivery &amp; Meet-up</h2>
+            <p class="tf2-description">
+                At checkout the customer picks either a free meet-up at one of your points, or delivery at a flat fee.
+                The fee is added to the order <strong>on the server</strong> as its own line item, so the total the
+                customer sees, the total in every email and the stored order total are always the same number.
+            </p>
+            <div class="tf2-grid tf2-grid--2">
+                <div class="tf2-field">
+                    <label class="tf2-field__label">Delivery fee (TT$, flat, per order)</label>
+                    <input type="number" step="0.01" min="0" name="prints_delivery_fee"
+                        value="<?php echo esc_attr( (float) $settings['delivery_fee'] ); ?>" style="max-width:160px;">
+                    <p class="tf2-description">Shown at checkout and in emails as its own “Delivery” line.</p>
+                </div>
+                <div class="tf2-field">
+                    <label class="tf2-field__label">Delivery line label</label>
+                    <input type="text" name="prints_delivery_label"
+                        value="<?php echo esc_attr( $settings['delivery_label'] ); ?>" style="max-width:260px;">
+                </div>
+                <div class="tf2-field">
+                    <label class="tf2-field__label">Meet-up line label</label>
+                    <input type="text" name="prints_meetup_label"
+                        value="<?php echo esc_attr( $settings['meetup_label'] ); ?>" style="max-width:260px;">
+                    <p class="tf2-description">Meet-up is always free — the chosen point is saved on the order.</p>
+                </div>
+                <div class="tf2-field">
+                    <label class="tf2-field__label">Meet-up points (one per line)</label>
+                    <textarea name="prints_meetup_points" rows="5" style="max-width:420px;"><?php
+                        echo esc_textarea( implode( "\n", (array) $settings['meetup_points'] ) ); ?></textarea>
+                    <p class="tf2-description">The customer must choose one of these before they can place a meet-up order.</p>
+                </div>
+            </div>
+        </div>
+
         <!-- ══════════ STORE SETTINGS ══════════ -->
         <div class="tf2-card tf2-mb-6">
             <h2 style="margin-top:0;">Store Settings</h2>
@@ -129,9 +164,14 @@
                     <p class="tf2-description">New-order alerts are sent here.</p>
                 </div>
                 <div class="tf2-field">
-                    <label>Pickup / delivery note</label>
+                    <label>Print partner alert emails</label>
+                    <input type="text" name="prints_partner_alert_emails" value="<?php echo esc_attr( $settings['partner_alert_emails'] ); ?>" style="max-width:520px;">
+                    <p class="tf2-description">Comma separated. These addresses are copied whenever a print partner is approved (in addition to the order notification email above).</p>
+                </div>
+                <div class="tf2-field">
+                    <label>Fulfilment note</label>
                     <textarea name="prints_pickup_note" rows="3" style="max-width:640px;"><?php echo esc_textarea( $settings['pickup_note'] ); ?></textarea>
-                    <p class="tf2-description">Shown at checkout and in order emails (turnaround time, pickup location, delivery info).</p>
+                    <p class="tf2-description">Shown at checkout and in order emails (turnaround time, meet-up and delivery info).</p>
                 </div>
                 <div class="tf2-field">
                     <label>Bank transfer payment instructions</label>

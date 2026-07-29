@@ -13,6 +13,13 @@
         <div class="tf2-alert tf2-alert--success">Notification sent.</div>
     <?php elseif ( isset( $_GET['receipt_processed'] ) ) : ?>
         <div class="tf2-alert tf2-alert--success">Receipt processed successfully.</div>
+    <?php elseif ( isset( $_GET['printlab'] ) ) : ?>
+        <div class="tf2-alert tf2-alert--success">
+            Print order <strong><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab'] ) ) ); ?></strong> created.
+            <?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab_note'] ?? '' ) ) ); ?>
+        </div>
+    <?php elseif ( isset( $_GET['printlab_error'] ) ) : ?>
+        <div class="tf2-alert tf2-alert--error"><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab_error'] ) ) ); ?></div>
     <?php endif; ?>
 
     <!-- Header -->
@@ -1596,6 +1603,10 @@
                     <div style="margin-top:12px; padding-top:12px; border-top:1px solid #F3F4F6;">
                         <a href="<?php echo esc_url( $tracker_url . '#gallery' ); ?>" target="_blank" class="tf2-btn tf2-btn--secondary tf2-btn--sm" style="font-size:12px;">View Client Gallery</a>
                     </div>
+
+                    <?php if ( class_exists( 'TwellerFlow2_Prints' ) ) {
+                        TwellerFlow2_Prints::render_send_to_lab_panel( $session, $gallery_info['photo_count'], 'session' );
+                    } ?>
                 <?php endif; ?>
             </div>
 

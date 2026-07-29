@@ -59,6 +59,19 @@
     var productsLoaded = false;
 
     /**
+     * Fulfilment, straight from the server settings. The delivery fee shown
+     * here is the same number insert_order() charges — the client never
+     * invents or posts a price of its own.
+     */
+    var fulfilCfg = cfg.fulfilment || {};
+    var DELIVERY_FEE   = parseFloat(fulfilCfg.deliveryFee);
+    if (!isFinite(DELIVERY_FEE) || DELIVERY_FEE < 0) DELIVERY_FEE = 0;
+    var DELIVERY_LABEL = fulfilCfg.deliveryLabel || 'Delivery';
+    var MEETUP_LABEL   = fulfilCfg.meetupLabel   || 'Meet-up';
+    var MEETUP_POINTS  = (Object.prototype.toString.call(fulfilCfg.meetupPoints) === '[object Array]')
+        ? fulfilCfg.meetupPoints : [];
+
+    /**
      * Cart items (flat, so getCountFor()/checkout payloads stay compatible):
      * {batch_id, product_id, product_name, category, price, qty, filename,
      *  photo_url, thumb_url, crop:{x,y,w,h,zoom}, source_w, source_h,
@@ -103,6 +116,13 @@
 
     function trim(s) {
         return String(s == null ? '' : s).replace(/^\s+|\s+$/g, '');
+    }
+
+    /** Escape for the few places we build markup as a string. */
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function sizeLabel(p) {
@@ -189,10 +209,38 @@
         return n;
     }
 
+    /**
+     * Money is summed in integer cents, exactly as the server does, so the
+     * total printed on this screen and the subtotal stored on the order can
+     * never differ by a rounding step.
+     */
+    function cents(amount) {
+        return Math.round((parseFloat(amount) || 0) * 100);
+    }
+
+    /** Prints only — the fees are added by orderTotal(). */
     function subtotal() {
-        var n = 0;
-        for (var i = 0; i < cart.length; i++) n += cart[i].price * cart[i].qty;
-        return n;
+        var c = 0;
+        for (var i = 0; i < cart.length; i++) {
+            c += cents(cart[i].price) * (cart[i].qty || 0);
+        }
+        return c / 100;
+    }
+
+    /** Studio-crop fee for this cart (0 when free or not chosen). */
+    function cartCropFee() {
+        if (!cropService.enabled || !cartUsesStudioCrop()) return 0;
+        var fee = parseFloat(cropService.fee);
+        return (isFinite(fee) && fee > 0) ? fee : 0;
+    }
+
+    function deliveryFee() {
+        return shipMode === 'delivery' ? DELIVERY_FEE : 0;
+    }
+
+    /** What the customer pays — and exactly what the server will store. */
+    function orderTotal() {
+        return (cents(subtotal()) + cents(cartCropFee()) + cents(deliveryFee())) / 100;
     }
 
     function saveCart() {
@@ -469,12 +517,13 @@
 
                     '<h4 class="tf2p-form__title">How would you like it?</h4>' +
                     '<div class="tf2p-fulfil" id="tf2p-fulfil">' +
-                      '<button type="button" class="tf2p-fulfil__opt tf2p-fulfil__opt--on" data-mode="pickup">' +
+                      '<button type="button" class="tf2p-fulfil__opt tf2p-fulfil__opt--on" data-mode="meetup">' +
                         '<span class="tf2p-fulfil__radio"></span>' +
                         '<span class="tf2p-fulfil__body">' +
-                          '<span class="tf2p-fulfil__title">Pick up</span>' +
-                          '<span class="tf2p-fulfil__note">Collect from Tweller Studios</span>' +
+                          '<span class="tf2p-fulfil__title">' + esc(MEETUP_LABEL) + ' (free)</span>' +
+                          '<span class="tf2p-fulfil__note">Choose one of our meet-up points below</span>' +
                         '</span>' +
+                        '<span class="tf2p-fulfil__tag">Free</span>' +
                       '</button>' +
                       '<button type="button" class="tf2p-fulfil__opt" data-mode="delivery">' +
                         '<span class="tf2p-fulfil__radio"></span>' +
@@ -482,7 +531,14 @@
                           '<span class="tf2p-fulfil__title">Deliver to me</span>' +
                           '<span class="tf2p-fulfil__note">Across Trinidad &amp; Tobago</span>' +
                         '</span>' +
+                        '<span class="tf2p-fulfil__tag">' + esc(money(DELIVERY_FEE)) + '</span>' +
                       '</button>' +
+                    '</div>' +
+
+                    '<div class="tf2p-meet" id="tf2p-meet">' +
+                      '<label class="tf2p-field"><span>Meet-up point</span>' +
+                        '<select id="tf2p-meet-point">' + meetupOptionsHtml() + '</select>' +
+                      '</label>' +
                     '</div>' +
 
                     '<div class="tf2p-ship" id="tf2p-ship" style="display:none;">' +
@@ -507,6 +563,7 @@
                     '<h4 class="tf2p-co__title">Order summary</h4>' +
                     '<div id="tf2p-cart-items"></div>' +
                     '<p class="tf2p-empty" id="tf2p-cart-empty" style="display:none;">Your cart is empty.<br>Choose your photos, pick a size, and they’ll appear here.</p>' +
+                    '<div class="tf2p-fees" id="tf2p-fees"></div>' +
                     '<div class="tf2p-subtotal" id="tf2p-subtotal-row"><span>Total</span><strong id="tf2p-subtotal"></strong></div>' +
                     '<p class="tf2p-pickup" id="tf2p-pickup-note" style="display:none;"></p>' +
                     '<div class="tf2p-drawer__addrow">' +
@@ -571,7 +628,9 @@
         fab.style.display = 'none';
         fab.addEventListener('click', function() { openDrawer(); });
 
-        // Pickup vs delivery — reveals the shipping fields
+        // Meet-up vs delivery — swaps the meet-up point picker for the
+        // address block, and re-prices the summary immediately so the
+        // customer always sees the number the server will store.
         var fulfilWrap = drawer.querySelector('#tf2p-fulfil');
         if (fulfilWrap) {
             var opts = fulfilWrap.querySelectorAll('.tf2p-fulfil__opt');
@@ -582,12 +641,16 @@
                             opts[k].className = 'tf2p-fulfil__opt';
                         }
                         o.className = 'tf2p-fulfil__opt tf2p-fulfil__opt--on';
-                        shipMode = o.getAttribute('data-mode') === 'delivery' ? 'delivery' : 'pickup';
-                        var ship = document.getElementById('tf2p-ship');
-                        if (ship) ship.style.display = shipMode === 'delivery' ? '' : 'none';
+                        shipMode = o.getAttribute('data-mode') === 'delivery' ? 'delivery' : 'meetup';
+                        syncFulfilFields();
+                        renderCart();
                     });
                 })(opts[fi]);
             }
+        }
+        var meetSelect = drawer.querySelector('#tf2p-meet-point');
+        if (meetSelect) {
+            meetSelect.addEventListener('change', function() { renderCart(); });
         }
 
         root.appendChild(backdrop);
@@ -641,6 +704,31 @@
 
     function poolAsList() {
         return photoPool.slice(0);
+    }
+
+    /** <option> list for the meet-up points configured in wp-admin. */
+    function meetupOptionsHtml() {
+        var html = '<option value="">Choose a meet-up point…</option>';
+        for (var i = 0; i < MEETUP_POINTS.length; i++) {
+            var point = trim(MEETUP_POINTS[i]);
+            if (!point) continue;
+            html += '<option value="' + esc(point) + '">' + esc(point) + '</option>';
+        }
+        return html;
+    }
+
+    function meetupLocation() {
+        var sel = document.getElementById('tf2p-meet-point');
+        return sel ? trim(sel.value) : '';
+    }
+
+    /** Show the meet-up picker or the address block, never both. */
+    function syncFulfilFields() {
+        var delivery = shipMode === 'delivery';
+        var meet = document.getElementById('tf2p-meet');
+        var ship = document.getElementById('tf2p-ship');
+        if (meet) meet.style.display = delivery ? 'none' : '';
+        if (ship) ship.style.display = delivery ? '' : 'none';
     }
 
     // ── Open / close ───────────────────────────────────
@@ -1367,13 +1455,6 @@
         return false;
     }
 
-    /** Fee charged for the studio-crop service on this order (0 when free). */
-    function cropServiceFee() {
-        if (!cropService.enabled) return 0;
-        if (!flow || (flow.cropMode || 'studio') !== 'studio') return 0;
-        return cropService.fee > 0 ? cropService.fee : 0;
-    }
-
     function buildReviewRow(item, product) {
         var row = el('div', 'tf2p-review');
         var dims = photoDims[item.key];
@@ -1636,16 +1717,49 @@
 
     // ── Cart rendering ─────────────────────────────────
 
+    /**
+     * The fee lines between the cart and the total: the studio-crop service
+     * and the meet-up / delivery line. These are the same lines the server
+     * appends to the order, shown here BEFORE submitting so the customer's
+     * total and the stored subtotal are the same number.
+     */
+    function renderFeeLines() {
+        var wrap = document.getElementById('tf2p-fees');
+        if (!wrap) return;
+        wrap.innerHTML = '';
+        if (!cart.length) return;
+
+        function feeRow(label, amount, freeText) {
+            var row = el('div', 'tf2p-fee');
+            row.appendChild(el('span', 'tf2p-fee__label', label));
+            row.appendChild(el('strong', 'tf2p-fee__amt', amount > 0 ? money(amount) : (freeText || money(0))));
+            wrap.appendChild(row);
+        }
+
+        if (cropService.enabled && cartUsesStudioCrop()) {
+            feeRow(cropService.label || 'Cropping service', cartCropFee(), 'Free');
+        }
+
+        if (shipMode === 'delivery') {
+            feeRow(DELIVERY_LABEL, DELIVERY_FEE);
+        } else {
+            var point = meetupLocation();
+            feeRow(MEETUP_LABEL + (point ? ' — ' + point : ''), 0, 'Free');
+        }
+    }
+
     function renderCart() {
         var list     = document.getElementById('tf2p-cart-items');
         var empty    = document.getElementById('tf2p-cart-empty');
         var form     = document.getElementById('tf2p-checkout-form');
         var subRow   = document.getElementById('tf2p-subtotal-row');
+        var feesEl   = document.getElementById('tf2p-fees');
         var pickupEl = document.getElementById('tf2p-pickup-note');
         var addRow   = drawer ? drawer.querySelector('.tf2p-drawer__addrow') : null;
         if (!list) return;
 
         list.innerHTML = '';
+        if (feesEl) feesEl.innerHTML = '';
 
         if (!cart.length) {
             if (empty) empty.style.display = '';
@@ -1673,8 +1787,11 @@
             list.appendChild(buildBatchCard(batches[b]));
         }
 
+        syncFulfilFields();
+        renderFeeLines();
+
         var subEl = document.getElementById('tf2p-subtotal');
-        if (subEl) subEl.textContent = money(subtotal());
+        if (subEl) subEl.textContent = money(orderTotal());
 
         if (pickupEl) {
             if (pickupNote) {
@@ -1786,7 +1903,7 @@
     // ── Checkout ───────────────────────────────────────
 
     var submitting = false;
-    var shipMode   = 'pickup';
+    var shipMode   = 'meetup';
 
     function val(id) {
         var e = document.getElementById(id);
@@ -1853,10 +1970,19 @@
             showCheckoutError('Please enter your name and a valid email address.');
             return;
         }
+        var meetPoint = '';
         if (shipMode === 'delivery') {
             var sh = collectShipping();
             if (!sh || !sh.address1 || !sh.city) {
                 showCheckoutError('Please add the street address and town for delivery.');
+                return;
+            }
+        } else {
+            meetPoint = meetupLocation();
+            if (!meetPoint) {
+                showCheckoutError('Please choose a meet-up point, or switch to delivery.');
+                var meetSel = document.getElementById('tf2p-meet-point');
+                if (meetSel) { try { meetSel.focus(); } catch (err) {} }
                 return;
             }
         }
@@ -1919,6 +2045,7 @@
                     website: hp,
                     crop_service: cartUsesStudioCrop() ? 1 : 0,
                     fulfilment: shipMode,
+                    meetup_location: meetPoint,
                     shipping: collectShipping(),
                     items: payload
                 })
@@ -1967,6 +2094,7 @@
             fd.append('website', hp);
             fd.append('crop_service', cartUsesStudioCrop() ? '1' : '0');
             fd.append('fulfilment', shipMode);
+            fd.append('meetup_location', meetPoint);
             var shipObj = collectShipping();
             if (shipObj) fd.append('shipping', JSON.stringify(shipObj));
 

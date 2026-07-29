@@ -6,6 +6,13 @@
         <div class="tf2-alert tf2-alert--success">Gallery settings saved.</div>
     <?php elseif ( isset( $_GET['deleted'] ) ) : ?>
         <div class="tf2-alert tf2-alert--success">Gallery deleted.</div>
+    <?php elseif ( isset( $_GET['printlab'] ) ) : ?>
+        <div class="tf2-alert tf2-alert--success">
+            Print order <strong><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab'] ) ) ); ?></strong> created.
+            <?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab_note'] ?? '' ) ) ); ?>
+        </div>
+    <?php elseif ( isset( $_GET['printlab_error'] ) ) : ?>
+        <div class="tf2-alert tf2-alert--error"><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab_error'] ) ) ); ?></div>
     <?php endif; ?>
 
     <!-- Manual Upload Panel -->
@@ -242,7 +249,7 @@
                         <?php endif; ?>
                     </div>
 
-                    <div style="margin-left:auto;">
+                    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
                         <?php if ( $gallery_info['photo_count'] > 0 ) : ?>
                             <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-galleries&action=delete_gallery&session_id=' . $session->id ), 'tweller_flow_2_delete_gallery_' . $session->id ); ?>"
                                class="tf2-btn tf2-btn--danger tf2-btn--sm" style="font-size:11px; padding:5px 10px;"
@@ -252,6 +259,10 @@
                         <?php endif; ?>
                     </div>
                 </div>
+
+                <?php if ( $gallery_info['photo_count'] > 0 && class_exists( 'TwellerFlow2_Prints' ) ) {
+                    TwellerFlow2_Prints::render_send_to_lab_panel( $session, $gallery_info['photo_count'], 'galleries' );
+                } ?>
             </div>
         <?php endforeach; ?>
 

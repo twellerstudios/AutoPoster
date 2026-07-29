@@ -2242,9 +2242,25 @@ class TwellerFlow2_Print_Fulfillment {
 		return add_query_arg( array_merge( array( 'page' => self::ADMIN_PAGE ), $args ), admin_url( 'admin.php' ) );
 	}
 
-	public static function build_url( $order_id, $force = false ) {
+	/** Anchor for the expanded order row, so a redirect lands on the panel. */
+	public static function row_anchor( $order_id ) {
+		return 'tf2-po-detail-' . (int) $order_id;
+	}
+
+	/**
+	 * Orders-page URL that re-opens one order's detail row and jumps to it.
+	 * Every fulfilment redirect goes through here — landing on a collapsed
+	 * dashboard after an action is what made Build look like it did nothing.
+	 */
+	private static function order_url( $order_id, $args = array() ) {
+		$args['order_id'] = (int) $order_id;
+		return self::orders_url( $args ) . '#' . self::row_anchor( $order_id );
+	}
+
+	public static function build_url( $order_id, $force = false, $extra = array() ) {
 		$args = array( 'tf2pf' => 'build', 'order_id' => (int) $order_id );
 		if ( $force ) $args['force'] = 1;
+		if ( is_array( $extra ) ) $args = array_merge( $args, $extra );
 		return wp_nonce_url( self::orders_url( $args ), 'tf2pf_build_' . (int) $order_id );
 	}
 
@@ -2252,6 +2268,18 @@ class TwellerFlow2_Print_Fulfillment {
 		return wp_nonce_url(
 			self::orders_url( array( 'tf2pf' => 'download', 'order_id' => (int) $order_id ) ),
 			'tf2pf_download_' . (int) $order_id
+		);
+	}
+
+	/**
+	 * Label link that records that the label was actually produced, then
+	 * hands off to the signed label view. Without this the "Print shipping
+	 * label" button looks identical before and after it has been used.
+	 */
+	public static function label_action_url( $order_id ) {
+		return wp_nonce_url(
+			self::orders_url( array( 'tf2pf' => 'label', 'order_id' => (int) $order_id ) ),
+			'tf2pf_label_' . (int) $order_id
 		);
 	}
 
@@ -2266,39 +2294,66 @@ class TwellerFlow2_Print_Fulfillment {
 			$order_id = isset( $_GET['order_id'] ) ? (int) $_GET['order_id'] : 0;
 			check_admin_referer( 'tf2pf_build_' . $order_id );
 
-			$force = ! empty( $_GET['force'] );
+			$pass = isset( $_GET['fp_pass'] ) ? max( 0, (int) $_GET['fp_pass'] ) : 0;
+			$prev = isset( $_GET['fp_from'] ) ? (int) $_GET['fp_from'] : -1;
+
+			// "force" wipes the job folder and starts over, so it may only
+			// ever apply to the very first pass of a run.
+			$force = ! empty( $_GET['force'] ) && $pass === 0;
 			$build = self::build_chunk( $order_id, $force );
 
-			// A build runs in chunks so it can't hit the PHP time limit.
-			// Keep redirecting back into the builder until it finishes,
-			// rather than dropping the user on the dashboard after one
-			// chunk and making them click Build again for every batch.
-			if ( empty( $build['done'] ) ) {
-				$pass = isset( $_GET['fp_pass'] ) ? (int) $_GET['fp_pass'] : 0;
-				$next = (int) ( $build['next'] ?? 0 );
-				$prev = isset( $_GET['fp_from'] ) ? (int) $_GET['fp_from'] : -1;
+			$next  = (int) ( $build['next'] ?? 0 );
+			$total = (int) ( $build['total'] ?? 0 );
 
-				// Guard: stop if a pass made no progress, or we've looped far
-				// more than any real order needs.
-				if ( $pass < 60 && $next > $prev ) {
-					$url = add_query_arg(
-						array( 'fp_pass' => $pass + 1, 'fp_from' => $next ),
-						self::build_url( $order_id, false )
-					);
-					wp_safe_redirect( $url );
+			// A build runs in chunks so it can never hit the PHP time limit.
+			// Each chunk returns to the orders page with the row re-opened and
+			// a live progress bar, which then continues itself — instead of
+			// dumping the user on a collapsed dashboard mid-build.
+			if ( empty( $build['done'] ) ) {
+				if ( $pass >= 200 || $next <= $prev ) {
+					wp_safe_redirect( self::order_url( $order_id, array(
+						'fp_error' => rawurlencode( 'The build stopped after ' . $next . ' of ' . $total . ' items. Check the item errors below and try again.' ),
+					) ) );
 					exit;
 				}
 
-				wp_safe_redirect( self::orders_url( array(
-					'order_id'    => $order_id,
+				wp_safe_redirect( self::order_url( $order_id, array(
 					'fp_building' => 1,
 					'fp_done'     => $next,
-					'fp_total'    => (int) ( $build['total'] ?? 0 ),
+					'fp_total'    => $total,
+					'fp_pass'     => $pass + 1,
+					'fp_from'     => $next,
 				) ) );
 				exit;
 			}
 
-			wp_safe_redirect( self::orders_url( array( 'order_id' => $order_id, 'fp_built' => 1 ) ) );
+			wp_safe_redirect( self::order_url( $order_id, array( 'fp_built' => 1 ) ) );
+			exit;
+		}
+
+		// ── Open the shipping label (and record that we did) ──
+		if ( $action === 'label' ) {
+			if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Permission denied.' ) );
+			$order_id = isset( $_GET['order_id'] ) ? (int) $_GET['order_id'] : 0;
+			check_admin_referer( 'tf2pf_label_' . $order_id );
+
+			$order = self::get_order( $order_id );
+			if ( ! $order ) wp_die( esc_html__( 'Order not found.' ) );
+
+			$f = self::get_fulfillment( $order );
+			if ( (string) $f['label_printed_at'] === '' ) {
+				$user                   = wp_get_current_user();
+				$f['label_printed_at']  = current_time( 'mysql' );
+				$f['audit'][]           = array(
+					'at'         => current_time( 'mysql' ),
+					'actor_type' => 'studio',
+					'actor_id'   => ( $user && $user->exists() ) ? (int) $user->ID : 0,
+					'action'     => 'label_printed',
+				);
+				self::save_fulfillment( $order_id, $f );
+			}
+
+			wp_safe_redirect( self::label_url( (string) $order->order_ref ) );
 			exit;
 		}
 
@@ -2327,7 +2382,7 @@ class TwellerFlow2_Print_Fulfillment {
 				$f['delivery_notes']   = sanitize_textarea_field( wp_unslash( $_POST['delivery_notes'] ?? '' ) );
 				self::save_fulfillment( $order_id, $f );
 			}
-			wp_safe_redirect( self::orders_url( array( 'order_id' => $order_id, 'fp_saved' => 1 ) ) );
+			wp_safe_redirect( self::order_url( $order_id, array( 'fp_saved' => 1 ) ) );
 			exit;
 		}
 
@@ -2341,13 +2396,13 @@ class TwellerFlow2_Print_Fulfillment {
 			$note        = sanitize_textarea_field( wp_unslash( $_POST['provider_note'] ?? '' ) );
 
 			$result = self::send_to_provider( $order_id, $provider_id, $note );
-			$args   = array( 'order_id' => $order_id );
+			$args   = array();
 			if ( is_wp_error( $result ) ) {
 				$args['fp_error'] = rawurlencode( $result->get_error_message() );
 			} else {
 				$args['fp_sent'] = 1;
 			}
-			wp_safe_redirect( self::orders_url( $args ) );
+			wp_safe_redirect( self::order_url( $order_id, $args ) );
 			exit;
 		}
 
@@ -2360,7 +2415,7 @@ class TwellerFlow2_Print_Fulfillment {
 			$order    = self::get_order( $order_id );
 			if ( $order ) self::mark_delivered( $order, 'admin' );
 
-			wp_safe_redirect( self::orders_url( array( 'order_id' => $order_id, 'fp_delivered' => 1 ) ) );
+			wp_safe_redirect( self::order_url( $order_id, array( 'fp_delivered' => 1 ) ) );
 			exit;
 		}
 

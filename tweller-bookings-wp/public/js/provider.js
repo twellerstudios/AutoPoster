@@ -121,7 +121,10 @@
         html += '<p class="tfpv__meta">Sent <strong>' + esc(order.sent_label) + '</strong>' +
             ' · <strong>' + esc(order.item_count) + '</strong> item' + (order.item_count === 1 ? '' : 's') +
             ' · <strong>' + esc(order.pieces) + '</strong> piece' + (order.pieces === 1 ? '' : 's') +
-            ' · Delivered by <strong>' + esc(order.delivered_by) + '</strong></p>';
+            (order.delivered_at
+                ? ' · Delivered <strong>' + esc(order.delivered_at) + '</strong>'
+                : ' · Delivery by <strong>' + esc(order.delivery_by || order.delivered_by) + '</strong>') +
+            '</p>';
 
         if (order.sizes) {
             html += '<p class="tfpv__sizes">' + esc(order.sizes) + '</p>';

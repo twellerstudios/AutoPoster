@@ -1510,6 +1510,9 @@ if ( count( $parts ) !== 2 ) {
 			'item_count'    => count( $items ),
 			'pieces'        => (int) $pieces,
 			'sizes'         => self::size_summary( $items ),
+			// Who WILL deliver — deliberately not phrased as "delivered by",
+			// which read as though a freshly-sent job was already delivered.
+			'delivery_by'   => ! empty( $provider['does_delivery'] ) ? 'You' : 'Tweller Studios',
 			'delivered_by'  => ! empty( $provider['does_delivery'] ) ? 'Provider' : 'Studio',
 			'does_delivery' => (int) ! empty( $provider['does_delivery'] ),
 			'started_at'    => (string) $f['started_at'],

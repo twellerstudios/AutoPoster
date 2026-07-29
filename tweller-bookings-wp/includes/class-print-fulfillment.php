@@ -1777,7 +1777,7 @@ class TwellerFlow2_Print_Fulfillment {
 	@page { size: 4in 6in; margin: 0; }
 	* { box-sizing: border-box; }
 	html, body { margin:0; padding:0; background:#EEE; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-	.label { width:4in; height:6in; background:#fff; margin:16px auto; padding:0.22in; display:flex; flex-direction:column; color:#101010; }
+	.label { width:4in; height:6in; overflow:hidden; background:#fff; margin:16px auto; padding:0.22in; display:flex; flex-direction:column; color:#101010; }
 	.hdr { background:#101010; margin:-0.22in -0.22in 0.14in; padding:0.16in 0.22in; text-align:center; }
 	.hdr .n { color:#fff; font-size:14px; font-weight:600; letter-spacing:7px; }
 	.hdr .s { color:#C9A227; font-size:8px; font-weight:600; letter-spacing:4px; text-transform:uppercase; margin-top:3px; }
@@ -1790,7 +1790,7 @@ class TwellerFlow2_Print_Fulfillment {
 	.row > div { flex:1; }
 	.big { font-size:13px; font-weight:700; letter-spacing:0.5px; }
 	.notes { font-size:9.5px; color:#3D3630; line-height:1.45; margin:0.06in 0 0; }
-	.mark { margin-top:auto; text-align:center; padding-top:0.08in; }
+	.mark { margin-top:auto; flex:0 0 auto; text-align:center; padding-top:0.08in; }
 	.mark .qr { width:1.8in; height:1.8in; display:block; margin:0 auto; }
 	.ref { font-size:19px; font-weight:800; letter-spacing:1.2px; margin:4px 0 1px; line-height:1.1; }
 	.tok { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:8px; letter-spacing:0.4px; color:#3D3630; margin:0; word-break:break-all; }
@@ -2495,6 +2495,55 @@ class TwellerFlow2_Print_Fulfillment {
 
 	// ── Admin UI (rendered into prints-orders.php) ─────
 
+	/** True when this request is mid-build for the given order. */
+	private static function is_building( $order_id ) {
+		if ( empty( $_GET['fp_building'] ) ) return false;
+		$building_id = isset( $_GET['order_id'] ) ? (int) $_GET['order_id'] : 0;
+		return $building_id > 0 && $building_id === (int) $order_id;
+	}
+
+	/** The order whose detail row should be open on this request (0 = none). */
+	public static function open_order_id() {
+		if ( ! current_user_can( 'manage_options' ) ) return 0;
+		return isset( $_GET['order_id'] ) ? max( 0, (int) $_GET['order_id'] ) : 0;
+	}
+
+	/** Gold progress bar for a chunked build, with live counts. */
+	private static function render_progress( $order_id, $with_driver = false ) {
+		$done  = isset( $_GET['fp_done'] ) ? max( 0, (int) $_GET['fp_done'] ) : 0;
+		$total = isset( $_GET['fp_total'] ) ? max( 1, (int) $_GET['fp_total'] ) : 1;
+		$pass  = isset( $_GET['fp_pass'] ) ? max( 0, (int) $_GET['fp_pass'] ) : 0;
+		$from  = isset( $_GET['fp_from'] ) ? max( 0, (int) $_GET['fp_from'] ) : 0;
+		$done  = min( $done, $total );
+		$pct   = max( 3, min( 100, (int) round( ( $done / $total ) * 100 ) ) );
+
+		$next = self::build_url( (int) $order_id, false, array( 'fp_pass' => $pass, 'fp_from' => $from ) );
+		?>
+		<div class="tf2pf__progress">
+			<p class="tf2pf__progress-label">
+				<strong>Preparing print files</strong> — <?php echo (int) $done; ?> of <?php echo (int) $total; ?>
+			</p>
+			<div class="tf2pf__bar"><div class="tf2pf__bar-fill" style="width:<?php echo (int) $pct; ?>%;"></div></div>
+			<p class="tf2pf__progress-hint">
+				Keep this tab open — it continues by itself.
+				<a href="<?php echo esc_url( $next ); ?>" <?php echo $with_driver ? 'id="tf2pf-continue"' : ''; ?>>Continue now</a>
+			</p>
+		</div>
+		<?php
+		if ( ! $with_driver ) return;
+		?>
+		<script>
+		(function(){
+			var a = document.getElementById('tf2pf-continue');
+			if (!a) return;
+			var row = document.getElementById('<?php echo esc_js( self::row_anchor( (int) $order_id ) ); ?>');
+			if (row && row.scrollIntoView) { try { row.scrollIntoView({block:'center'}); } catch (e) { row.scrollIntoView(); } }
+			setTimeout(function(){ window.location.href = a.href; }, 500);
+		})();
+		</script>
+		<?php
+	}
+
 	/** Page-level notices + the auto-continue driver for chunked builds. */
 	public static function render_page_notices() {
 		if ( ! current_user_can( 'manage_options' ) ) return;
@@ -2503,7 +2552,7 @@ class TwellerFlow2_Print_Fulfillment {
 			echo '<div class="tf2-alert tf2-alert--success">Delivery details saved.</div>';
 		}
 		if ( ! empty( $_GET['fp_sent'] ) ) {
-			echo '<div class="tf2-alert tf2-alert--success">Order sent to the print provider.</div>';
+			echo '<div class="tf2-alert tf2-alert--success">Order sent to the print provider — it is now awaiting production.</div>';
 		}
 		if ( ! empty( $_GET['fp_built'] ) ) {
 			echo '<div class="tf2-alert tf2-alert--success">Print files built and packaged.</div>';
@@ -2512,34 +2561,20 @@ class TwellerFlow2_Print_Fulfillment {
 			echo '<div class="tf2-alert tf2-alert--success">Order marked delivered.</div>';
 		}
 		if ( ! empty( $_GET['fp_error'] ) ) {
-			echo '<div class="tf2-alert tf2-alert--error">' . esc_html( rawurldecode( wp_unslash( $_GET['fp_error'] ) ) ) . '</div>';
+			// Decode first — sanitize_text_field() strips percent-encoded octets.
+			echo '<div class="tf2-alert tf2-alert--error">'
+				. esc_html( sanitize_text_field( rawurldecode( wp_unslash( $_GET['fp_error'] ) ) ) ) . '</div>';
 		}
 
-		if ( empty( $_GET['fp_building'] ) ) return;
-
 		$order_id = isset( $_GET['order_id'] ) ? (int) $_GET['order_id'] : 0;
-		if ( ! $order_id ) return;
+		if ( ! $order_id || ! self::is_building( $order_id ) ) return;
 
-		$done  = isset( $_GET['fp_done'] ) ? (int) $_GET['fp_done'] : 0;
-		$total = isset( $_GET['fp_total'] ) ? max( 1, (int) $_GET['fp_total'] ) : 1;
-		$pct   = min( 100, (int) round( ( $done / $total ) * 100 ) );
-		$next  = self::build_url( $order_id );
-		?>
-		<div class="tf2-alert" style="background:#FDFAF1; border:1px solid #C9A227; color:#3D3630;">
-			<strong>Building print files…</strong> <?php echo (int) $done; ?> of <?php echo (int) $total; ?> items rendered.
-			<div style="height:8px; background:#ECE9E2; border-radius:4px; margin:8px 0 6px; overflow:hidden;">
-				<div style="height:100%; width:<?php echo (int) $pct; ?>%; background:#C9A227;"></div>
-			</div>
-			<a href="<?php echo esc_url( $next ); ?>" id="tf2pf-continue" class="tf2-btn tf2-btn--secondary tf2-btn--sm">Continue</a>
-			<span style="color:#8A8178; font-size:12px;">Keep this tab open — it continues automatically.</span>
-		</div>
-		<script>
-		(function(){
-			var a = document.getElementById('tf2pf-continue');
-			if (a) { setTimeout(function(){ window.location.href = a.href; }, 400); }
-		})();
-		</script>
-		<?php
+		// The driver lives here so it fires even when a status filter or a
+		// search has hidden this order's row from the table below.
+		self::print_panel_css();
+		echo '<div class="tf2-alert tf2pf__progress-notice">';
+		self::render_progress( $order_id, true );
+		echo '</div>';
 	}
 
 	private static function print_panel_css() {
@@ -2564,9 +2599,67 @@ class TwellerFlow2_Print_Fulfillment {
 		.tf2pf__sends { list-style:none; margin:6px 0 0; padding:0; font-size:12px; color:#4B5563; }
 		.tf2pf__sends li { padding:4px 0; border-bottom:1px solid #F3F4F6; }
 		.tf2pf textarea, .tf2pf select, .tf2pf input[type=text] { width:100%; max-width:100%; }
-		.tf2pf__delivered { background:#101010; color:#C9A227; border-radius:8px; padding:8px 10px; font-size:12.5px; font-weight:700; margin:8px 0; }
+
+		/* Fulfilment stage — only 'delivered' is ever black-and-gold. */
+		.tf2pf__stage { display:flex; align-items:center; gap:8px; border-radius:8px; padding:8px 11px; font-size:12.5px; font-weight:600; margin:0 0 10px; }
+		.tf2pf__stage--idle   { background:#F3F4F6; border:1px solid #E5E7EB; color:#4B5563; }
+		.tf2pf__stage--active { background:#FDFAF1; border:1px solid #E7CF87; color:#7A5C08; }
+		.tf2pf__stage--done   { background:#101010; border:1px solid #101010; color:#C9A227; }
+		.tf2pf__stage .dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex:0 0 8px; }
+
+		/* Build progress */
+		.tf2pf__progress-notice { background:#FDFAF1; border:1px solid #C9A227; color:#3D3630; }
+		.tf2pf__progress { margin:0 0 10px; }
+		.tf2pf__progress-label { margin:0 0 6px; font-size:12.5px; color:#3D3630; }
+		.tf2pf__progress-hint { margin:5px 0 0; font-size:11.5px; color:#8A8178; }
+		.tf2pf__bar { height:8px; background:#ECE9E2; border-radius:5px; overflow:hidden; }
+		.tf2pf__bar-fill { height:100%; background:#C9A227; border-radius:5px; transition:width .25s ease; }
+
+		/* One balanced, state-driven action row */
+		.tf2pf__actions { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+		.tf2pf__act {
+			flex:1 1 190px; min-width:168px; box-sizing:border-box;
+			display:inline-flex; align-items:center; justify-content:center; gap:6px;
+			min-height:38px; padding:9px 12px; border-radius:8px;
+			font-size:12.5px; font-weight:600; line-height:1.2; text-align:center;
+			text-decoration:none; cursor:pointer; border:1px solid transparent;
+			font-family:inherit;
+		}
+		.tf2pf__act--next { background:#C9A227; border-color:#C9A227; color:#101010; }
+		.tf2pf__act--next:hover { background:#E7C55C; border-color:#E7C55C; color:#101010; }
+		.tf2pf__act--todo { background:#FFFFFF; border-color:#D1D5DB; color:#374151; }
+		.tf2pf__act--todo:hover { border-color:#9CA3AF; color:#111827; }
+		.tf2pf__act--done { background:#ECFDF5; border-color:#A7F3D0; color:#065F46; }
+		.tf2pf__act--done:hover { background:#D1FAE5; color:#065F46; }
+		.tf2pf__act[disabled], .tf2pf__act--off { opacity:0.5; cursor:not-allowed; pointer-events:none; }
+		.tf2pf__acthint { margin:-4px 0 12px; font-size:11.5px; color:#9CA3AF; }
+		@media (max-width:640px) { .tf2pf__act { flex:1 1 100%; } }
 		</style>
 		<?php
+	}
+
+	/** One action button, rendered identically whether it is a link or a submit. */
+	private static function action_button( $args ) {
+		$state = isset( $args['state'] ) ? $args['state'] : 'todo';
+		$class = 'tf2pf__act tf2pf__act--' . ( in_array( $state, array( 'next', 'todo', 'done' ), true ) ? $state : 'todo' );
+		$label = (string) ( $args['label'] ?? '' );
+		$title = empty( $args['title'] ) ? '' : ' title="' . esc_attr( (string) $args['title'] ) . '"';
+		$click = empty( $args['confirm'] ) ? '' : ' onclick="return confirm(\'' . esc_js( (string) $args['confirm'] ) . '\');"';
+
+		if ( ! empty( $args['disabled'] ) ) {
+			echo '<button type="button" class="' . esc_attr( $class ) . '"' . $title . ' disabled>' . esc_html( $label ) . '</button>';
+			return;
+		}
+
+		if ( ! empty( $args['form'] ) ) {
+			echo '<button type="submit" form="' . esc_attr( $args['form'] ) . '" class="' . esc_attr( $class ) . '"'
+				. $title . $click . '>' . esc_html( $label ) . '</button>';
+			return;
+		}
+
+		echo '<a href="' . esc_url( (string) ( $args['href'] ?? '#' ) ) . '" class="' . esc_attr( $class ) . '"'
+			. ( ! empty( $args['blank'] ) ? ' target="_blank" rel="noopener"' : '' )
+			. $title . $click . '>' . esc_html( $label ) . '</a>';
 	}
 
 	/**
@@ -2579,6 +2672,7 @@ class TwellerFlow2_Print_Fulfillment {
 
 		self::print_panel_css();
 
+		$order_id    = (int) $order->id;
 		$fulfillment = self::get_fulfillment( $order );
 		$build       = $fulfillment['build'];
 		$items       = self::order_items( $order );
@@ -2588,19 +2682,71 @@ class TwellerFlow2_Print_Fulfillment {
 		$stats       = self::build_stats( $build );
 		$providers   = self::get_providers( true );
 		$default     = self::get_default_provider();
-		$delivered   = ! empty( $fulfillment['delivered_at'] );
+		$stage       = self::fulfillment_stage( $order );
+		$delivered   = ( $stage['key'] === 'delivered' );
+		$building    = self::is_building( $order_id );
+
+		$is_sent     = ! empty( $fulfillment['sends'] ) || (string) $fulfillment['provider_id'] !== '';
+		$has_label   = (string) $fulfillment['label_printed_at'] !== '';
+		$send_form   = 'tf2pf-send-' . $order_id;
+
+		// Exactly one action is the natural next step at any moment.
+		$next_step = 'build';
+		if ( $is_built && ! $is_stale ) $next_step = $is_sent ? ( $has_label ? '' : 'label' ) : 'send';
+		if ( $delivered ) $next_step = '';
 
 		$ordered_pieces = 0;
 		foreach ( $items as $it ) { $ordered_pieces += max( 1, (int) ( $it['qty'] ?? 1 ) ); }
 		?>
-		<div class="tf2pf">
+		<div class="tf2pf" id="tf2pf-<?php echo (int) $order_id; ?>">
 			<h4>Fulfilment</h4>
 
-			<?php if ( $delivered ) : ?>
-				<div class="tf2pf__delivered">
-					&#10003; Delivered <?php echo esc_html( date_i18n( 'M j, Y g:ia', strtotime( (string) $fulfillment['delivered_at'] ) ) ); ?>
-					<?php if ( $fulfillment['delivered_via'] === 'scan' ) : ?>(barcode scan)<?php endif; ?>
-				</div>
+			<div class="tf2pf__stage tf2pf__stage--<?php echo esc_attr( $stage['tone'] ); ?>">
+				<span class="dot"></span>
+				<span><?php echo esc_html( ( $delivered ? "✓ " : '' ) . $stage['label'] ); ?></span>
+			</div>
+
+			<?php if ( $building ) : ?>
+				<?php self::render_progress( $order_id, false ); ?>
+			<?php endif; ?>
+
+			<!-- ── One balanced action row, coloured by state ── -->
+			<div class="tf2pf__actions">
+				<?php
+				self::action_button( array(
+					'href'  => self::build_url( $order_id, $is_built || $is_stale ),
+					'label' => $is_built ? 'Files built ✓' : ( $is_stale ? 'Rebuild print files' : 'Build print files' ),
+					'state' => $is_built ? 'done' : ( $next_step === 'build' ? 'next' : 'todo' ),
+					'title' => $is_built ? 'Rebuild the print-ready files from scratch' : 'Render the print-ready files and package them',
+				) );
+
+				if ( empty( $providers ) ) {
+					self::action_button( array( 'label' => 'No provider set up', 'state' => 'todo', 'disabled' => true ) );
+				} else {
+					self::action_button( array(
+						'form'     => $send_form,
+						'label'    => $is_sent ? 'Sent ✓' : 'Send order to provider',
+						'state'    => $is_sent ? 'done' : ( $next_step === 'send' ? 'next' : 'todo' ),
+						'disabled' => ! $is_built,
+						'confirm'  => 'Send ' . $order->order_ref . ' to the selected provider'
+							. ( $is_sent ? ' again?' : '?' ),
+						'title'    => $is_built
+							? ( $is_sent ? 'Already sent — use this to send the job again' : 'Email the job package to the selected provider' )
+							: 'Build the print files first',
+					) );
+				}
+
+				self::action_button( array(
+					'href'  => self::label_action_url( $order_id ),
+					'blank' => true,
+					'label' => $has_label ? 'Label printed ✓' : 'Print shipping label',
+					'state' => $has_label ? 'done' : ( $next_step === 'label' ? 'next' : 'todo' ),
+					'title' => $has_label ? 'Open the 4x6 shipping label again' : 'Open the 4x6 shipping label with the delivery QR code',
+				) );
+				?>
+			</div>
+			<?php if ( ! $is_built ) : ?>
+				<p class="tf2pf__acthint">Build the print files before sending this order to a provider.</p>
 			<?php endif; ?>
 
 			<div class="tf2pf__grid">
@@ -2612,6 +2758,9 @@ class TwellerFlow2_Print_Fulfillment {
 						<?php if ( $is_built ) : ?>
 							<span>Files built<strong><?php echo (int) $stats['files']; ?></strong></span>
 							<span>Pieces packaged<strong><?php echo (int) $stats['pieces']; ?></strong></span>
+							<?php if ( ! empty( $build['zip_bytes'] ) ) : ?>
+								<span>Package<strong><?php echo esc_html( size_format( (int) $build['zip_bytes'] ) ); ?></strong></span>
+							<?php endif; ?>
 						<?php endif; ?>
 					</div>
 
@@ -2640,17 +2789,17 @@ class TwellerFlow2_Print_Fulfillment {
 					<?php if ( $is_stale ) : ?>
 						<div class="tf2pf__soft">This order changed since the files were built — rebuild before sending.</div>
 					<?php endif; ?>
+					<?php if ( ! $is_built && ! $building && ! is_array( $build ) ) : ?>
+						<p style="margin:6px 0; font-size:12.5px; color:#6B7280;">No print package yet.</p>
+					<?php endif; ?>
 
-					<p style="margin:8px 0;">
-						<a href="<?php echo esc_url( self::build_url( (int) $order->id, $is_built || $is_stale ) ); ?>" class="tf2-btn tf2-btn--primary tf2-btn--sm">
-							<?php echo $is_built && ! $is_stale ? 'Rebuild print files' : 'Build print files'; ?>
-						</a>
-						<?php if ( $is_built && ! empty( $build['zip'] ) ) : ?>
-							<a href="<?php echo esc_url( self::download_url( (int) $order->id ) ); ?>" class="tf2-btn tf2-btn--secondary tf2-btn--sm">
+					<?php if ( $is_built && ! empty( $build['zip'] ) ) : ?>
+						<p style="margin:8px 0;">
+							<a href="<?php echo esc_url( self::download_url( $order_id ) ); ?>" class="tf2-btn tf2-btn--secondary tf2-btn--sm">
 								Download ZIP<?php if ( ! empty( $build['zip_bytes'] ) ) : ?> (<?php echo esc_html( size_format( (int) $build['zip_bytes'] ) ); ?>)<?php endif; ?>
 							</a>
-						<?php endif; ?>
-					</p>
+						</p>
+					<?php endif; ?>
 
 					<?php if ( $is_built && ! empty( $build['files'] ) ) : ?>
 						<table class="tf2pf__files">
@@ -2679,10 +2828,10 @@ class TwellerFlow2_Print_Fulfillment {
 							<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::PROVIDERS_PAGE ) ); ?>">add one</a>.
 						</p>
 					<?php else : ?>
-						<form method="post" style="display:flex; flex-direction:column; gap:6px;">
+						<form method="post" id="<?php echo esc_attr( $send_form ); ?>" style="display:flex; flex-direction:column; gap:6px;">
 							<?php wp_nonce_field( 'tf2pf_send_provider' ); ?>
 							<input type="hidden" name="tf2pf_send_provider" value="1">
-							<input type="hidden" name="order_id" value="<?php echo (int) $order->id; ?>">
+							<input type="hidden" name="order_id" value="<?php echo (int) $order_id; ?>">
 							<select name="provider_id">
 								<?php foreach ( $providers as $p ) : ?>
 									<option value="<?php echo esc_attr( $p['id'] ); ?>" <?php selected( $default && $default['id'] === $p['id'] ); ?>>
@@ -2691,14 +2840,10 @@ class TwellerFlow2_Print_Fulfillment {
 								<?php endforeach; ?>
 							</select>
 							<textarea name="provider_note" rows="2" placeholder="Optional note for this job (turnaround, finish, packing…)"></textarea>
-							<button type="submit" class="tf2-btn tf2-btn--sm tf2-po-confirmpay" <?php disabled( ! $is_built ); ?>
-								onclick="return confirm('Send <?php echo esc_js( $order->order_ref ); ?> to the selected provider?');">
-								&#9993; Send order to provider
-							</button>
-							<?php if ( ! $is_built ) : ?>
-								<span style="font-size:11.5px; color:#9CA3AF;">Build the print files first.</span>
-							<?php endif; ?>
 						</form>
+						<p style="margin:6px 0 0; font-size:11.5px; color:#9CA3AF;">
+							Pick the lab and any note, then use <strong>Send order to provider</strong> above.
+						</p>
 					<?php endif; ?>
 
 					<?php if ( ! empty( $fulfillment['sends'] ) ) : ?>
@@ -2721,7 +2866,7 @@ class TwellerFlow2_Print_Fulfillment {
 					<form method="post" style="display:flex; flex-direction:column; gap:6px;">
 						<?php wp_nonce_field( 'tf2pf_save_delivery' ); ?>
 						<input type="hidden" name="tf2pf_save_delivery" value="1">
-						<input type="hidden" name="order_id" value="<?php echo (int) $order->id; ?>">
+						<input type="hidden" name="order_id" value="<?php echo (int) $order_id; ?>">
 						<label style="font-size:12px; color:#6B7280;"><strong>Delivery address</strong></label>
 						<textarea name="delivery_address" rows="3" placeholder="Street, town, Trinidad &amp; Tobago"><?php echo esc_textarea( (string) $fulfillment['delivery_address'] ); ?></textarea>
 						<label style="font-size:12px; color:#6B7280;">Delivery note (printed on the label)</label>
@@ -2729,20 +2874,18 @@ class TwellerFlow2_Print_Fulfillment {
 						<button type="submit" class="tf2-btn tf2-btn--secondary tf2-btn--sm">Save delivery details</button>
 					</form>
 
-					<p style="margin:10px 0 0;">
-						<a href="<?php echo esc_url( self::label_url( (string) $order->order_ref ) ); ?>" target="_blank" rel="noopener" class="tf2-btn tf2-btn--secondary tf2-btn--sm">
-							&#128465; Print shipping label
-						</a>
-					</p>
-					<p style="margin:6px 0 0; font-size:11.5px; color:#9CA3AF;">
-						4&times;6in label with a scannable Code&nbsp;128 barcode. Scanning it marks the order delivered and emails the client.
+					<p style="margin:10px 0 0; font-size:11.5px; color:#9CA3AF;">
+						4&times;6in label with a large QR code. Scanning it marks the order delivered and emails the client.
+						<?php if ( $has_label ) : ?>
+							<br>Label first printed <?php echo esc_html( date_i18n( 'M j, Y g:ia', strtotime( (string) $fulfillment['label_printed_at'] ) ) ); ?>.
+						<?php endif; ?>
 					</p>
 
 					<?php if ( ! $delivered ) : ?>
 						<form method="post" style="margin-top:8px;">
 							<?php wp_nonce_field( 'tf2pf_mark_delivered' ); ?>
 							<input type="hidden" name="tf2pf_mark_delivered" value="1">
-							<input type="hidden" name="order_id" value="<?php echo (int) $order->id; ?>">
+							<input type="hidden" name="order_id" value="<?php echo (int) $order_id; ?>">
 							<button type="submit" class="tf2-btn tf2-btn--ghost tf2-btn--sm"
 								onclick="return confirm('Mark <?php echo esc_js( $order->order_ref ); ?> delivered and email the client?');">
 								Mark delivered manually

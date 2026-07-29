@@ -17,6 +17,16 @@
     <?php endif; ?>
 
     <?php
+    // Fulfilment flash notices + the driver that walks a chunked build to
+    // completion. Without this the build redirects land here silently.
+    $tf2pf_open_id = 0;
+    if ( class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
+        TwellerFlow2_Print_Fulfillment::render_page_notices();
+        $tf2pf_open_id = (int) TwellerFlow2_Print_Fulfillment::open_order_id();
+    }
+    ?>
+
+    <?php
     $tabs = array( '' => 'All' );
     foreach ( $statuses as $s ) {
         $tabs[ $s ] = isset( $labels[ $s ] ) ? $labels[ $s ] : ucfirst( $s );
@@ -76,8 +86,20 @@
                 $payment          = ! empty( $order->payment ) ? json_decode( (string) $order->payment, true ) : null;
                 if ( ! is_array( $payment ) ) $payment = null;
                 $portal_url       = TwellerFlow2_Prints::portal_url( $order );
+
+                // An action that redirects back here re-opens its own row, so
+                // the result is on screen straight away instead of needing a
+                // second click into the order.
+                $is_open = ( $tf2pf_open_id === (int) $order->id );
+
+                // Fulfilment stage — sent-but-unfulfilled must never read as
+                // delivered; only a recorded delivery does.
+                $fp_stage = null;
+                if ( class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
+                    $fp_stage = TwellerFlow2_Print_Fulfillment::fulfillment_stage( $order );
+                }
             ?>
-                <tr class="tf2-po-row" data-order="<?php echo (int) $order->id; ?>" style="cursor:pointer;">
+                <tr class="tf2-po-row<?php echo $is_open ? ' tf2-po-row--open' : ''; ?>" data-order="<?php echo (int) $order->id; ?>" style="cursor:pointer;">
                     <td><strong><?php echo esc_html( $order->order_ref ); ?></strong></td>
                     <td>
                         <?php echo esc_html( $order->customer_name ); ?><br>
@@ -100,11 +122,14 @@
                         <?php if ( $has_review && $order->status === 'new' ) : ?>
                             <br><span class="tf2-badge tf2-po-review">Receipt uploaded</span>
                         <?php endif; ?>
+                        <?php if ( $fp_stage && $fp_stage['key'] !== 'none' ) : ?>
+                            <br><span class="tf2-po-stage tf2-po-stage--<?php echo esc_attr( $fp_stage['tone'] ); ?>"><?php echo esc_html( $fp_stage['short'] ); ?></span>
+                        <?php endif; ?>
                     </td>
                     <td style="white-space:nowrap;"><?php echo esc_html( date( 'M j, Y g:ia', strtotime( $order->created_at ) ) ); ?></td>
-                    <td><button type="button" class="tf2-btn tf2-btn--secondary tf2-btn--sm tf2-po-toggle">Details</button></td>
+                    <td><button type="button" class="tf2-btn tf2-btn--secondary tf2-btn--sm tf2-po-toggle"><?php echo $is_open ? 'Close' : 'Details'; ?></button></td>
                 </tr>
-                <tr class="tf2-po-detail" id="tf2-po-detail-<?php echo (int) $order->id; ?>" style="display:none;">
+                <tr class="tf2-po-detail" id="tf2-po-detail-<?php echo (int) $order->id; ?>"<?php echo $is_open ? '' : ' style="display:none;"'; ?>>
                     <td colspan="8" style="background:#F9FAFB;">
                         <div style="display:flex; flex-wrap:wrap; gap:24px; padding:8px 4px 14px;">
                             <div style="flex:1 1 380px; min-width:300px;">
@@ -251,6 +276,11 @@
 .tf2-po-receipt--pending  { border-color:#C9A227; background:#FDFAF1; }
 .tf2-po-confirmpay        { background:#101010; color:#C9A227; font-weight:700; }
 .tf2-po-confirmpay:hover  { background:#2A2A2A; color:#E7C55C; }
+.tf2-po-row--open > td    { background:#FDFAF1; }
+.tf2-po-stage             { display:inline-block; margin-top:4px; font-size:11px; font-weight:600; line-height:1.35; border-radius:5px; padding:2px 7px; }
+.tf2-po-stage--idle       { background:#F3F4F6; color:#4B5563; }
+.tf2-po-stage--active     { background:#FDFAF1; color:#7A5C08; border:1px solid #E7CF87; }
+.tf2-po-stage--done       { background:#101010; color:#C9A227; }
 </style>
 
 <script>

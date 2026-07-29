@@ -264,6 +264,59 @@
 .tfpv__meta strong { color: var(--tfpv-ink); font-weight: 600; }
 .tfpv__sizes { margin: 6px 0 0; font-size: 13px; color: var(--tfpv-ink); }
 
+/* ── Payout line (order value vs. what this job earns) ──────── */
+
+.tfpv__pay {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    border: 1px solid var(--tfpv-line);
+    border-radius: 10px;
+    background: var(--tfpv-bg);
+}
+
+.tfpv__pay-item {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tfpv__pay-item + .tfpv__pay-item {
+    border-left: 1px solid var(--tfpv-line);
+    padding-left: 12px;
+}
+
+.tfpv__pay-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    color: var(--tfpv-muted);
+}
+
+.tfpv__pay-value {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--tfpv-ink);
+    letter-spacing: -0.2px;
+}
+
+.tfpv__pay-item--earn .tfpv__pay-value { color: var(--tfpv-gold); }
+
+.tfpv__flag {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border-radius: 9px;
+    border: 1px solid #E7CFA0;
+    background: #FDF6E7;
+    color: var(--tfpv-amber);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
 .tfpv__pill {
     display: inline-block;
     font-size: 11px;

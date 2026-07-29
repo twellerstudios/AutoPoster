@@ -53,6 +53,64 @@
         </form>
     </div>
 
+    <?php
+    $tf2_econ = class_exists( 'TwellerFlow2_Print_Providers' ) ? TwellerFlow2_Print_Providers::economics_summary() : null;
+    $tf2_econ_period = ( isset( $_GET['econ'] ) && sanitize_key( wp_unslash( $_GET['econ'] ) ) === 'all' ) ? 'all' : 'month';
+    $tf2_econ_base_args = $status_filter !== '' ? array( 'status' => $status_filter ) : array();
+    ?>
+    <?php if ( $tf2_econ ) :
+        $tf2_econ_period_data  = $tf2_econ_period === 'all' ? $tf2_econ['all_time'] : $tf2_econ['month'];
+        $tf2_econ_period_label = $tf2_econ_period === 'all' ? 'all time' : 'this month';
+    ?>
+    <div class="tf2-card" style="margin-bottom:20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+            <h2 style="margin:0;">Print economics</h2>
+            <div style="display:flex; gap:6px;">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=tweller-flow-2-prints&' . http_build_query( array_merge( $tf2_econ_base_args, array( 'econ' => 'month' ) ) ) ) ); ?>" class="tf2-btn tf2-btn--sm <?php echo $tf2_econ_period === 'month' ? 'tf2-btn--primary' : 'tf2-btn--secondary'; ?>">This month</a>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=tweller-flow-2-prints&' . http_build_query( array_merge( $tf2_econ_base_args, array( 'econ' => 'all' ) ) ) ) ); ?>" class="tf2-btn tf2-btn--sm <?php echo $tf2_econ_period === 'all' ? 'tf2-btn--primary' : 'tf2-btn--secondary'; ?>">All time</a>
+            </div>
+        </div>
+
+        <div class="tf2-grid tf2-grid--4" style="margin-bottom:<?php echo empty( $tf2_econ['providers'] ) ? '0' : '20px'; ?>;">
+            <div class="tf2-stat">
+                <span class="tf2-stat__value"><?php echo (int) $tf2_econ_period_data['orders']; ?></span>
+                <span class="tf2-stat__label">Orders (<?php echo esc_html( $tf2_econ_period_label ); ?>)</span>
+            </div>
+            <div class="tf2-stat">
+                <span class="tf2-stat__value">TT$ <?php echo esc_html( number_format( $tf2_econ_period_data['value'], 2 ) ); ?></span>
+                <span class="tf2-stat__label">Customer revenue</span>
+            </div>
+            <div class="tf2-stat">
+                <span class="tf2-stat__value">TT$ <?php echo esc_html( number_format( $tf2_econ_period_data['provider_cost'], 2 ) ); ?></span>
+                <span class="tf2-stat__label">Provider payouts</span>
+            </div>
+            <div class="tf2-stat">
+                <span class="tf2-stat__value" style="color:#C9A227;">TT$ <?php echo esc_html( number_format( $tf2_econ_period_data['margin'], 2 ) ); ?></span>
+                <span class="tf2-stat__label">Margin</span>
+            </div>
+        </div>
+
+        <?php if ( ! empty( $tf2_econ['providers'] ) ) : ?>
+        <table class="tf2-table">
+            <thead>
+                <tr><th>Provider</th><th>Jobs (month)</th><th>Payout (month)</th><th>Jobs (all time)</th><th>Payout (all time)</th></tr>
+            </thead>
+            <tbody>
+            <?php foreach ( $tf2_econ['providers'] as $tf2_pv ) : ?>
+                <tr>
+                    <td><?php echo esc_html( $tf2_pv['name'] ); ?></td>
+                    <td><?php echo (int) $tf2_pv['month_jobs']; ?></td>
+                    <td>TT$ <?php echo esc_html( number_format( $tf2_pv['month_payout'], 2 ) ); ?></td>
+                    <td><?php echo (int) $tf2_pv['all_jobs']; ?></td>
+                    <td>TT$ <?php echo esc_html( number_format( $tf2_pv['all_payout'], 2 ) ); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <div class="tf2-card tf2-card--flush">
         <table class="tf2-table">
             <thead>
@@ -98,6 +156,12 @@
                 if ( class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
                     $fp_stage = TwellerFlow2_Print_Fulfillment::fulfillment_stage( $order );
                 }
+
+                // Order value / provider cost / margin — meaningless before a
+                // provider is assigned, so we only ever show it once one is.
+                $fp_economics = class_exists( 'TwellerFlow2_Print_Providers' )
+                    ? TwellerFlow2_Print_Providers::order_economics( $order )
+                    : null;
             ?>
                 <tr class="tf2-po-row<?php echo $is_open ? ' tf2-po-row--open' : ''; ?>" data-order="<?php echo (int) $order->id; ?>" style="cursor:pointer;">
                     <td><strong><?php echo esc_html( $order->order_ref ); ?></strong></td>
@@ -218,6 +282,24 @@
                                     <?php endif; ?>
                                     <a href="<?php echo esc_url( $portal_url ); ?>" target="_blank">Customer order portal &rarr;</a>
                                 </p>
+
+                                <h4 style="margin:14px 0 6px;">Economics</h4>
+                                <?php if ( $fp_economics && $fp_economics['provider_id'] !== '' ) :
+                                    $fp_econ_provider = TwellerFlow2_Print_Providers::get_provider( $fp_economics['provider_id'] );
+                                    $fp_econ_name     = $fp_econ_provider ? $fp_econ_provider['name'] : 'Provider';
+                                ?>
+                                    <p style="margin:0; font-size:13px; color:#374151; line-height:1.9;">
+                                        Order value: <strong>TT$ <?php echo esc_html( number_format( $fp_economics['value'], 2 ) ); ?></strong><br>
+                                        <?php echo esc_html( $fp_econ_name ); ?> cost: <strong>TT$ <?php echo esc_html( number_format( $fp_economics['provider_cost'], 2 ) ); ?></strong>
+                                        <?php if ( $fp_economics['unpriced_items'] > 0 ) : ?>
+                                            <span class="tf2-badge" style="background:#FEF3C7; color:#92400E;"><?php echo (int) $fp_economics['unpriced_items']; ?> item<?php echo (int) $fp_economics['unpriced_items'] === 1 ? '' : 's'; ?> not priced</span>
+                                        <?php endif; ?>
+                                        <br>
+                                        Margin: <strong style="color:#065F46;">TT$ <?php echo esc_html( number_format( $fp_economics['margin'], 2 ) ); ?></strong>
+                                    </p>
+                                <?php else : ?>
+                                    <p style="margin:0; font-size:13px; color:#9CA3AF;">No provider assigned yet.</p>
+                                <?php endif; ?>
 
                                 <?php if ( $order->status === 'new' ) : ?>
                                     <form method="post" style="margin:10px 0 14px;">

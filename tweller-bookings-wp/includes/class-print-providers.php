@@ -236,9 +236,28 @@ class TwellerFlow2_Print_Providers {
 			'default'       => empty( $p['default'] ) ? 0 : 1,
 			'user_id'       => isset( $p['user_id'] ) ? (int) $p['user_id'] : 0,
 			'does_delivery' => empty( $p['does_delivery'] ) ? 0 : 1,
+			// What THIS provider charges Tweller Studios (wholesale/cost, TTD)
+			// per catalog product_id — completely separate from the
+			// customer-facing price in TwellerFlow2_Prints. A product missing
+			// from this map is "not priced", never a silent $0.
+			'prices'        => self::sanitize_prices( isset( $p['prices'] ) ? $p['prices'] : array() ),
 		);
 		if ( $row['id'] === '' || $row['name'] === '' ) return null;
 		return $row;
+	}
+
+	/** product_id => cost (float, >= 0). Blank/invalid entries are dropped, not zeroed. */
+	private static function sanitize_prices( $raw ) {
+		$out = array();
+		if ( ! is_array( $raw ) ) return $out;
+		foreach ( $raw as $product_id => $value ) {
+			$product_id = sanitize_key( (string) $product_id );
+			if ( $product_id === '' ) continue;
+			if ( $value === '' || $value === null ) continue; // not priced
+			if ( ! is_numeric( $value ) ) continue;
+			$out[ $product_id ] = max( 0, round( (float) $value, 2 ) );
+		}
+		return $out;
 	}
 
 	/** @return array<int, array> All providers, normalised. */
@@ -479,6 +498,12 @@ class TwellerFlow2_Print_Providers {
 			'value_month'      => 0.0,
 			'total'            => 0,
 			'by_status'        => array(),
+			// Payout / earnings — completed & delivered orders only, so this
+			// reads as real money earned, never a forecast of jobs in flight.
+			'jobs_completed'   => 0,
+			'earned_month'     => 0.0,
+			'earned_all_time'  => 0.0,
+			'avg_per_job'      => 0.0,
 		);
 
 		$statuses = class_exists( 'TwellerFlow2_Prints' )
@@ -486,7 +511,8 @@ class TwellerFlow2_Print_Providers {
 			: array( 'new', 'confirmed', 'printing', 'ready', 'completed', 'cancelled' );
 		foreach ( $statuses as $s ) { $stats['by_status'][ $s ] = 0; }
 
-		$month = self::month_start_ts();
+		$month    = self::month_start_ts();
+		$provider = self::get_provider( $provider_id );
 
 		foreach ( self::provider_orders( $provider_id ) as $order ) {
 			$status = (string) $order->status;
@@ -501,9 +527,15 @@ class TwellerFlow2_Print_Providers {
 				$stats['ready']++;
 			} elseif ( $status === 'completed' ) {
 				$done = strtotime( (string) ( $f['delivered_at'] !== '' ? $f['delivered_at'] : $order->updated_at ) );
+				$eco  = self::order_economics( $order, $provider );
+
+				$stats['jobs_completed']++;
+				$stats['earned_all_time'] += $eco['provider_cost'];
+
 				if ( $done && $done >= $month ) {
 					$stats['completed_month']++;
-					$stats['value_month'] += (float) $order->subtotal;
+					$stats['value_month']  += (float) $order->subtotal;
+					$stats['earned_month'] += $eco['provider_cost'];
 				}
 			} elseif ( $status !== 'cancelled' ) {
 				// Sent to them, nothing started yet.
@@ -511,8 +543,159 @@ class TwellerFlow2_Print_Providers {
 			}
 		}
 
-		$stats['value_month'] = round( $stats['value_month'], 2 );
+		$stats['value_month']     = round( $stats['value_month'], 2 );
+		$stats['earned_month']    = round( $stats['earned_month'], 2 );
+		$stats['earned_all_time'] = round( $stats['earned_all_time'], 2 );
+		$stats['avg_per_job']     = $stats['jobs_completed'] > 0
+			? round( $stats['earned_all_time'] / $stats['jobs_completed'], 2 )
+			: 0.0;
 		return $stats;
+	}
+
+	/**
+	 * What one provider charges Tweller for a single order line item —
+	 * product_id match, multiplied by qty. Returns null (not 0.0) when the
+	 * provider has not set a price for that product, so callers can flag
+	 * "not priced" instead of silently treating it as free.
+	 *
+	 * @param array $provider Normalised provider record (see normalize_provider()).
+	 * @param array $item     One decoded order line item.
+	 * @return float|null
+	 */
+	public static function provider_cost_for_item( $provider, $item ) {
+		if ( ! is_array( $provider ) || ! is_array( $item ) ) return null;
+		$prices     = isset( $provider['prices'] ) && is_array( $provider['prices'] ) ? $provider['prices'] : array();
+		$product_id = sanitize_key( (string) ( isset( $item['product_id'] ) ? $item['product_id'] : '' ) );
+		if ( $product_id === '' || ! isset( $prices[ $product_id ] ) ) return null;
+
+		$qty = max( 1, (int) ( isset( $item['qty'] ) ? $item['qty'] : 1 ) );
+		return round( (float) $prices[ $product_id ] * $qty, 2 );
+	}
+
+	/**
+	 * Full economics for one order: what the customer paid, what the
+	 * provider is owed, how many line items are unpriced for that provider
+	 * (flagged, never silently treated as $0), and the studio's margin.
+	 *
+	 * @param object     $order
+	 * @param array|null $provider Resolved from the order's own assignment when omitted.
+	 * @return array{value:float, provider_cost:float, unpriced_items:int, margin:float, provider_id:string}
+	 */
+	public static function order_economics( $order, $provider = null ) {
+		$value = ( $order && isset( $order->subtotal ) ) ? round( (float) $order->subtotal, 2 ) : 0.0;
+
+		if ( $provider === null ) {
+			$provider_id = self::order_provider_id( $order );
+			$provider    = $provider_id !== '' ? self::get_provider( $provider_id ) : null;
+		}
+
+		$out = array(
+			'value'          => $value,
+			'provider_cost'  => 0.0,
+			'unpriced_items' => 0,
+			'margin'         => $value,
+			'provider_id'    => $provider ? $provider['id'] : '',
+		);
+
+		if ( ! $provider || ! $order ) return $out;
+
+		$cost     = 0.0;
+		$unpriced = 0;
+		foreach ( self::order_items( $order ) as $item ) {
+			$line_cost = self::provider_cost_for_item( $provider, $item );
+			if ( $line_cost === null ) { $unpriced++; continue; }
+			$cost += $line_cost;
+		}
+
+		$out['provider_cost']  = round( $cost, 2 );
+		$out['unpriced_items'] = $unpriced;
+		$out['margin']         = round( $value - $cost, 2 );
+		return $out;
+	}
+
+	/**
+	 * Studio-wide economics rollup across every order ever assigned to a
+	 * provider (cancelled orders excluded) — this month and all time, plus
+	 * a per-provider breakdown. Powers the wp-admin economics dashboard.
+	 *
+	 * @return array{month:array,all_time:array,providers:array<int,array>}
+	 */
+	public static function economics_summary() {
+		global $wpdb;
+
+		$empty_totals = array( 'orders' => 0, 'value' => 0.0, 'provider_cost' => 0.0, 'margin' => 0.0 );
+		$totals       = $empty_totals;
+		$month_totals = $empty_totals;
+
+		$per_provider = array();
+		foreach ( self::providers() as $p ) {
+			$per_provider[ $p['id'] ] = array(
+				'id'           => $p['id'],
+				'name'         => $p['name'],
+				'month_jobs'   => 0,
+				'month_payout' => 0.0,
+				'all_jobs'     => 0,
+				'all_payout'   => 0.0,
+			);
+		}
+
+		$table = self::orders_table();
+		if ( ! $table || ! self::has_fulfillment_column() ) {
+			return array( 'month' => $month_totals, 'all_time' => $totals, 'providers' => array_values( $per_provider ) );
+		}
+
+		$rows = $wpdb->get_results( "SELECT * FROM `{$table}` WHERE fulfillment IS NOT NULL AND fulfillment != '' AND status != 'cancelled'" );
+		if ( ! is_array( $rows ) ) $rows = array();
+
+		$month_start = self::month_start_ts();
+
+		foreach ( $rows as $row ) {
+			$provider_id = self::order_provider_id( $row );
+			if ( $provider_id === '' ) continue; // never actually assigned
+
+			$provider = self::get_provider( $provider_id );
+			$eco      = self::order_economics( $row, $provider );
+
+			$totals['orders']++;
+			$totals['value']         += $eco['value'];
+			$totals['provider_cost'] += $eco['provider_cost'];
+			$totals['margin']        += $eco['margin'];
+
+			if ( ! isset( $per_provider[ $provider_id ] ) ) {
+				$per_provider[ $provider_id ] = array(
+					'id'           => $provider_id,
+					'name'         => $provider ? $provider['name'] : $provider_id,
+					'month_jobs'   => 0,
+					'month_payout' => 0.0,
+					'all_jobs'     => 0,
+					'all_payout'   => 0.0,
+				);
+			}
+			$per_provider[ $provider_id ]['all_jobs']++;
+			$per_provider[ $provider_id ]['all_payout'] += $eco['provider_cost'];
+
+			$ts = strtotime( (string) $row->created_at );
+			if ( $ts && $ts >= $month_start ) {
+				$month_totals['orders']++;
+				$month_totals['value']         += $eco['value'];
+				$month_totals['provider_cost'] += $eco['provider_cost'];
+				$month_totals['margin']        += $eco['margin'];
+
+				$per_provider[ $provider_id ]['month_jobs']++;
+				$per_provider[ $provider_id ]['month_payout'] += $eco['provider_cost'];
+			}
+		}
+
+		foreach ( array( 'value', 'provider_cost', 'margin' ) as $k ) {
+			$totals[ $k ]       = round( $totals[ $k ], 2 );
+			$month_totals[ $k ] = round( $month_totals[ $k ], 2 );
+		}
+		foreach ( $per_provider as $id => $row ) {
+			$per_provider[ $id ]['month_payout'] = round( $row['month_payout'], 2 );
+			$per_provider[ $id ]['all_payout']   = round( $row['all_payout'], 2 );
+		}
+
+		return array( 'month' => $month_totals, 'all_time' => $totals, 'providers' => array_values( $per_provider ) );
 	}
 
 	/**
@@ -647,6 +830,7 @@ class TwellerFlow2_Print_Providers {
 		$record = $index >= 0 ? $providers[ $index ] : array(
 			'id' => '', 'name' => '', 'contact_name' => '', 'email' => '', 'phone' => '',
 			'address' => '', 'notes' => '', 'active' => 1, 'default' => 0, 'user_id' => 0, 'does_delivery' => 0,
+			'prices' => array(),
 		);
 
 		if ( $record['id'] === '' ) {
@@ -663,6 +847,27 @@ class TwellerFlow2_Print_Providers {
 		$record['notes']         = sanitize_textarea_field( (string) ( isset( $post['notes'] ) ? $post['notes'] : '' ) );
 		$record['active']        = empty( $post['active'] ) ? 0 : 1;
 		$record['does_delivery'] = empty( $post['does_delivery'] ) ? 0 : 1;
+
+		// ── Cost pricing ("what they charge you") ──
+		// Only the products actually rendered in the form (active ones) are
+		// touched; a price for a since-deactivated product is left alone
+		// rather than silently dropped. A blank field clears that price back
+		// to "not priced" instead of saving a false $0.
+		$prices = isset( $record['prices'] ) && is_array( $record['prices'] ) ? $record['prices'] : array();
+		if ( isset( $post['provider_cost'] ) && is_array( $post['provider_cost'] ) ) {
+			foreach ( $post['provider_cost'] as $product_id => $value ) {
+				$product_id = sanitize_key( (string) $product_id );
+				if ( $product_id === '' ) continue;
+				$value = trim( (string) $value );
+				if ( $value === '' ) {
+					unset( $prices[ $product_id ] );
+					continue;
+				}
+				if ( ! is_numeric( $value ) ) continue;
+				$prices[ $product_id ] = max( 0, round( (float) $value, 2 ) );
+			}
+		}
+		$record['prices'] = $prices;
 
 		$error = '';
 
@@ -866,6 +1071,7 @@ class TwellerFlow2_Print_Providers {
 		$p = $editing ? $editing : array(
 			'id' => '', 'name' => '', 'contact_name' => '', 'email' => '', 'phone' => '',
 			'address' => '', 'notes' => '', 'active' => 1, 'user_id' => 0, 'does_delivery' => 0,
+			'prices' => array(),
 		);
 		$linked = ! empty( $p['user_id'] ) ? get_userdata( $p['user_id'] ) : null;
 
@@ -913,11 +1119,46 @@ class TwellerFlow2_Print_Providers {
 		self::field_row( 'Dashboard account', $account_html );
 
 		echo '</tbody></table>';
+
+		self::render_pricing_table( $p );
+
 		submit_button( $editing ? 'Save provider' : 'Add provider' );
 		if ( $editing ) {
 			echo '<a href="' . esc_url( self::admin_url_for() ) . '" class="button">Cancel</a>';
 		}
 		echo '</form>';
+	}
+
+	/**
+	 * "What they charge you" — one TTD cost input per active catalog
+	 * product, rides along with the same form/nonce/handler as the rest of
+	 * the provider record. Completely separate from the customer-facing
+	 * price in TwellerFlow2_Prints. A blank input means "not priced", not
+	 * "free" — save leaves it out of the provider's price map.
+	 */
+	private static function render_pricing_table( $p ) {
+		if ( ! class_exists( 'TwellerFlow2_Prints' ) || ! method_exists( 'TwellerFlow2_Prints', 'get_active_products' ) ) return;
+
+		$products = TwellerFlow2_Prints::get_active_products();
+		if ( empty( $products ) ) return;
+
+		$prices = isset( $p['prices'] ) && is_array( $p['prices'] ) ? $p['prices'] : array();
+
+		echo '<h3 style="margin:28px 0 4px;">What they charge you</h3>';
+		echo '<p class="description" style="max-width:640px; margin:0 0 12px;">Your cost per item from this lab, in TTD — separate from what customers pay. Leave a field blank when this lab does not print that product; a provider never sees a wrong TT$0, they see a "not priced" flag instead.</p>';
+
+		echo '<table class="widefat striped" style="max-width:560px;"><thead><tr><th>Product</th><th style="width:150px;">Your cost (TT$)</th></tr></thead><tbody>';
+		foreach ( $products as $product ) {
+			$product_id = sanitize_key( (string) ( isset( $product['id'] ) ? $product['id'] : '' ) );
+			if ( $product_id === '' ) continue;
+			$name  = (string) ( isset( $product['name'] ) ? $product['name'] : $product_id );
+			$value = isset( $prices[ $product_id ] ) ? number_format( (float) $prices[ $product_id ], 2, '.', '' ) : '';
+
+			echo '<tr><td>' . esc_html( $name ) . '</td><td>'
+				. '<input type="number" step="0.01" min="0" inputmode="decimal" placeholder="Not priced" style="width:120px;" '
+				. 'name="provider_cost[' . esc_attr( $product_id ) . ']" value="' . esc_attr( $value ) . '"></td></tr>';
+		}
+		echo '</tbody></table>';
 	}
 
 	private static function field_row( $label, $html ) {
@@ -1412,6 +1653,8 @@ if ( count( $parts ) !== 2 ) {
 			'currency'   => 'TT$',
 			'month'      => date_i18n( 'F Y', current_time( 'timestamp' ) ),
 			'providers'  => self::provider_summary(),
+			// Studio-wide cost/payout/margin rollup — see economics_summary().
+			'economics'  => self::economics_summary(),
 		) );
 	}
 
@@ -1531,6 +1774,14 @@ if ( count( $parts ) !== 2 ) {
 			'can_ready'     => ( ! $closed && $status !== 'ready' ) ? 1 : 0,
 			'can_ship'      => ( ! $closed && ! empty( $provider['does_delivery'] ) && (string) $f['shipped_at'] === '' ) ? 1 : 0,
 		);
+
+		// Payout line, Printful/Printify style: the order's gross value and
+		// what THIS provider earns on it. The studio's margin never appears
+		// here — order_economics() computes it, we simply never read it out.
+		$eco                        = self::order_economics( $order, $provider );
+		$payload['value']           = $eco['value'];
+		$payload['your_earnings']   = $eco['provider_cost'];
+		$payload['unpriced_count']  = $eco['unpriced_items'];
 
 		if ( ! $detail ) return $payload;
 

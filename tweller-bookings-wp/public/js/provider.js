@@ -104,7 +104,13 @@
             tile('In production', stats.in_production) +
             tile('Ready', stats.ready) +
             tile('Done this month', stats.completed_month) +
-            tile('Value this month', money(stats.value_month), true);
+            tile('Value this month', money(stats.value_month)) +
+            // Payout / earnings — completed jobs only, so this reads as real
+            // money earned, not a forecast of what's still in the pipeline.
+            tile('Earned this month', money(stats.earned_month), true) +
+            tile('Earned all-time', money(stats.earned_all_time), true) +
+            tile('Jobs completed', stats.jobs_completed) +
+            tile('Average per job', money(stats.avg_per_job));
     }
 
     function pill(order) {
@@ -134,6 +140,25 @@
 
         if (order.sizes) {
             html += '<p class="tfpv__sizes">' + esc(order.sizes) + '</p>';
+        }
+
+        // Payout line, Printful/Printify style: gross order value next to
+        // what THIS job earns this provider. Never the studio's margin.
+        html += '<div class="tfpv__pay">' +
+            '<div class="tfpv__pay-item">' +
+                '<span class="tfpv__pay-label">Order value</span>' +
+                '<span class="tfpv__pay-value">' + esc(money(order.value)) + '</span>' +
+            '</div>' +
+            '<div class="tfpv__pay-item tfpv__pay-item--earn">' +
+                '<span class="tfpv__pay-label">You earn</span>' +
+                '<span class="tfpv__pay-value">' + esc(money(order.your_earnings)) + '</span>' +
+            '</div>' +
+            '</div>';
+
+        if (order.unpriced_count > 0) {
+            html += '<p class="tfpv__flag">' + esc(order.unpriced_count) + ' item' +
+                (order.unpriced_count === 1 ? '' : 's') +
+                ' not priced yet — contact Tweller Studios.</p>';
         }
 
         html += '<div class="tfpv__actions">';

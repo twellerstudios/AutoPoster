@@ -69,6 +69,7 @@
 
     // Public-mode uploads: {file, name, previewUrl}
     var publicFiles = [];
+    var uploadSelected = {}; // file index -> true, storefront batch picker
 
     // Every photo we've ever been handed, so "Add another size" and
     // "Continue adding" always have something to choose from.
@@ -689,7 +690,11 @@
     function updateFab() {
         if (!fab) return;
         var n = cartCount();
-        var hidden = n <= 0 || isDrawerOpen() || isFlowOpen() || isCropOpen();
+        // On the storefront the descriptive status bar (renderStoreBar)
+        // already offers the same "continue to checkout" action with more
+        // context — showing the plain circular FAB too would just be a
+        // second button doing the same thing at the same time.
+        var hidden = n <= 0 || isDrawerOpen() || isFlowOpen() || isCropOpen() || mode === 'public';
         fab.style.display = hidden ? 'none' : '';
         var badge = document.getElementById('tf2p-fab-badge');
         if (badge) badge.textContent = String(n);
@@ -752,6 +757,15 @@
             if (flow.selected[flow.order[i]]) out.push(flow.order[i]);
         }
         return out;
+    }
+
+    /** key -> photo object, for anywhere that needs to look one up by key. */
+    function poolByKey() {
+        var map = {};
+        if (flow && flow.pool) {
+            for (var i = 0; i < flow.pool.length; i++) map[flow.pool[i].key] = flow.pool[i];
+        }
+        return map;
     }
 
     function toggleSelect(key) {
@@ -1176,6 +1190,13 @@
         }));
         wrap.appendChild(qtyRow);
 
+        // Each size card previews a REAL photo from this batch, cycling
+        // through all of them so a page of 10-13 sizes shows the variety
+        // of what the customer actually chose rather than a grey box.
+        var previewKeys = selectedKeys();
+        var previewMap  = poolByKey();
+        var previewIdx  = 0;
+
         for (var c = 0; c < CATEGORY_ORDER.length; c++) {
             var category = CATEGORY_ORDER[c];
             var group = [];
@@ -1200,7 +1221,10 @@
 
             var grid = el('div', 'tf2p-prodgrid' + (locked ? ' tf2p-prodgrid--locked' : ''));
             for (var g = 0; g < group.length; g++) {
-                var card = buildProductCard(group[g]);
+                var previewPhoto = previewKeys.length
+                    ? previewMap[previewKeys[previewIdx++ % previewKeys.length]]
+                    : null;
+                var card = buildProductCard(group[g], previewPhoto);
                 if (locked) {
                     card.disabled = true;
                     card.className += ' tf2p-prodcard--locked';
@@ -1219,17 +1243,32 @@
         return selectedKeys().length >= PHOTOBOOK_MIN;
     }
 
-    function buildProductCard(p) {
+    function buildProductCard(p, previewPhoto) {
         var on = flow.productId === p.id;
         var card = btn('tf2p-prodcard' + (on ? ' tf2p-prodcard--on' : ''), '');
         card.setAttribute('aria-pressed', on ? 'true' : 'false');
 
         var art = el('span', 'tf2p-prodcard__art');
-        var shape = el('span', 'tf2p-prodcard__shape');
-        if (p.width_in && p.height_in) {
-            shape.style.aspectRatio = p.width_in + ' / ' + p.height_in;
+        var aspect = (p.width_in && p.height_in) ? { w: p.width_in, h: p.height_in } : null;
+
+        if (previewPhoto) {
+            // A real crop preview — orientedSize() picks whichever
+            // orientation of this size (portrait/landscape) actually
+            // matches the photo, same as the review step does.
+            var dims = photoDims[previewPhoto.key];
+            var sa   = dims ? dims.w / dims.h : 0;
+            var size = aspect ? orientedSize(p, sa || (aspect.w / aspect.h)) : aspect;
+            art.appendChild(cropThumb('tf2p-prodcard__shape', previewPhoto.thumb_url || previewPhoto.url, null, size || aspect));
+            if (!dims) {
+                // Dimensions unknown yet — cover-fit still looks right
+                // immediately; re-render once measured for full accuracy.
+                measurePhoto(previewPhoto, function() { if (flow && flow.step === 2) renderFlow(); });
+            }
+        } else {
+            var shape = el('span', 'tf2p-prodcard__shape');
+            if (aspect) shape.style.aspectRatio = aspect.w + ' / ' + aspect.h;
+            art.appendChild(shape);
         }
-        art.appendChild(shape);
         card.appendChild(art);
 
         var body = el('span', 'tf2p-prodcard__body');
@@ -1719,29 +1758,22 @@
         if (metaBits.length) info.appendChild(el('span', 'tf2p-citem__meta', metaBits.join(' · ')));
         cell.appendChild(info);
 
+        // Reuses the same pill stepper as the rest of the flow — the
+        // cart line had its own plain +/- buttons that never centred
+        // their glyphs and looked out of place next to it.
         var qtyWrap = el('div', 'tf2p-citem__qty');
-        var minus = btn('tf2p-citem__step', '−');
-        minus.setAttribute('aria-label', 'Fewer');
-        var num = el('span', 'tf2p-citem__num', String(item.qty));
-        var plus = btn('tf2p-citem__step', '+');
-        plus.setAttribute('aria-label', 'More');
-        minus.addEventListener('click', function() {
-            item.qty -= 1;
-            if (item.qty <= 0) {
+        var stepper = buildStepper(item.qty, function(v) {
+            if (v <= 0) {
                 var idx = indexOfItem(item);
                 if (idx >= 0) cart.splice(idx, 1);
+            } else {
+                item.qty = Math.min(50, v);
             }
             notifyCountChange();
             renderCart();
         });
-        plus.addEventListener('click', function() {
-            item.qty = Math.min(50, item.qty + 1);
-            notifyCountChange();
-            renderCart();
-        });
-        qtyWrap.appendChild(minus);
-        qtyWrap.appendChild(num);
-        qtyWrap.appendChild(plus);
+        stepper.className += ' tf2p-stepper--sm';
+        qtyWrap.appendChild(stepper);
         cell.appendChild(qtyWrap);
 
         if (product) {
@@ -2034,6 +2066,7 @@
             });
             addToPool([photo]);
             added.push(photo);
+            uploadSelected[index] = true; // pre-checked — the obvious default is "yes, order these"
             measurePhoto(photo, function() {});
         }
         if (errors.length) window.alert(errors.join('\n'));
@@ -2059,35 +2092,116 @@
         return out;
     }
 
+    function selectedUploadKeys() {
+        var out = [];
+        for (var i = 0; i < publicFiles.length; i++) {
+            if (uploadSelected[i]) out.push('f:' + i);
+        }
+        return out;
+    }
+
     function renderUploadGrid() {
         var grid = document.getElementById('tf2p-upload-grid');
         if (!grid) return;
+
+        var toolbar = document.getElementById('tf2p-upload-toolbar');
+        if (!toolbar && publicFiles.length) {
+            toolbar = el('div', 'tf2p-selbar', '');
+            toolbar.id = 'tf2p-upload-toolbar';
+            grid.parentNode.insertBefore(toolbar, grid);
+        }
+        if (toolbar) {
+            if (!publicFiles.length) {
+                toolbar.parentNode.removeChild(toolbar);
+            } else {
+                var n = selectedUploadKeys().length;
+                toolbar.innerHTML = '';
+                toolbar.appendChild(el('span', 'tf2p-selbar__count',
+                    n ? n + ' selected' : publicFiles.length + ' photo' + (publicFiles.length === 1 ? '' : 's')));
+                var allBtn = btn('tf2p-linkbtn', n === publicFiles.length ? 'Clear' : 'Select all');
+                allBtn.addEventListener('click', function() {
+                    if (selectedUploadKeys().length === publicFiles.length) {
+                        uploadSelected = {};
+                    } else {
+                        for (var i = 0; i < publicFiles.length; i++) uploadSelected[i] = true;
+                    }
+                    renderUploadGrid();
+                });
+                toolbar.appendChild(allBtn);
+            }
+        }
+
         grid.innerHTML = '';
         for (var i = 0; i < publicFiles.length; i++) {
             grid.appendChild(buildUploadTile(publicFiles[i], i));
         }
-        var startBtn = document.getElementById('tf2p-start-order');
-        if (startBtn) startBtn.style.display = publicFiles.length ? '' : 'none';
+        renderStoreBar();
+    }
+
+    /**
+     * The floating pill under the upload grid — the one place a customer
+     * can always see what to do next and tap straight into it, instead of
+     * being left looking at a grid of thumbnails with no way forward.
+     * Two states: photos picked but no size chosen yet, or a batch already
+     * sitting in the cart waiting on checkout.
+     */
+    function renderStoreBar() {
+        var bar   = document.getElementById('tf2p-cartbar');
+        var label = document.getElementById('tf2p-cartbar-label');
+        var cbtn  = document.getElementById('tf2p-cartbar-btn');
+        if (!bar || !label || !cbtn) return;
+
+        var picked = selectedUploadKeys();
+        var count  = cartCount();
+
+        if (picked.length) {
+            bar.style.display = 'flex';
+            label.textContent = picked.length + ' photo' + (picked.length === 1 ? '' : 's') + ' selected';
+            cbtn.textContent = 'Choose sizes \u2192';
+            cbtn.onclick = function() {
+                var keys = selectedUploadKeys();
+                uploadSelected = {};
+                renderUploadGrid();
+                startFlow({ step: 2, photos: poolAsList(), selected: keys });
+            };
+        } else if (count > 0) {
+            bar.style.display = 'flex';
+            label.textContent = count + ' print' + (count === 1 ? '' : 's') + ' ready \u00b7 ' + money(subtotal());
+            cbtn.textContent = 'Continue to checkout \u2192';
+            cbtn.onclick = function() { openDrawer(); };
+        } else {
+            bar.style.display = 'none';
+        }
     }
 
     function buildUploadTile(entry, index) {
-        var tile = el('div', 'tf2-prints__tile');
+        var key = 'f:' + index;
+        var checked = !!uploadSelected[index];
+
+        // Reuses the exact checkmark styling from the in-flow photo picker
+        // (.tf2p-ptile--on / .tf2p-ptile__check) so a tile ticked here looks
+        // identical to one ticked inside the ordering flow.
+        var tile = el('div', 'tf2-prints__tile tf2p-ptile' + (checked ? ' tf2p-ptile--on' : ''));
         var img = document.createElement('img');
         img.src = entry.previewUrl;
         img.alt = entry.name;
         tile.appendChild(img);
 
-        var key = 'f:' + index;
+        var check = el('span', 'tf2p-ptile__check', '\u2713');
+        tile.appendChild(check);
+
         var n = 0;
         for (var i = 0; i < cart.length; i++) {
             if ((cart[i].key || photoKey(cart[i])) === key) n += cart[i].qty;
         }
-        var badge = el('span', 'tf2-prints__tile-badge', String(n));
-        badge.style.display = n > 0 ? '' : 'none';
-        tile.appendChild(badge);
+        if (n > 0) {
+            var badge = el('span', 'tf2-prints__tile-badge', String(n));
+            tile.appendChild(badge);
+        }
 
         tile.addEventListener('click', function() {
-            startFlow({ step: 2, photos: poolAsList(), selected: [key] });
+            if (uploadSelected[index]) { delete uploadSelected[index]; } else { uploadSelected[index] = true; }
+            renderUploadGrid();
         });
         return tile;
     }
@@ -2142,10 +2256,13 @@
             dropzone.addEventListener('drop', function(e) {
                 e.preventDefault();
                 dropzone.classList.remove('tf2-prints__dropzone--over');
-                if (e.dataTransfer && e.dataTransfer.files) acceptFiles(e.dataTransfer.files, true);
+                // openAfter:false — photos land in the grid for the
+                // customer to select a batch from, rather than jumping
+                // straight into ordering the moment a file is dropped.
+                if (e.dataTransfer && e.dataTransfer.files) acceptFiles(e.dataTransfer.files, false);
             });
             input.addEventListener('change', function() {
-                if (input.files) acceptFiles(input.files, true);
+                if (input.files) acceptFiles(input.files, false);
                 input.value = '';
             });
         }
@@ -2376,6 +2493,7 @@
             title.textContent = c > 0 ? 'Your Prints (' + c + ')' : 'Your Prints';
         }
         updateFab();
+        renderStoreBar();
         if (isDrawerOpen()) renderCart();
     }
 

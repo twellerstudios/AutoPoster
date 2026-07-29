@@ -467,7 +467,7 @@ class TwellerFlow2_Prints {
 
             <section class="tf2-shop__start" id="tf2p-start">
                 <h3 class="tf2-shop__cat">Start your order</h3>
-                <p class="tf2-shop__cat-blurb">Add your photos below, then tap each one to choose products and sizes.</p>
+                <p class="tf2-shop__cat-blurb">Add your photos below, tap to select the ones you want, then continue.</p>
 
                 <div class="tf2-prints__dropzone" id="tf2p-dropzone" role="button" tabindex="0">
                     <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>

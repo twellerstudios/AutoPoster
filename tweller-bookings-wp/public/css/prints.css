@@ -1449,6 +1449,7 @@ a.tf2p-btn {
 }
 
 .tf2-portal__item-file {
+    display: block;
     font-size: 11.5px;
     color: var(--tf2p-gray-500);
     overflow: hidden;
@@ -1955,6 +1956,7 @@ a.tf2p-btn {
 }
 .tf2p-review__info { flex: 1 1 auto; min-width: 0; }
 .tf2p-review__file {
+    display: block; /* text-overflow:ellipsis is a no-op on inline spans */
     font-size: 13px;
     font-weight: 600;
     color: var(--tf2p-black);
@@ -2133,19 +2135,6 @@ a.tf2p-btn {
 }
 .tf2p-citem__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .tf2p-citem__qty { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.tf2p-citem__step {
-    width: 26px;
-    height: 26px;
-    border: 1px solid var(--tf2p-gray-300);
-    background: var(--tf2p-white);
-    border-radius: 7px;
-    font-size: 15px;
-    line-height: 1;
-    cursor: pointer;
-    color: var(--tf2p-gray-700);
-}
-.tf2p-citem__step:hover { border-color: var(--tf2p-gold); color: var(--tf2p-black); }
-.tf2p-citem__num { min-width: 20px; text-align: center; font-size: 13.5px; font-weight: 700; }
 
 .tf2p-subtotal-row {
     display: flex;
@@ -2586,6 +2575,7 @@ a.tf2p-btn {
 /* Cart line — readable: name, unit price, qty, line total */
 .tf2p-citem__info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tf2p-citem__name {
+    display: block;
     font-size: 13.5px;
     font-weight: 700;
     color: var(--tf2p-black);
@@ -2594,6 +2584,7 @@ a.tf2p-btn {
     text-overflow: ellipsis;
 }
 .tf2p-citem__meta {
+    display: block;
     font-size: 12px;
     color: var(--tf2p-gray-500);
     white-space: nowrap;
@@ -2685,7 +2676,7 @@ a.tf2p-btn {
 @media (max-width: 460px) {
     .tf2p-citem { gap: 8px; }
     .tf2p-citem__thumb { width: 40px; }
-    .tf2p-citem__step { width: 24px; height: 24px; }
+    .tf2p-citem__qty .tf2p-stepper__btn { width: 22px; height: 22px; }
     .tf2p-citem__line { font-size: 12.5px; }
     .tf2p-citem__name, .tf2p-citem__meta { font-size: 12.5px; }
 }

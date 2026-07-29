@@ -2258,7 +2258,6 @@ if ( count( $parts ) !== 2 ) {
 				<ul class="tfpa__points">
 					<li>Print-ready files, colour-managed, delivered as one package per job</li>
 					<li>Your own dashboard &mdash; jobs, files, delivery labels, barcode sign-off</li>
-					<li>We never share your pricing, and you never see our client&rsquo;s details</li>
 				</ul>
 			</div>
 
@@ -2990,15 +2989,7 @@ if ( count( $parts ) !== 2 ) {
 		$body  = "
 			<h2 style='color:#101010; font-weight:600;'>We have your application</h2>
 			<p style='color:#3D3630;'>Hi {$first},</p>
-			<p style='color:#3D3630; line-height:1.7;'>Thank you for putting <strong>" . esc_html( (string) $row->business_name ) . "</strong> forward as a Tweller Studios print partner. Your application is with us and a person &mdash; not a robot &mdash; will read it.</p>
-			" . self::card( 'What you sent us',
-				self::row( 'Business', (string) $row->business_name )
-				. self::row( 'Contact', (string) $row->email )
-				. ( (string) $row->services !== '' ? self::row( 'Services', self::services_label( (string) $row->services ) ) : '' )
-				. ( (string) $row->turnaround !== '' ? self::row( 'Turnaround', (string) $row->turnaround ) : '' )
-				. self::row( 'Delivery', (int) $row->does_delivery ? 'You deliver to customers' : 'Studio delivers' )
-			) . "
-			<p style='color:#3D3630; line-height:1.7;'>If we would like to work with you we will email a sign-in link to your own partner dashboard, where your jobs, print-ready files and delivery labels live. If not, we will still write back.</p>
+			<p style='color:#3D3630; line-height:1.7;'>Thanks for putting <strong>" . esc_html( (string) $row->business_name ) . "</strong> forward as a Tweller Studios print partner. A real person will read it &mdash; we will write back either way.</p>
 			<p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
 		";
 
@@ -3019,13 +3010,11 @@ if ( count( $parts ) !== 2 ) {
 				self::row( 'Business', (string) $row->business_name )
 				. self::row( 'Contact', (string) $row->contact_name )
 				. self::row( 'Email', (string) $row->email )
-				. ( (string) $row->phone !== '' ? self::row( 'Phone', (string) $row->phone ) : '' )
-				. ( (string) $row->country !== '' ? self::row( 'Region', (string) $row->country ) : '' )
 				. ( (string) $row->services !== '' ? self::row( 'Services', self::services_label( (string) $row->services ) ) : '' )
 				. self::row( 'Delivers', (int) $row->does_delivery ? 'Yes' : 'No' )
 			) . "
 			" . self::btn( $review_url, 'Review this application' ) . "
-			<p style='color:#8A8178; font-size:13px; text-align:center;'>Approving creates the provider record and the dashboard login in one step.</p>
+			<p style='color:#8A8178; font-size:13px; text-align:center;'>Approving creates the provider record and dashboard login in one step.</p>
 		";
 
 		return self::mail( $to, 'New print partner application — ' . (string) $row->business_name, $body );
@@ -3041,7 +3030,7 @@ if ( count( $parts ) !== 2 ) {
 		$body = "
 			<h2 style='color:#101010; font-weight:600;'>Welcome aboard</h2>
 			<p style='color:#3D3630;'>Hi {$first},</p>
-			<p style='color:#3D3630; line-height:1.7;'>Good news &mdash; <strong>" . esc_html( (string) $provider['name'] ) . "</strong> has been approved as a Tweller Studios print partner. Your dashboard is live and ready for your first job.</p>
+			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $provider['name'] ) . "</strong> is approved as a Tweller Studios print partner &mdash; your dashboard is ready for your first job.</p>
 
 			" . self::btn( $dashboard, 'Open your partner dashboard' ) . "
 
@@ -3051,18 +3040,8 @@ if ( count( $parts ) !== 2 ) {
 				. self::row( 'Delivery', ! empty( $provider['does_delivery'] ) ? 'You deliver to customers' : 'Tweller Studios delivers' )
 			) . "
 
-			<p style='color:#3D3630; line-height:1.7;'>A separate email from the website carries a link to set your password. If it has not arrived, use <em>Forgot your password?</em> on the sign-in screen.</p>
-
-			" . self::card( 'What happens next', "
-				<ol style='color:#3D3630; margin:0; padding-left:20px; line-height:1.9;'>
-					<li>We send you a job &mdash; you get an email with the print-ready package.</li>
-					<li>Sign in, download the ZIP, and mark the job <strong>Printing</strong>.</li>
-					<li>When it is boxed, mark it <strong>Ready</strong>. Print the label if you are delivering.</li>
-					<li>Scan the barcode on hand-over and the job closes itself out.</li>
-				</ol>
-			" ) . "
-
-			<p style='color:#3D3630; line-height:1.7;'>You will only ever see what you need to print a job &mdash; never our client&rsquo;s name, email or what they paid.</p>
+			<p style='color:#3D3630; line-height:1.7;'>A separate email carries your password-set link &mdash; use <em>Forgot your password?</em> on the sign-in screen if it has not arrived.</p>
+			<p style='color:#3D3630; line-height:1.7;'>When a job comes in: download the files, mark it <strong>Printing</strong>, then <strong>Ready</strong> once it is boxed, and scan the barcode on hand-over to close it out.</p>
 			<p style='color:#3D3630;'>Welcome to the team,<br><strong>The Tweller Studios Team</strong></p>
 		";
 
@@ -3084,9 +3063,9 @@ if ( count( $parts ) !== 2 ) {
 		$body = "
 			<h2 style='color:#101010; font-weight:600;'>Thank you for applying</h2>
 			<p style='color:#3D3630;'>Hi {$first},</p>
-			<p style='color:#3D3630; line-height:1.7;'>Thank you for offering to print for Tweller Studios, and for the time you spent on your application. We are not able to take on <strong>" . esc_html( (string) $row->business_name ) . "</strong> as a print partner right now.</p>
+			<p style='color:#3D3630; line-height:1.7;'>Thanks for offering to print for Tweller Studios. We are not able to take on <strong>" . esc_html( (string) $row->business_name ) . "</strong> right now &mdash; we keep the partner list deliberately small, so this isn&rsquo;t a reflection on your work.</p>
 			{$note_block}
-			<p style='color:#3D3630; line-height:1.7;'>This is not a judgement on your work &mdash; we keep the partner list deliberately small. Do get in touch again if what you offer changes; we are always happy to take another look.</p>
+			<p style='color:#3D3630; line-height:1.7;'>Please do reach out again if things change &mdash; we&rsquo;d be glad to take another look.</p>
 			<p style='color:#3D3630;'>With thanks,<br><strong>The Tweller Studios Team</strong></p>
 		";
 

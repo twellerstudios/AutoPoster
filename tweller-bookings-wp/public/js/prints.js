@@ -1773,6 +1773,32 @@
         };
     }
 
+    /** Upload progress bar shown above the Place Order button. */
+    function setUploadProgress(fraction, loaded, total) {
+        var host = document.getElementById('tf2p-checkout-btn');
+        if (!host) return;
+        var bar = document.getElementById('tf2p-upprog');
+        if (!bar) {
+            bar = el('div', 'tf2p-upprog');
+            bar.id = 'tf2p-upprog';
+            bar.innerHTML = '<div class="tf2p-upprog__track"><div class="tf2p-upprog__fill"></div></div>'
+                + '<p class="tf2p-upprog__label"></p>';
+            host.parentNode.insertBefore(bar, host);
+        }
+        var pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+        bar.querySelector('.tf2p-upprog__fill').style.width = pct + '%';
+        var mb = function(b) { return (b / 1048576).toFixed(1) + ' MB'; };
+        bar.querySelector('.tf2p-upprog__label').textContent =
+            pct < 100
+                ? 'Uploading your photos — ' + pct + '%  (' + mb(loaded) + ' of ' + mb(total) + ')'
+                : 'Finishing up…';
+    }
+
+    function clearUploadProgress() {
+        var bar = document.getElementById('tf2p-upprog');
+        if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+    }
+
     function showCheckoutError(msg) {
         var errEl = document.getElementById('tf2p-checkout-error');
         if (errEl) {
@@ -1907,11 +1933,30 @@
             fd.append('customer_phone', phone);
             fd.append('notes', notes);
             fd.append('website', hp);
+            fd.append('crop_service', cartUsesStudioCrop() ? '1' : '0');
+            fd.append('fulfilment', shipMode);
+            var shipObj = collectShipping();
+            if (shipObj) fd.append('shipping', JSON.stringify(shipObj));
 
-            fetch(cfg.restUrl + 'public-order', { method: 'POST', body: fd })
-                .then(function(r) { return r.json(); })
-                .then(done)
-                ['catch'](function() { done(null); });
+            // XHR rather than fetch: only XHR reports upload progress, and a
+            // photo order can be tens of megabytes on a phone connection.
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', cfg.restUrl + 'public-order', true);
+
+            if (xhr.upload) {
+                xhr.upload.onprogress = function(e) {
+                    if (!e.lengthComputable) return;
+                    setUploadProgress(e.loaded / e.total, e.loaded, e.total);
+                };
+            }
+            xhr.onload = function() {
+                clearUploadProgress();
+                var data = null;
+                try { data = JSON.parse(xhr.responseText); } catch (e) {}
+                done(data);
+            };
+            xhr.onerror = function() { clearUploadProgress(); done(null); };
+            xhr.send(fd);
         }
     }
 

@@ -2689,3 +2689,26 @@ a.tf2p-btn {
     .tf2p-citem__line { font-size: 12.5px; }
     .tf2p-citem__name, .tf2p-citem__meta { font-size: 12.5px; }
 }
+
+/* Upload progress — real bytes sent, not a spinner */
+.tf2p-upprog { margin: 12px 0 4px; }
+.tf2p-upprog__track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--tf2p-gray-200);
+    overflow: hidden;
+}
+.tf2p-upprog__fill {
+    height: 100%;
+    width: 0;
+    border-radius: 999px;
+    background: var(--tf2p-gold);
+    transition: width 0.18s ease;
+}
+.tf2p-upprog__label {
+    margin: 7px 0 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tf2p-gray-700);
+    text-align: center;
+}

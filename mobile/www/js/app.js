@@ -1805,10 +1805,13 @@
         screen.appendChild(wrap);
 
         var card = el(
-            '<div class="card"><div class="card__title">Point at the shipping label</div>' +
-                '<p class="hint" style="margin-top:0;">Scanning the barcode marks the order delivered and emails the customer.</p>' +
+            '<div class="card"><div class="card__title">Point at the QR code</div>' +
+                '<p class="hint" style="margin-top:0;">It scans on its own and marks the order delivered. If the live view struggles, tap <strong>Capture &amp; scan</strong> — a still photo reads far more reliably.</p>' +
                 '<div class="scanbox"><video id="scan-video" playsinline muted></video><div class="scanbox__frame"></div></div>' +
                 '<div id="scan-state" class="hint" style="text-align:center; margin:10px 0 0;">Starting camera…</div>' +
+                '<button class="btn btn--dark" id="scan-shot" style="margin-top:12px;">Capture &amp; scan</button>' +
+                '<button class="btn btn--ghost" id="scan-photo-btn" style="margin-top:8px;">Use a photo instead</button>' +
+                '<input type="file" id="scan-photo" accept="image/*" capture="environment" style="display:none;">' +
             '</div>'
         );
         wrap.appendChild(card);
@@ -1827,6 +1830,72 @@
         var stream = null;
         var stopped = false;
         var busy = false;
+        var sharedDetector = null;
+
+        /**
+         * Detect from a still image. Android WebViews often fail to read a
+         * live <video> frame yet decode a captured bitmap fine, so this is
+         * the reliable path — used by Capture & scan and by photo upload.
+         */
+        async function detectFromSource(src) {
+            if (!window.BarcodeDetector) return null;
+            if (!sharedDetector) {
+                try {
+                    var fmts = await window.BarcodeDetector.getSupportedFormats();
+                    var want = ['qr_code', 'code_128'].filter(function (f) { return fmts.indexOf(f) !== -1; });
+                    if (!want.length) return null;
+                    sharedDetector = new window.BarcodeDetector({ formats: want });
+                } catch (e) { return null; }
+            }
+            try {
+                var codes = await sharedDetector.detect(src);
+                if (codes && codes.length && codes[0].rawValue) return codes[0].rawValue;
+            } catch (e) {}
+            return null;
+        }
+
+        /** Grab the current video frame at full resolution and read it. */
+        async function captureAndScan() {
+            if (!stream || !video.videoWidth) {
+                stateEl.textContent = 'Camera isn’t ready yet — give it a moment.';
+                return;
+            }
+            stateEl.textContent = 'Reading the captured frame…';
+            var canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            var found = await detectFromSource(canvas);
+            if (!found) {
+                try {
+                    var bmp = await createImageBitmap(canvas);
+                    found = await detectFromSource(bmp);
+                    bmp.close && bmp.close();
+                } catch (e) {}
+            }
+            if (found) { submitCode(found); return; }
+            stateEl.textContent = 'No code found in that shot — fill the frame with the QR and try again.';
+        }
+
+        card.querySelector('#scan-shot').addEventListener('click', captureAndScan);
+
+        card.querySelector('#scan-photo-btn').addEventListener('click', function () {
+            card.querySelector('#scan-photo').click();
+        });
+        card.querySelector('#scan-photo').addEventListener('change', async function () {
+            var file = this.files && this.files[0];
+            if (!file) return;
+            stateEl.textContent = 'Reading the photo…';
+            var found = null;
+            try {
+                var bmp = await createImageBitmap(file);
+                found = await detectFromSource(bmp);
+                bmp.close && bmp.close();
+            } catch (e) {}
+            if (found) { submitCode(found); return; }
+            stateEl.textContent = 'No code found in that photo — make sure the QR is sharp and fills the frame.';
+        });
 
         function stop() {
             stopped = true;
@@ -1884,12 +1953,14 @@
             if (window.BarcodeDetector) {
                 try {
                     var formats = await window.BarcodeDetector.getSupportedFormats();
-                    var want = ['code_128', 'qr_code'].filter(function (f) { return formats.indexOf(f) !== -1; });
+                    // QR first: phone cameras lock onto it far more
+                    // reliably than a thin 1-D barcode.
+                    var want = ['qr_code', 'code_128'].filter(function (f) { return formats.indexOf(f) !== -1; });
                     if (want.length) detector = new window.BarcodeDetector({ formats: want });
                 } catch (e) {}
             }
             if (!detector) {
-                stateEl.textContent = 'This device can’t scan barcodes — type the code below.';
+                stateEl.textContent = 'This device can’t scan codes automatically — capture a photo or type the code below.';
                 return;
             }
 
@@ -1916,7 +1987,7 @@
 
             video.srcObject = stream;
             await video.play().catch(function () {});
-            stateEl.textContent = 'Looking for a barcode…';
+            stateEl.textContent = 'Looking for a QR code…';
 
             (function tick() {
                 if (stopped || busy) {

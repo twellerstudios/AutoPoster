@@ -1309,17 +1309,30 @@ class TwellerFlow2_Print_Providers {
 			<div class="tfpv__alert" id="tfpv-alert" hidden></div>
 
 			<section class="tfpv__scan">
-				<h2 class="tfpv__h2">Scan to complete</h2>
-				<p class="tfpv__hint">Point at the QR code on the shipping label — it closes the job automatically. If the live view won't lock on, use Capture &amp; scan or a photo instead.</p>
-				<div class="tfpv__scan-row">
-					<input type="text" id="tfpv-scan-input" class="tfpv__input" placeholder="TS-PRINT-XXXXXX" autocomplete="off" spellcheck="false">
-					<button type="button" class="tfpv__btn tfpv__btn--gold" id="tfpv-scan-go">Verify</button>
-					<button type="button" class="tfpv__btn tfpv__btn--ghost" id="tfpv-scan-cam" hidden>Use camera</button>
+				<div class="tfpv__scan-head">
+					<span class="tfpv__scan-icon" aria-hidden="true">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+					</span>
+					<div>
+						<h2 class="tfpv__h2">Finish a job</h2>
+						<p class="tfpv__hint">When you hand an order over, enter its reference (or scan the QR on the label) and we&rsquo;ll close it out and tell the studio.</p>
+					</div>
 				</div>
-				<video id="tfpv-scan-video" class="tfpv__video" playsinline hidden></video>
+
+				<div class="tfpv__scan-row">
+					<input type="text" id="tfpv-scan-input" class="tfpv__input" placeholder="TS-PRINT-XXXXXX" autocomplete="off" spellcheck="false" aria-label="Order reference">
+					<button type="button" class="tfpv__btn tfpv__btn--gold" id="tfpv-scan-go">Complete job</button>
+					<button type="button" class="tfpv__btn tfpv__btn--ghost" id="tfpv-scan-cam" hidden>Scan QR instead</button>
+				</div>
+
+				<div class="tfpv__viewport" id="tfpv-scan-viewport" hidden>
+					<video id="tfpv-scan-video" class="tfpv__video" playsinline muted></video>
+					<span class="tfpv__reticle" aria-hidden="true"></span>
+				</div>
+
 				<div class="tfpv__scan-row" id="tfpv-scan-camrow" hidden>
 					<button type="button" class="tfpv__btn tfpv__btn--dark" id="tfpv-scan-shot">Capture &amp; scan</button>
-					<button type="button" class="tfpv__btn tfpv__btn--ghost" id="tfpv-scan-photo-btn">Use a photo instead</button>
+					<button type="button" class="tfpv__btn tfpv__btn--ghost" id="tfpv-scan-photo-btn">Use a photo</button>
 					<input type="file" id="tfpv-scan-photo" accept="image/*" capture="environment" hidden>
 				</div>
 				<p class="tfpv__hint" id="tfpv-scan-state" aria-live="polite"></p>

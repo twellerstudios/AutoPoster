@@ -832,6 +832,99 @@ class TwellerFlow2_Prints {
             'callback'            => array( __CLASS__, 'rest_set_status' ),
             'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
         ));
+
+        // Send a whole session gallery to the print lab (API key) — the
+        // same studio-initiated order the admin screens create, so the
+        // phone can do everything the desk can.
+        register_rest_route( $ns, '/prints/studio-order', array(
+            'methods'             => 'POST',
+            'callback'            => array( __CLASS__, 'rest_studio_order' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
+        ));
+
+        // What the app needs to build that form: products, providers,
+        // meet-up points and the delivery fee, in one call.
+        register_rest_route( $ns, '/prints/studio-options', array(
+            'methods'             => 'GET',
+            'callback'            => array( __CLASS__, 'rest_studio_options' ),
+            'permission_callback' => array( 'TwellerFlow2_Photo_Automation', 'verify_api_key' ),
+        ));
+    }
+
+    /** Options the app needs to offer "send to print lab". */
+    public static function rest_studio_options( $request ) {
+        $settings = self::get_settings();
+
+        $products = array();
+        foreach ( self::get_active_products() as $p ) {
+            $products[] = array(
+                'id'        => (string) $p['id'],
+                'name'      => (string) $p['name'],
+                'category'  => (string) $p['category'],
+                'price'     => (float) $p['price'],
+                'width_in'  => (float) $p['width_in'],
+                'height_in' => (float) $p['height_in'],
+            );
+        }
+
+        $providers = array();
+        if ( class_exists( 'TwellerFlow2_Print_Providers' ) ) {
+            foreach ( TwellerFlow2_Print_Providers::providers() as $pv ) {
+                if ( empty( $pv['active'] ) ) continue;
+                $providers[] = array(
+                    'id'      => (string) $pv['id'],
+                    'name'    => (string) $pv['name'],
+                    'default' => ! empty( $pv['default'] ) ? 1 : 0,
+                );
+            }
+        }
+
+        return rest_ensure_response( array(
+            'ok'            => true,
+            'products'      => $products,
+            'providers'     => $providers,
+            'meetup_points' => self::get_meetup_points(),
+            'delivery_fee'  => (float) $settings['delivery_fee'],
+            'currency'      => 'TT$',
+        ) );
+    }
+
+    /** Create a studio print order for a session gallery, from the app. */
+    public static function rest_studio_order( $request ) {
+        $session_code = sanitize_text_field( (string) $request->get_param( 'session_code' ) );
+        $session_id   = (int) $request->get_param( 'session_id' );
+
+        if ( $session_id <= 0 && $session_code !== '' && class_exists( 'TwellerFlow2_Session' ) ) {
+            $session = TwellerFlow2_Session::get_by_code( $session_code );
+            if ( $session ) $session_id = (int) $session->id;
+        }
+        if ( $session_id <= 0 ) {
+            return new WP_Error( 'bad_session', 'Send a session_id or a session_code.', array( 'status' => 400 ) );
+        }
+
+        $photo_ids = $request->get_param( 'photo_ids' );
+        if ( is_string( $photo_ids ) ) {
+            $photo_ids = array_filter( array_map( 'trim', explode( ',', $photo_ids ) ) );
+        }
+
+        $result = self::create_studio_order( array(
+            'session_id'      => $session_id,
+            'product_id'      => sanitize_text_field( (string) $request->get_param( 'product_id' ) ),
+            'qty'             => (int) $request->get_param( 'qty' ),
+            'photo_ids'       => is_array( $photo_ids ) ? $photo_ids : array(),
+            'fulfilment'      => sanitize_key( (string) $request->get_param( 'fulfilment' ) ),
+            'meetup_location' => sanitize_text_field( (string) $request->get_param( 'meetup_location' ) ),
+            'notes'           => sanitize_textarea_field( (string) $request->get_param( 'notes' ) ),
+            'provider_id'     => sanitize_key( (string) $request->get_param( 'provider_id' ) ),
+            'notify_customer' => ! empty( $request->get_param( 'notify_customer' ) ),
+        ) );
+
+        if ( is_wp_error( $result ) ) {
+            $result->add_data( array( 'status' => 400 ), $result->get_error_code() );
+            return $result;
+        }
+
+        return rest_ensure_response( array_merge( array( 'ok' => true ), (array) $result ) );
     }
 
     public static function rest_get_products( $request ) {

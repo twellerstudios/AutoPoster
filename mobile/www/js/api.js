@@ -142,6 +142,16 @@ var TwellerApi = (function () {
         } catch (e) { return null; }
     }
 
+    /** Products, providers, meet-up points and the delivery fee. */
+    async function fetchStudioPrintOptions() {
+        return getJson(base() + '/prints/studio-options?' + keyParam());
+    }
+
+    /** Send a whole session gallery to the print lab from the phone. */
+    async function sendSessionToPrintLab(fields) {
+        return postForm(base() + '/prints/studio-order', fields);
+    }
+
     async function setPrintOrderStatus(id, status, notify) {
         return postForm(base() + '/prints/orders/' + encodeURIComponent(id) + '/status', {
             status: status,
@@ -297,6 +307,8 @@ var TwellerApi = (function () {
         setGalleryCover: setGalleryCover,
         fetchPrintOrders: fetchPrintOrders,
         cachedPrintOrders: cachedPrintOrders,
+        fetchStudioPrintOptions: fetchStudioPrintOptions,
+        sendSessionToPrintLab: sendSessionToPrintLab,
         setPrintOrderStatus: setPrintOrderStatus,
         scanPrintDelivery: scanPrintDelivery,
         fetchOverview: fetchOverview,

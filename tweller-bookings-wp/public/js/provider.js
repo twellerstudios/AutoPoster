@@ -18,6 +18,7 @@
     var elScanGo = document.getElementById('tfpv-scan-go');
     var elScanCam = document.getElementById('tfpv-scan-cam');
     var elVideo  = document.getElementById('tfpv-scan-video');
+    var elViewport = document.getElementById('tfpv-scan-viewport');
     var elCamRow = document.getElementById('tfpv-scan-camrow');
     var elShot   = document.getElementById('tfpv-scan-shot');
     var elPhotoBtn = document.getElementById('tfpv-scan-photo-btn');
@@ -345,9 +346,10 @@
             for (var i = 0; i < tracks.length; i++) { tracks[i].stop(); }
             stream = null;
         }
-        if (elVideo) { elVideo.hidden = true; elVideo.srcObject = null; }
+        if (elVideo) { elVideo.srcObject = null; }
+        if (elViewport) { elViewport.hidden = true; }
         if (elCamRow) { elCamRow.hidden = true; }
-        if (elScanCam) { elScanCam.textContent = 'Use camera'; }
+        if (elScanCam) { elScanCam.textContent = 'Scan QR instead'; }
         scanState('');
     }
 
@@ -430,7 +432,7 @@
             .then(function (media) {
                 stream = media;
                 elVideo.srcObject = media;
-                elVideo.hidden = false;
+                if (elViewport) { elViewport.hidden = false; }
                 if (elCamRow) { elCamRow.hidden = false; }
                 elScanCam.textContent = 'Stop camera';
                 scanState('Looking for a QR code…');

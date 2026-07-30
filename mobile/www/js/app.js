@@ -741,6 +741,13 @@
                 push(function () { renderGalleryManage(code, s.client_name); });
             });
             gal.appendChild(manageBtn);
+
+            var labBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:8px;">🖨 Send album to print lab</button>');
+            labBtn.addEventListener('click', function () {
+                push(function () { renderSendToLab(d); });
+            });
+            gal.appendChild(labBtn);
+
             if (s.current_stage !== 'delivered') {
                 var deliverBtn = el('<button class="btn btn--dark btn--sm" style="margin-top:12px;">✉ Mark delivered &amp; send gallery email</button>');
                 deliverBtn.addEventListener('click', async function () {
@@ -1356,6 +1363,127 @@
     }
 
     // ═════════════════════════════════════════════════════════════
+    //  SEND ALBUM TO PRINT LAB
+    // ═════════════════════════════════════════════════════════════
+
+    async function renderSendToLab(d) {
+        var s = d.session;
+        var myScreen = currentScreen();
+
+        view.innerHTML = '';
+        view.appendChild(topbar('Send to print lab'));
+        view.appendChild(el('<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>'));
+
+        var opts;
+        try {
+            opts = await TwellerApi.fetchStudioPrintOptions();
+        } catch (e) {
+            if (currentScreen() !== myScreen) return;
+            view.innerHTML = '';
+            view.appendChild(topbar('Send to print lab'));
+            view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load print options.<br>' + esc(e.message) + '</p></div></div>'));
+            return;
+        }
+        if (currentScreen() !== myScreen) return;
+
+        var photoCount = (d.gallery && d.gallery.photo_count) || 0;
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Send to print lab'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var prodOptions = (opts.products || []).map(function (p) {
+            return '<option value="' + esc(p.id) + '" data-price="' + (p.price || 0) + '">' +
+                esc(p.name) + ' — ' + money(p.price || 0) + '</option>';
+        }).join('');
+        if (!prodOptions) prodOptions = '<option value="">No active products</option>';
+
+        var provOptions = '<option value="">Don\u2019t send yet — just create the order</option>' +
+            (opts.providers || []).map(function (pv) {
+                return '<option value="' + esc(pv.id) + '"' + (pv.default ? ' selected' : '') + '>' + esc(pv.name) + '</option>';
+            }).join('');
+
+        var meetOptions = (opts.meetup_points || []).map(function (m) {
+            return '<option value="' + esc(m) + '">' + esc(m) + '</option>';
+        }).join('');
+
+        var card = el(
+            '<div class="card">' +
+                '<div class="card__title">' + esc(s.client_name) + ' · ' + photoCount + ' photo' + (photoCount === 1 ? '' : 's') + '</div>' +
+                '<p class="hint" style="margin-top:0;">Creates a real print order for this album, priced from your catalog and linked to the client\u2019s portal.</p>' +
+                '<div class="field"><label>Size / product</label><select id="lab-product">' + prodOptions + '</select></div>' +
+                '<div class="field"><label>Copies of each photo</label><input type="number" id="lab-qty" min="1" max="50" value="1"></div>' +
+                '<div class="field"><label>How it reaches the client</label><select id="lab-fulfil">' +
+                    '<option value="meetup">Meet-up (free)</option>' +
+                    '<option value="delivery">Delivery — ' + money(opts.delivery_fee || 0) + '</option>' +
+                '</select></div>' +
+                '<div class="field" id="lab-meet-wrap"><label>Meet-up point</label><select id="lab-meet">' + meetOptions + '</select></div>' +
+                '<div class="field"><label>Print lab</label><select id="lab-provider">' + provOptions + '</select></div>' +
+                '<div class="field"><label>Note for the lab (optional)</label><textarea id="lab-notes" rows="2"></textarea></div>' +
+                '<label class="toggle"><input type="checkbox" id="lab-notify"><span>Email the client their order confirmation</span></label>' +
+                '<div class="kv" style="margin-top:10px;"><span class="kv__k">Estimated total</span><span class="kv__v kv__v--big" id="lab-total">—</span></div>' +
+                '<button class="btn" id="lab-send">Create print order</button>' +
+            '</div>'
+        );
+        wrap.appendChild(card);
+
+        var prodEl = card.querySelector('#lab-product');
+        var qtyEl = card.querySelector('#lab-qty');
+        var fulfilEl = card.querySelector('#lab-fulfil');
+        var meetWrap = card.querySelector('#lab-meet-wrap');
+        var totalEl = card.querySelector('#lab-total');
+
+        // Mirrors the server's arithmetic so the number shown here is the
+        // number the order is actually created with.
+        function recalc() {
+            var opt = prodEl.options[prodEl.selectedIndex];
+            var unit = opt ? parseFloat(opt.getAttribute('data-price') || 0) : 0;
+            var qty = Math.max(1, Math.min(50, parseInt(qtyEl.value, 10) || 1));
+            var total = unit * qty * photoCount;
+            if (fulfilEl.value === 'delivery') total += parseFloat(opts.delivery_fee || 0);
+            totalEl.textContent = money(total);
+            meetWrap.style.display = fulfilEl.value === 'delivery' ? 'none' : '';
+        }
+        prodEl.addEventListener('change', recalc);
+        qtyEl.addEventListener('input', recalc);
+        fulfilEl.addEventListener('change', recalc);
+        recalc();
+
+        card.querySelector('#lab-send').addEventListener('click', async function () {
+            var btn = this;
+            if (!photoCount) { toast('This album has no photos yet.'); return; }
+            if (!prodEl.value) { toast('Pick a product first.'); return; }
+            if (!confirm('Create a print order for ' + photoCount + ' photo' + (photoCount === 1 ? '' : 's') +
+                         ' at ' + totalEl.textContent + '?')) return;
+
+            btn.disabled = true;
+            btn.textContent = 'Creating\u2026';
+            try {
+                var res = await TwellerApi.sendSessionToPrintLab({
+                    session_code: s.tracking_code,
+                    product_id: prodEl.value,
+                    qty: qtyEl.value || 1,
+                    fulfilment: fulfilEl.value,
+                    meetup_location: fulfilEl.value === 'meetup' ? card.querySelector('#lab-meet').value : '',
+                    provider_id: card.querySelector('#lab-provider').value,
+                    notes: card.querySelector('#lab-notes').value,
+                    notify_customer: card.querySelector('#lab-notify').checked ? '1' : ''
+                });
+                toast('Print order ' + (res.order_ref || '') + ' created.');
+                refreshPrintsBadge();
+                renderRoot('prints');
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = 'Create print order';
+                toast('Could not create: ' + e.message, 6000);
+            }
+        });
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
     //  NEW BOOKING
     // ═════════════════════════════════════════════════════════════
 
@@ -1619,22 +1747,69 @@
         );
         wrap.appendChild(cust);
 
-        // Items
-        var itemsCard = el('<div class="card"><div class="card__title">Items</div><div class="order-items"></div></div>');
-        var host = itemsCard.querySelector('.order-items');
-        items.forEach(function (it) {
-            host.appendChild(el(
-                '<div class="order-item">' +
-                    (it.thumb_url || it.photo_url ? '<img src="' + esc(it.thumb_url || it.photo_url) + '" loading="lazy" alt="">' : '') +
-                    '<span class="order-item__body">' +
-                        '<div class="order-item__name">' + esc(it.product_name || '') + '</div>' +
-                        '<div class="order-item__meta">' + esc(it.filename || '') + ' · ×' + (it.qty || 1) + '</div>' +
-                    '</span>' +
-                    '<span class="order-item__price">' + esc(money((it.price || 0) * (it.qty || 1))) + '</span>' +
-                '</div>'
-            ));
-        });
-        itemsCard.appendChild(el('<div class="kv" style="margin-top:8px;"><span class="kv__k">Total</span><span class="kv__v kv__v--big">' + esc(money(o.subtotal)) + '</span></div>'));
+        // Items — the grouped summary the server already sends, with the
+        // full per-photo list collapsed behind a toggle. A 116-photo order
+        // used to render 116 rows here.
+        var summary = o.summary && o.summary.groups ? o.summary : null;
+        var itemsCard = el('<div class="card"><div class="card__title">Order summary</div></div>');
+
+        if (summary) {
+            // Product rows, then service rows (delivery / cropping). The
+            // service lines already live in summary.groups, so the
+            // fulfilment block only adds the meet-up location — rendering
+            // it as its own money row showed delivery charged twice.
+            summary.groups.forEach(function (g) {
+                var label = g.label + (g.size && g.label.indexOf(g.size.replace(/"$/, '')) < 0 ? ' · ' + g.size : '');
+                if (g.service && o.fulfilment && o.fulfilment.mode === 'meetup' && o.fulfilment.location) {
+                    label += ' · ' + o.fulfilment.location;
+                }
+                var qtyNote = g.service ? '' : ' <span style="color:var(--ink-3);">×' + (g.qty || 0) + ' @ ' + esc(money(g.unit || 0)) + '</span>';
+                itemsCard.appendChild(el(
+                    '<div class="kv"><span class="kv__k">' + esc(label) + qtyNote + '</span>' +
+                    '<span class="kv__v">' + esc((g.line || 0) > 0 ? money(g.line) : 'Free') + '</span></div>'
+                ));
+            });
+        }
+
+        itemsCard.appendChild(el(
+            '<div class="kv" style="margin-top:8px;"><span class="kv__k">Total' +
+            (summary ? ' · ' + summary.pieces + ' print' + (summary.pieces === 1 ? '' : 's') +
+                       ' from ' + summary.photos + ' photo' + (summary.photos === 1 ? '' : 's') : '') +
+            '</span><span class="kv__v kv__v--big">' + esc(money(o.subtotal)) + '</span></div>'
+        ));
+
+        // Expandable full list — hidden by default.
+        if (items.length) {
+            var listHost = el('<div class="order-items" style="display:none;"></div>');
+            var built = false;
+            var toggle = el('<button class="btn btn--ghost btn--sm" style="margin-top:12px;">Show all ' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</button>');
+            toggle.addEventListener('click', function () {
+                var open = listHost.style.display !== 'none';
+                if (!open && !built) {
+                    // Built lazily — a long order should not cost anything
+                    // to render until it is actually asked for.
+                    items.forEach(function (it) {
+                        listHost.appendChild(el(
+                            '<div class="order-item">' +
+                                (it.thumb_url || it.photo_url ? '<img src="' + esc(it.thumb_url || it.photo_url) + '" loading="lazy" alt="">' : '') +
+                                '<span class="order-item__body">' +
+                                    '<div class="order-item__name">' + esc(it.product_name || '') + '</div>' +
+                                    '<div class="order-item__meta">' + esc(it.filename || '') + ' · ×' + (it.qty || 1) + '</div>' +
+                                '</span>' +
+                                '<span class="order-item__price">' + esc(money((it.price || 0) * (it.qty || 1))) + '</span>' +
+                            '</div>'
+                        ));
+                    });
+                    built = true;
+                }
+                listHost.style.display = open ? 'none' : '';
+                toggle.textContent = open
+                    ? 'Show all ' + items.length + ' item' + (items.length === 1 ? '' : 's')
+                    : 'Hide items';
+            });
+            itemsCard.appendChild(toggle);
+            itemsCard.appendChild(listHost);
+        }
 
         // Copy the print list (for sending to the lab)
         var copyBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:10px;">Copy print list</button>');

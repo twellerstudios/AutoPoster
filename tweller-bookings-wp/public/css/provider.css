@@ -187,14 +187,77 @@
     box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.18);
 }
 
-.tfpv__video {
+/* The hidden attribute has to beat author display rules, or an element
+   marked hidden still paints — which is how the scanner's <video> was
+   rendering as a bare black rectangle on page load. */
+.tfpv [hidden],
+.tfpv__scan [hidden],
+[hidden] { display: none !important; }
+
+/* ── Scanner ───────────────────────────────────────── */
+
+.tfpv__scan {
+    background: var(--tfpv-card, #fff);
+    border: 1px solid var(--tfpv-line);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 18px;
+}
+.tfpv__scan-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+.tfpv__scan-icon {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(201, 162, 39, 0.12);
+    color: var(--tfpv-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tfpv__scan-icon svg { width: 20px; height: 20px; }
+.tfpv__scan-head .tfpv__h2 { margin: 0; }
+
+/* Camera viewport — only ever in the flow while the camera is live. */
+.tfpv__viewport {
+    position: relative;
     width: 100%;
     max-width: 420px;
-    margin-top: 12px;
+    margin: 14px 0 0;
+    aspect-ratio: 4 / 3;
     border-radius: 12px;
-    background: #000;
+    overflow: hidden;
+    background: #101010;
+}
+.tfpv__video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     display: block;
 }
+/* Corner guides so the frame reads as a scanner, not a dead rectangle. */
+.tfpv__reticle {
+    position: absolute;
+    inset: 12%;
+    pointer-events: none;
+    border-radius: 10px;
+    box-shadow: 0 0 0 9999px rgba(16, 16, 16, 0.35);
+}
+.tfpv__reticle::before,
+.tfpv__reticle::after {
+    content: '';
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    border: 3px solid var(--tfpv-gold);
+}
+.tfpv__reticle::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
+.tfpv__reticle::after  { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
 
 /* ── Stat tiles ────────────────────────────────────── */
 

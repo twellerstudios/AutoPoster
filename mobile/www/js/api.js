@@ -164,6 +164,115 @@ var TwellerApi = (function () {
         return postForm(base() + '/prints/scan', { code: code });
     }
 
+    // ── Print labs (providers), applications & economics ────────
+    // Studio-only endpoints: they carry cost, payout and margin, so they are
+    // gated server-side by rest_studio_permission and never exposed to a
+    // provider login.
+
+    /** Every provider record (incl. cost prices + stats) + the product catalog. */
+    async function fetchProviders() {
+        var data = await getJson(base() + '/prints/providers?' + keyParam());
+        try {
+            localStorage.setItem('tb_providers_cache', JSON.stringify({ at: Date.now(), data: data }));
+        } catch (e) {}
+        return data;
+    }
+
+    function cachedProviders() {
+        try {
+            var raw = localStorage.getItem('tb_providers_cache');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
+    /**
+     * Create (blank id) or update one provider. `fields.prices` is a
+     * {product_id: value} map — a blank value clears that product back to
+     * "not priced" rather than storing TT$0.
+     */
+    async function saveProvider(fields) {
+        var params = {};
+        Object.keys(fields || {}).forEach(function (k) {
+            if (k === 'prices') return;
+            params[k] = fields[k];
+        });
+        if (fields && fields.prices) params.prices = JSON.stringify(fields.prices);
+        return postForm(base() + '/prints/providers/save', params);
+    }
+
+    async function deleteProvider(id) {
+        return postForm(base() + '/prints/providers/delete', { id: id, confirm: 'DELETE' });
+    }
+
+    /**
+     * Create (or link) the WordPress portal login for a provider.
+     * A newly created account returns its one-time credentials in the
+     * response — they are shown once and never stored.
+     */
+    async function createProviderAccount(id, opts) {
+        opts = opts || {};
+        var params = { id: id, mode: opts.mode || 'create' };
+        if (opts.userId) params.user_id = opts.userId;
+        if (opts.email) params.email = opts.email;
+        if (opts.login) params.login = opts.login;
+        return postForm(base() + '/prints/providers/account', params);
+    }
+
+    /** Print-partner applications, with per-status counts for the badge. */
+    async function fetchProviderRequests(status) {
+        var url = base() + '/prints/requests?' + keyParam() +
+            (status ? '&status=' + encodeURIComponent(status) : '');
+        var data = await getJson(url);
+        if (!status) {
+            try {
+                localStorage.setItem('tb_requests_cache', JSON.stringify({ at: Date.now(), data: data }));
+            } catch (e) {}
+        }
+        return data;
+    }
+
+    function cachedProviderRequests() {
+        try {
+            var raw = localStorage.getItem('tb_requests_cache');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
+    /** One application, every field the lab submitted. */
+    async function fetchProviderRequest(id) {
+        return getJson(base() + '/prints/requests/' + encodeURIComponent(id) + '?' + keyParam());
+    }
+
+    /** mode: 'create' (new login) or 'link' (adopt the existing WP user). */
+    async function approveProviderRequest(id, notes, mode) {
+        return postForm(base() + '/prints/requests/' + encodeURIComponent(id) + '/approve', {
+            notes: notes || '',
+            mode: mode === 'link' ? 'link' : 'create'
+        });
+    }
+
+    async function declineProviderRequest(id, notes) {
+        return postForm(base() + '/prints/requests/' + encodeURIComponent(id) + '/decline', {
+            notes: notes || ''
+        });
+    }
+
+    /** Per-provider stats + the studio-wide economics rollup (month / all time). */
+    async function fetchProviderSummary() {
+        var data = await getJson(base() + '/prints/providers/summary?' + keyParam());
+        try {
+            localStorage.setItem('tb_economics_cache', JSON.stringify({ at: Date.now(), data: data }));
+        } catch (e) {}
+        return data;
+    }
+
+    function cachedProviderSummary() {
+        try {
+            var raw = localStorage.getItem('tb_economics_cache');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
     /** Dashboard: stage counts, upcoming shoots, needs-attention list. */
     async function fetchOverview() {
         var data = await getJson(base() + '/automation/overview?' + keyParam());
@@ -311,6 +420,18 @@ var TwellerApi = (function () {
         sendSessionToPrintLab: sendSessionToPrintLab,
         setPrintOrderStatus: setPrintOrderStatus,
         scanPrintDelivery: scanPrintDelivery,
+        fetchProviders: fetchProviders,
+        cachedProviders: cachedProviders,
+        saveProvider: saveProvider,
+        deleteProvider: deleteProvider,
+        createProviderAccount: createProviderAccount,
+        fetchProviderRequests: fetchProviderRequests,
+        cachedProviderRequests: cachedProviderRequests,
+        fetchProviderRequest: fetchProviderRequest,
+        approveProviderRequest: approveProviderRequest,
+        declineProviderRequest: declineProviderRequest,
+        fetchProviderSummary: fetchProviderSummary,
+        cachedProviderSummary: cachedProviderSummary,
         fetchOverview: fetchOverview,
         cachedOverview: cachedOverview,
         advanceStage: advanceStage,

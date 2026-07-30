@@ -1,6 +1,6 @@
 {
   "name": "tweller-bookings-mobile",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Tweller Bookings Mobile \u2014 full client management, culling proofs, and full-quality gallery delivery",
   "private": true,
   "scripts": {

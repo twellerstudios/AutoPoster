@@ -255,7 +255,8 @@ class TwellerFlow2_Print_Providers {
 			if ( $product_id === '' ) continue;
 			if ( $value === '' || $value === null ) continue; // not priced
 			if ( ! is_numeric( $value ) ) continue;
-			$out[ $product_id ] = max( 0, round( (float) $value, 2 ) );
+			// Always a float: a clamped negative must read as 0.00, not int 0.
+			$out[ $product_id ] = (float) max( 0, round( (float) $value, 2 ) );
 		}
 		return $out;
 	}
@@ -323,6 +324,208 @@ class TwellerFlow2_Print_Providers {
 	public static function current_provider() {
 		if ( ! is_user_logged_in() ) return null;
 		return self::provider_for_user( get_current_user_id() );
+	}
+
+	/**
+	 * Create or update one provider record from a field map. This is the one
+	 * place a provider record is written from user input — the admin form and
+	 * the mobile app both come through here, so they can never drift apart.
+	 *
+	 * Keys are optional: anything not present is left exactly as it was on the
+	 * existing record (so a partial update from the app cannot silently blank
+	 * a field). Checkbox-style flags must therefore be sent explicitly.
+	 *
+	 * `prices` is merged, never replaced: a blank value clears that product
+	 * back to "not priced" instead of storing a false TT$0, and a product the
+	 * caller did not mention keeps whatever price it already had.
+	 *
+	 * @param array $fields id, name, contact_name, email, phone, address,
+	 *                      notes, active, default, does_delivery, prices.
+	 * @return array|WP_Error The saved, normalised record.
+	 */
+	public static function save_provider_record( $fields ) {
+		if ( ! is_array( $fields ) ) $fields = array();
+
+		$providers   = self::providers();
+		$existing_id = isset( $fields['id'] ) ? sanitize_key( (string) $fields['id'] ) : '';
+		$index       = -1;
+		foreach ( $providers as $i => $p ) {
+			if ( $existing_id !== '' && $p['id'] === $existing_id ) { $index = $i; break; }
+		}
+
+		$record = $index >= 0 ? $providers[ $index ] : array(
+			'id' => '', 'name' => '', 'contact_name' => '', 'email' => '', 'phone' => '',
+			'address' => '', 'notes' => '', 'active' => 1, 'default' => 0, 'user_id' => 0,
+			'does_delivery' => 0, 'prices' => array(),
+		);
+
+		$name = array_key_exists( 'name', $fields )
+			? sanitize_text_field( (string) $fields['name'] )
+			: (string) $record['name'];
+		if ( $name === '' ) {
+			return new WP_Error( 'no_name', 'A provider name is required.', array( 'status' => 400 ) );
+		}
+		$record['name'] = $name;
+
+		if ( $record['id'] === '' ) {
+			$ids = array();
+			foreach ( $providers as $p ) { $ids[] = $p['id']; }
+			$record['id'] = self::unique_provider_id( $name, $ids );
+		}
+
+		if ( array_key_exists( 'contact_name', $fields ) )  $record['contact_name']  = sanitize_text_field( (string) $fields['contact_name'] );
+		if ( array_key_exists( 'email', $fields ) )         $record['email']         = sanitize_email( (string) $fields['email'] );
+		if ( array_key_exists( 'phone', $fields ) )         $record['phone']         = sanitize_text_field( (string) $fields['phone'] );
+		if ( array_key_exists( 'address', $fields ) )       $record['address']       = sanitize_textarea_field( (string) $fields['address'] );
+		if ( array_key_exists( 'notes', $fields ) )         $record['notes']         = sanitize_textarea_field( (string) $fields['notes'] );
+		if ( array_key_exists( 'active', $fields ) )        $record['active']        = empty( $fields['active'] ) ? 0 : 1;
+		if ( array_key_exists( 'default', $fields ) )       $record['default']       = empty( $fields['default'] ) ? 0 : 1;
+		if ( array_key_exists( 'does_delivery', $fields ) ) $record['does_delivery'] = empty( $fields['does_delivery'] ) ? 0 : 1;
+
+		// ── Cost pricing ("what they charge you") ──
+		$prices = isset( $record['prices'] ) && is_array( $record['prices'] ) ? $record['prices'] : array();
+		if ( isset( $fields['prices'] ) && is_array( $fields['prices'] ) ) {
+			foreach ( $fields['prices'] as $product_id => $value ) {
+				$product_id = sanitize_key( (string) $product_id );
+				if ( $product_id === '' ) continue;
+				$value = trim( (string) $value );
+				if ( $value === '' ) {
+					unset( $prices[ $product_id ] ); // blank = not priced, never TT$0
+					continue;
+				}
+				if ( ! is_numeric( $value ) ) continue;
+				$prices[ $product_id ] = (float) max( 0, round( (float) $value, 2 ) );
+			}
+		}
+		$record['prices'] = $prices;
+
+		if ( $index >= 0 ) {
+			$providers[ $index ] = $record;
+		} else {
+			$providers[] = $record;
+		}
+		self::save_providers( $providers );
+
+		$saved = self::get_provider( $record['id'] );
+		return $saved ? $saved : $record;
+	}
+
+	/** Point a provider record at a WordPress user (0 unlinks). */
+	private static function set_provider_user( $provider_id, $user_id ) {
+		$provider_id = sanitize_key( (string) $provider_id );
+		$providers   = self::providers();
+		foreach ( $providers as $i => $p ) {
+			if ( $p['id'] === $provider_id ) $providers[ $i ]['user_id'] = (int) $user_id;
+		}
+		self::save_providers( $providers );
+		return self::get_provider( $provider_id );
+	}
+
+	/**
+	 * Adopt an existing WordPress user as this provider's portal account.
+	 * The role is granted only if the user cannot already view print jobs.
+	 *
+	 * @return array|WP_Error The saved provider record.
+	 */
+	public static function link_provider_user( $provider_id, $user_id ) {
+		$provider_id = sanitize_key( (string) $provider_id );
+		$user_id     = (int) $user_id;
+
+		$provider = self::get_provider( $provider_id );
+		if ( ! $provider ) {
+			return new WP_Error( 'not_found', 'That provider no longer exists.', array( 'status' => 404 ) );
+		}
+		$user = get_userdata( $user_id );
+		if ( ! $user || ! $user->exists() ) {
+			return new WP_Error( 'no_user', 'That user account no longer exists.', array( 'status' => 404 ) );
+		}
+		if ( self::user_taken( $user_id, $provider_id ) ) {
+			return new WP_Error( 'user_taken', 'That user is already linked to another provider.', array( 'status' => 409 ) );
+		}
+		if ( ! user_can( $user_id, self::CAP ) ) {
+			$user->add_role( self::ROLE );
+		}
+		return self::set_provider_user( $provider_id, $user_id );
+	}
+
+	/**
+	 * Create the WordPress login a print partner signs in with. One
+	 * implementation, shared by the admin form, application approval and the
+	 * mobile app — a second one would be a second way to get the role wrong.
+	 *
+	 * The password is generated per provider (never a shared default), mailed
+	 * as a set-password link by WordPress, and handed back to the caller once
+	 * so a lab that never checks email can still be given a working login.
+	 *
+	 * @param array $args name, email, login (optional), display (optional), website (optional).
+	 * @return array{user_id:int,login:string,pass:string,email:string}|WP_Error
+	 */
+	public static function create_provider_login( $args ) {
+		if ( ! is_array( $args ) ) $args = array();
+
+		$name    = sanitize_text_field( (string) ( isset( $args['name'] ) ? $args['name'] : '' ) );
+		$email   = sanitize_email( (string) ( isset( $args['email'] ) ? $args['email'] : '' ) );
+		$login   = sanitize_user( (string) ( isset( $args['login'] ) ? $args['login'] : '' ), true );
+		$display = sanitize_text_field( (string) ( isset( $args['display'] ) ? $args['display'] : '' ) );
+		$website = esc_url_raw( (string) ( isset( $args['website'] ) ? $args['website'] : '' ) );
+
+		if ( $display === '' ) $display = $name;
+		if ( $login === '' )   $login   = self::unique_login_for( $name, $email );
+
+		if ( ! is_email( $email ) ) {
+			return new WP_Error( 'no_email', 'Add an email address for this lab so an account can be created.', array( 'status' => 400 ) );
+		}
+		if ( $login === '' || username_exists( $login ) ) {
+			return new WP_Error( 'login_taken', 'That username is already taken.', array( 'status' => 409 ) );
+		}
+		if ( email_exists( $email ) ) {
+			return new WP_Error( 'email_taken', 'That email address already belongs to a WordPress user — link the existing account instead.', array( 'status' => 409 ) );
+		}
+
+		$pass   = wp_generate_password( 18, true, false );
+		$new_id = wp_insert_user( array(
+			'user_login'   => $login,
+			'user_email'   => $email,
+			'user_pass'    => $pass,
+			'display_name' => $display !== '' ? $display : $login,
+			'first_name'   => $display,
+			'user_url'     => $website,
+			'role'         => self::ROLE,
+		) );
+
+		if ( is_wp_error( $new_id ) ) {
+			return new WP_Error( 'user_failed', $new_id->get_error_message(), array( 'status' => 400 ) );
+		}
+
+		wp_send_new_user_notifications( (int) $new_id, 'both' );
+
+		// Shown once to whoever pressed the button. Never written into the
+		// provider record, never stored beyond this transient.
+		set_transient( 'tf2pv_new_login_' . get_current_user_id(), array(
+			'login' => $login,
+			'pass'  => $pass,
+			'email' => $email,
+		), 5 * MINUTE_IN_SECONDS );
+
+		return array(
+			'user_id' => (int) $new_id,
+			'login'   => $login,
+			'pass'    => $pass,
+			'email'   => $email,
+		);
+	}
+
+	/** Read-and-clear the one-time credentials stashed by create_provider_login(). */
+	private static function consume_new_login() {
+		$key   = 'tf2pv_new_login_' . get_current_user_id();
+		$fresh = get_transient( $key );
+		if ( ! is_array( $fresh ) || empty( $fresh['login'] ) ) return null;
+		delete_transient( $key );
+		return array(
+			'login' => (string) $fresh['login'],
+			'pass'  => (string) $fresh['pass'],
+			'email' => (string) ( isset( $fresh['email'] ) ? $fresh['email'] : '' ),
+		);
 	}
 
 	private static function unique_provider_id( $name, $existing_ids ) {
@@ -849,56 +1052,31 @@ class TwellerFlow2_Print_Providers {
 			exit;
 		}
 
-		$providers   = self::providers();
-		$existing_id = sanitize_key( (string) ( isset( $post['provider_id'] ) ? $post['provider_id'] : '' ) );
-		$index       = -1;
-		foreach ( $providers as $i => $p ) {
-			if ( $p['id'] === $existing_id && $existing_id !== '' ) { $index = $i; break; }
-		}
-
-		$record = $index >= 0 ? $providers[ $index ] : array(
-			'id' => '', 'name' => '', 'contact_name' => '', 'email' => '', 'phone' => '',
-			'address' => '', 'notes' => '', 'active' => 1, 'default' => 0, 'user_id' => 0, 'does_delivery' => 0,
-			'prices' => array(),
-		);
-
-		if ( $record['id'] === '' ) {
-			$ids          = array();
-			foreach ( $providers as $p ) { $ids[] = $p['id']; }
-			$record['id'] = self::unique_provider_id( $name, $ids );
-		}
-
-		$record['name']          = $name;
-		$record['contact_name']  = sanitize_text_field( (string) ( isset( $post['contact_name'] ) ? $post['contact_name'] : '' ) );
-		$record['email']         = sanitize_email( (string) ( isset( $post['email'] ) ? $post['email'] : '' ) );
-		$record['phone']         = sanitize_text_field( (string) ( isset( $post['phone'] ) ? $post['phone'] : '' ) );
-		$record['address']       = sanitize_textarea_field( (string) ( isset( $post['address'] ) ? $post['address'] : '' ) );
-		$record['notes']         = sanitize_textarea_field( (string) ( isset( $post['notes'] ) ? $post['notes'] : '' ) );
-		$record['active']        = empty( $post['active'] ) ? 0 : 1;
-		$record['does_delivery'] = empty( $post['does_delivery'] ) ? 0 : 1;
-
-		// ── Cost pricing ("what they charge you") ──
 		// Only the products actually rendered in the form (active ones) are
 		// touched; a price for a since-deactivated product is left alone
 		// rather than silently dropped. A blank field clears that price back
-		// to "not priced" instead of saving a false $0.
-		$prices = isset( $record['prices'] ) && is_array( $record['prices'] ) ? $record['prices'] : array();
-		if ( isset( $post['provider_cost'] ) && is_array( $post['provider_cost'] ) ) {
-			foreach ( $post['provider_cost'] as $product_id => $value ) {
-				$product_id = sanitize_key( (string) $product_id );
-				if ( $product_id === '' ) continue;
-				$value = trim( (string) $value );
-				if ( $value === '' ) {
-					unset( $prices[ $product_id ] );
-					continue;
-				}
-				if ( ! is_numeric( $value ) ) continue;
-				$prices[ $product_id ] = max( 0, round( (float) $value, 2 ) );
-			}
-		}
-		$record['prices'] = $prices;
+		// to "not priced" instead of saving a false $0 — see
+		// save_provider_record(), which the app shares with this form.
+		$record = self::save_provider_record( array(
+			'id'            => (string) ( isset( $post['provider_id'] ) ? $post['provider_id'] : '' ),
+			'name'          => $name,
+			'contact_name'  => (string) ( isset( $post['contact_name'] ) ? $post['contact_name'] : '' ),
+			'email'         => (string) ( isset( $post['email'] ) ? $post['email'] : '' ),
+			'phone'         => (string) ( isset( $post['phone'] ) ? $post['phone'] : '' ),
+			'address'       => (string) ( isset( $post['address'] ) ? $post['address'] : '' ),
+			'notes'         => (string) ( isset( $post['notes'] ) ? $post['notes'] : '' ),
+			'active'        => empty( $post['active'] ) ? 0 : 1,
+			'does_delivery' => empty( $post['does_delivery'] ) ? 0 : 1,
+			'prices'        => ( isset( $post['provider_cost'] ) && is_array( $post['provider_cost'] ) ) ? $post['provider_cost'] : array(),
+		) );
 
-		$error = '';
+		if ( is_wp_error( $record ) ) {
+			wp_safe_redirect( self::admin_url_for( array( 'tfpv_error' => rawurlencode( $record->get_error_message() ) ) ) );
+			exit;
+		}
+
+		$provider_id = $record['id'];
+		$error       = '';
 
 		// ── Account: link an existing user, or create a new one ──
 		$account_mode = isset( $post['account_mode'] ) ? sanitize_key( (string) $post['account_mode'] ) : 'keep';
@@ -906,19 +1084,10 @@ class TwellerFlow2_Print_Providers {
 		if ( $account_mode === 'link' ) {
 			$user_id = isset( $post['user_id'] ) ? (int) $post['user_id'] : 0;
 			if ( $user_id > 0 ) {
-				$user = get_userdata( $user_id );
-				if ( ! $user || ! $user->exists() ) {
-					$error = 'That user account no longer exists.';
-				} elseif ( self::user_taken( $user_id, $record['id'] ) ) {
-					$error = 'That user is already linked to another provider.';
-				} else {
-					if ( ! user_can( $user_id, self::CAP ) ) {
-						$user->add_role( self::ROLE );
-					}
-					$record['user_id'] = $user_id;
-				}
+				$linked = self::link_provider_user( $provider_id, $user_id );
+				if ( is_wp_error( $linked ) ) $error = $linked->get_error_message();
 			} else {
-				$record['user_id'] = 0;
+				self::set_provider_user( $provider_id, 0 );
 			}
 		} elseif ( $account_mode === 'create' ) {
 			$login = sanitize_user( (string) ( isset( $post['new_username'] ) ? $post['new_username'] : '' ), true );
@@ -941,54 +1110,25 @@ class TwellerFlow2_Print_Providers {
 				while ( username_exists( $login ) ) { $login = $base . $n; $n++; }
 			}
 
-			if ( $login === '' || ! is_email( $email ) ) {
-				$error = 'Add an email address for this lab (or type one) so an account can be created.';
-			} elseif ( username_exists( $login ) ) {
-				$error = 'That username is already taken.';
-			} elseif ( email_exists( $email ) ) {
-				$error = 'That email address already belongs to a WordPress user — link the existing account instead.';
+			// One shared implementation — see create_provider_login(). The
+			// generated password is shown to the admin once and mailed to the
+			// lab as a set-password link; nothing is stored in the record.
+			$created = self::create_provider_login( array(
+				'name'    => $name,
+				'email'   => $email,
+				'login'   => $login,
+				'display' => $fname !== '' ? $fname : $name,
+			) );
+
+			if ( is_wp_error( $created ) ) {
+				$error = $created->get_error_message();
 			} else {
-				// A strong per-provider password (never a shared default) is
-				// generated here, shown to the admin once, and also mailed
-				// to the lab as a set-password link by WordPress.
-				$pass   = wp_generate_password( 16, true, false );
-				$new_id = wp_insert_user( array(
-					'user_login'   => $login,
-					'user_email'   => $email,
-					'user_pass'    => $pass,
-					'display_name' => $fname !== '' ? $fname : $name,
-					'first_name'   => $fname,
-					'role'         => self::ROLE,
-				) );
-
-				if ( is_wp_error( $new_id ) ) {
-					$error = $new_id->get_error_message();
-				} else {
-					$record['user_id'] = (int) $new_id;
-					wp_send_new_user_notifications( (int) $new_id, 'both' );
-
-					// Show the credentials to the admin once, so a lab that
-					// never checks the WordPress email can still be given a
-					// working login by hand. Stored for a single page load
-					// only — never written into the provider record.
-					set_transient( 'tf2pv_new_login_' . get_current_user_id(), array(
-						'login' => $login,
-						'pass'  => $pass,
-						'email' => $email,
-					), 60 );
-				}
+				self::set_provider_user( $provider_id, $created['user_id'] );
 			}
 		}
 
-		if ( $index >= 0 ) {
-			$providers[ $index ] = $record;
-		} else {
-			$providers[] = $record;
-		}
-		self::save_providers( $providers );
-
 		$args = $error !== ''
-			? array( 'tfpv_error' => rawurlencode( $error ), 'edit' => $record['id'] )
+			? array( 'tfpv_error' => rawurlencode( $error ), 'edit' => $provider_id )
 			: array( 'tfpv_msg' => 'saved' );
 
 		wp_safe_redirect( self::admin_url_for( $args ) );
@@ -1446,11 +1586,67 @@ class TwellerFlow2_Print_Providers {
 			'permission_callback' => $auth,
 		) );
 
-		// Studio / mobile app: per-provider stats.
+		// ── Studio / mobile app ──
+		// Everything below is studio-only: manage_options in wp-admin, or the
+		// studio API key from the phone. A provider login never reaches these
+		// routes, so cost, payout and margin figures stay on our side.
+		$studio = array( __CLASS__, 'rest_studio_permission' );
+
+		// Per-provider stats + the studio-wide economics rollup.
 		register_rest_route( $ns, '/prints/providers/summary', array(
 			'methods'             => 'GET',
 			'callback'            => array( __CLASS__, 'rest_summary' ),
-			'permission_callback' => array( __CLASS__, 'rest_studio_permission' ),
+			'permission_callback' => $studio,
+		) );
+
+		// Full provider records (including cost pricing) + product catalog.
+		register_rest_route( $ns, '/prints/providers', array(
+			'methods'             => 'GET',
+			'callback'            => array( __CLASS__, 'rest_providers' ),
+			'permission_callback' => $studio,
+		) );
+
+		register_rest_route( $ns, '/prints/providers/save', array(
+			'methods'             => 'POST',
+			'callback'            => array( __CLASS__, 'rest_save_provider' ),
+			'permission_callback' => $studio,
+		) );
+
+		register_rest_route( $ns, '/prints/providers/delete', array(
+			'methods'             => 'POST',
+			'callback'            => array( __CLASS__, 'rest_delete_provider' ),
+			'permission_callback' => $studio,
+		) );
+
+		register_rest_route( $ns, '/prints/providers/account', array(
+			'methods'             => 'POST',
+			'callback'            => array( __CLASS__, 'rest_provider_account' ),
+			'permission_callback' => $studio,
+		) );
+
+		// Print-partner applications.
+		register_rest_route( $ns, '/prints/requests', array(
+			'methods'             => 'GET',
+			'callback'            => array( __CLASS__, 'rest_requests' ),
+			'permission_callback' => $studio,
+		) );
+
+		register_rest_route( $ns, '/prints/requests/(?P<id>\d+)', array(
+			'methods'             => 'GET',
+			'callback'            => array( __CLASS__, 'rest_request' ),
+			'permission_callback' => $studio,
+		) );
+
+		register_rest_route( $ns, '/prints/requests/(?P<id>\d+)/approve', array(
+			'methods'             => 'POST',
+			'callback'            => array( __CLASS__, 'rest_approve_request' ),
+			'permission_callback' => $studio,
+		) );
+
+		register_rest_route( $ns, '/prints/requests/(?P<id>\d+)/decline', array(
+			'methods'             => 'POST',
+			'callback'            => array( __CLASS__, 'rest_decline_request' ),
+			'permission_callback' => $studio,
 		) );
 	}
 
@@ -1697,6 +1893,359 @@ if ( count( $parts ) !== 2 ) {
 			'providers'  => self::provider_summary(),
 			// Studio-wide cost/payout/margin rollup — see economics_summary().
 			'economics'  => self::economics_summary(),
+		) );
+	}
+
+	// ── Studio REST: provider management ───────────────
+
+	/** The portal account attached to a provider, if any. */
+	private static function account_payload( $provider ) {
+		$user = ! empty( $provider['user_id'] ) ? get_userdata( (int) $provider['user_id'] ) : null;
+		if ( ! $user || ! $user->exists() ) {
+			return array( 'linked' => 0, 'user_id' => 0, 'login' => '', 'email' => '' );
+		}
+		return array(
+			'linked'  => 1,
+			'user_id' => (int) $user->ID,
+			'login'   => (string) $user->user_login,
+			'email'   => (string) $user->user_email,
+		);
+	}
+
+	/** One provider, exactly as the management screen needs it. */
+	private static function provider_payload( $provider ) {
+		return array(
+			'id'            => (string) $provider['id'],
+			'name'          => (string) $provider['name'],
+			'contact_name'  => (string) $provider['contact_name'],
+			'email'         => (string) $provider['email'],
+			'phone'         => (string) $provider['phone'],
+			'address'       => (string) $provider['address'],
+			'notes'         => (string) $provider['notes'],
+			'active'        => (int) $provider['active'],
+			'default'       => (int) $provider['default'],
+			'does_delivery' => (int) $provider['does_delivery'],
+			'user_id'       => (int) $provider['user_id'],
+			// product_id => cost in TTD. Missing product = not priced.
+			'prices'        => is_array( $provider['prices'] ) ? $provider['prices'] : array(),
+			'account'       => self::account_payload( $provider ),
+			'stats'         => self::provider_stats( $provider['id'] ),
+		);
+	}
+
+	/** The active catalog, so the app can draw cost rows without a 2nd call. */
+	private static function product_catalog() {
+		$out = array();
+		if ( ! class_exists( 'TwellerFlow2_Prints' )
+			|| ! method_exists( 'TwellerFlow2_Prints', 'get_active_products' ) ) return $out;
+
+		foreach ( TwellerFlow2_Prints::get_active_products() as $p ) {
+			$id = sanitize_key( (string) ( isset( $p['id'] ) ? $p['id'] : '' ) );
+			if ( $id === '' ) continue;
+			$out[] = array(
+				'id'       => $id,
+				'name'     => (string) ( isset( $p['name'] ) ? $p['name'] : $id ),
+				'category' => (string) ( isset( $p['category'] ) ? $p['category'] : '' ),
+				'price'    => (float) ( isset( $p['price'] ) ? $p['price'] : 0 ),
+			);
+		}
+		return $out;
+	}
+
+	/** GET /prints/providers — everything the "Print labs" screen needs. */
+	public static function rest_providers( $request ) {
+		unset( $request );
+
+		$providers = array();
+		foreach ( self::providers() as $p ) {
+			$providers[] = self::provider_payload( $p );
+		}
+
+		return rest_ensure_response( array(
+			'ok'        => true,
+			'currency'  => 'TT$',
+			'month'     => date_i18n( 'F Y', current_time( 'timestamp' ) ),
+			'providers' => $providers,
+			'products'  => self::product_catalog(),
+		) );
+	}
+
+	/**
+	 * POST /prints/providers/save — create (blank id) or update one provider.
+	 * `prices` accepts a JSON object or prices[product_id]=value pairs; a
+	 * blank value clears that product back to "not priced".
+	 */
+	public static function rest_save_provider( $request ) {
+		$fields = array( 'id' => sanitize_key( (string) $request->get_param( 'id' ) ) );
+
+		// Anything not sent is left alone, so a partial update (say, prices
+		// only) can never blank a field it did not mention.
+		if ( $request->get_param( 'name' ) !== null ) {
+			$fields['name'] = sanitize_text_field( (string) $request->get_param( 'name' ) );
+		}
+
+		foreach ( array( 'contact_name', 'email', 'phone', 'address', 'notes' ) as $key ) {
+			if ( $request->get_param( $key ) !== null ) $fields[ $key ] = (string) $request->get_param( $key );
+		}
+		foreach ( array( 'active', 'default', 'does_delivery' ) as $key ) {
+			if ( $request->get_param( $key ) !== null ) {
+				$raw = (string) $request->get_param( $key );
+				$fields[ $key ] = ( $raw === '' || $raw === '0' || $raw === 'false' ) ? 0 : 1;
+			}
+		}
+
+		$prices = $request->get_param( 'prices' );
+		if ( is_string( $prices ) && trim( $prices ) !== '' ) {
+			$decoded = json_decode( $prices, true );
+			$prices  = is_array( $decoded ) ? $decoded : array();
+		}
+		if ( is_array( $prices ) ) $fields['prices'] = $prices;
+
+		$saved = self::save_provider_record( $fields );
+		if ( is_wp_error( $saved ) ) return $saved;
+
+		return rest_ensure_response( array(
+			'ok'       => true,
+			'provider' => self::provider_payload( $saved ),
+		) );
+	}
+
+	/** POST /prints/providers/delete — needs confirm=DELETE, like session delete. */
+	public static function rest_delete_provider( $request ) {
+		$provider_id = sanitize_key( (string) $request->get_param( 'id' ) );
+		$confirm     = sanitize_text_field( (string) $request->get_param( 'confirm' ) );
+
+		if ( $confirm !== 'DELETE' ) {
+			return new WP_Error( 'confirm_required', 'Pass confirm=DELETE to delete a provider.', array( 'status' => 400 ) );
+		}
+		$provider = self::get_provider( $provider_id );
+		if ( ! $provider ) {
+			return new WP_Error( 'not_found', 'That provider no longer exists.', array( 'status' => 404 ) );
+		}
+
+		$kept = array();
+		foreach ( self::providers() as $p ) {
+			if ( $p['id'] !== $provider_id ) $kept[] = $p;
+		}
+		self::save_providers( $kept );
+
+		return rest_ensure_response( array(
+			'ok'      => true,
+			'deleted' => $provider_id,
+			// Jobs already sent to them keep their history — only the record goes.
+			'message' => $provider['name'] . ' deleted.',
+		) );
+	}
+
+	/**
+	 * POST /prints/providers/account — create or link the portal login.
+	 *
+	 * The one-time credentials come back in the response because the phone
+	 * cannot read the wp-admin transient. They are never stored anywhere.
+	 */
+	public static function rest_provider_account( $request ) {
+		$provider_id = sanitize_key( (string) $request->get_param( 'id' ) );
+		$provider    = self::get_provider( $provider_id );
+		if ( ! $provider ) {
+			return new WP_Error( 'not_found', 'That provider no longer exists.', array( 'status' => 404 ) );
+		}
+
+		$mode    = sanitize_key( (string) $request->get_param( 'mode' ) );
+		$user_id = (int) $request->get_param( 'user_id' );
+		if ( $mode === '' ) $mode = $user_id > 0 ? 'link' : 'create';
+
+		if ( $mode === 'unlink' ) {
+			$saved = self::set_provider_user( $provider_id, 0 );
+			return rest_ensure_response( array(
+				'ok'       => true,
+				'provider' => self::provider_payload( $saved ? $saved : $provider ),
+			) );
+		}
+
+		if ( $mode === 'link' ) {
+			$saved = self::link_provider_user( $provider_id, $user_id );
+			if ( is_wp_error( $saved ) ) return $saved;
+			return rest_ensure_response( array(
+				'ok'       => true,
+				'provider' => self::provider_payload( $saved ),
+			) );
+		}
+
+		if ( ! empty( $provider['user_id'] ) ) {
+			$existing = get_userdata( (int) $provider['user_id'] );
+			if ( $existing && $existing->exists() ) {
+				return new WP_Error( 'has_account', 'This provider already has a portal login (' . $existing->user_login . ').', array( 'status' => 409 ) );
+			}
+		}
+
+		$email = sanitize_email( (string) $request->get_param( 'email' ) );
+		if ( $email === '' ) $email = sanitize_email( (string) $provider['email'] );
+
+		$created = self::create_provider_login( array(
+			'name'    => $provider['name'],
+			'email'   => $email,
+			'login'   => sanitize_user( (string) $request->get_param( 'login' ), true ),
+			'display' => $provider['contact_name'] !== '' ? $provider['contact_name'] : $provider['name'],
+		) );
+		if ( is_wp_error( $created ) ) return $created;
+
+		$saved = self::set_provider_user( $provider_id, $created['user_id'] );
+		self::consume_new_login(); // shown here instead; never left lying around
+
+		return rest_ensure_response( array(
+			'ok'          => true,
+			'provider'    => self::provider_payload( $saved ? $saved : $provider ),
+			// Shown once, on this response only.
+			'credentials' => array(
+				'login' => $created['login'],
+				'pass'  => $created['pass'],
+				'email' => $created['email'],
+			),
+		) );
+	}
+
+	// ── Studio REST: print-partner applications ────────
+
+	/** One application row, every submitted field, ready for the app. */
+	private static function request_payload( $row, $detail = false ) {
+		$statuses = self::request_statuses();
+		$status   = (string) $row->status;
+
+		$payload = array(
+			'id'            => (int) $row->id,
+			'status'        => $status,
+			'status_label'  => isset( $statuses[ $status ] ) ? $statuses[ $status ] : ucfirst( $status ),
+			'business_name' => (string) $row->business_name,
+			'contact_name'  => (string) $row->contact_name,
+			'email'         => (string) $row->email,
+			'phone'         => (string) $row->phone,
+			'country'       => (string) $row->country,
+			'does_delivery' => (int) $row->does_delivery,
+			'services'      => (string) $row->services,
+			'services_label' => self::services_label( (string) $row->services ),
+			'created_at'    => (string) $row->created_at,
+			'created_label' => date_i18n( 'j M Y', strtotime( (string) $row->created_at ) ),
+		);
+
+		if ( ! $detail ) return $payload;
+
+		$payload = array_merge( $payload, array(
+			'website'           => (string) $row->website,
+			'instagram'         => (string) $row->instagram,
+			'facebook'          => (string) $row->facebook,
+			'social_other'      => (string) $row->social_other,
+			'address'           => (string) $row->address,
+			'years_in_business' => (int) $row->years_in_business,
+			'business_reg'      => (string) $row->business_reg,
+			'turnaround'        => (string) $row->turnaround,
+			'capacity'          => (string) $row->capacity,
+			'papers'            => (string) $row->papers,
+			'sample_url'        => (string) $row->sample_url,
+			'equipment'         => (string) $row->equipment,
+			'color_managed'     => (int) $row->color_managed,
+			'referral'          => (string) $row->referral,
+			'message'           => (string) $row->message,
+			'ip'                => (string) $row->ip,
+			'provider_id'       => (string) $row->provider_id,
+			'user_id'           => (int) $row->user_id,
+			'reviewed_at'       => (string) $row->reviewed_at,
+			'review_notes'      => (string) $row->review_notes,
+		) );
+
+		// Whether approving would have to link rather than create: the studio
+		// must never end up with two logins for the same lab.
+		$existing = ( (string) $row->email !== '' ) ? get_user_by( 'email', sanitize_email( (string) $row->email ) ) : false;
+		$payload['existing_user'] = $existing
+			? array( 'id' => (int) $existing->ID, 'login' => (string) $existing->user_login )
+			: null;
+		$payload['approve_mode'] = $existing ? 'link' : 'create';
+
+		return $payload;
+	}
+
+	private static function request_counts() {
+		$counts = array( 'all' => self::count_requests( '' ) );
+		foreach ( array_keys( self::request_statuses() ) as $status ) {
+			$counts[ $status ] = self::count_requests( $status );
+		}
+		// Friendly alias — the app labels 'rejected' as "Declined".
+		$counts['declined'] = isset( $counts['rejected'] ) ? $counts['rejected'] : 0;
+		return $counts;
+	}
+
+	/** GET /prints/requests?status= */
+	public static function rest_requests( $request ) {
+		$status = sanitize_key( (string) $request->get_param( 'status' ) );
+		if ( $status === 'declined' ) $status = 'rejected';
+		if ( $status === 'all' ) $status = '';
+
+		$limit  = (int) $request->get_param( 'limit' );
+		if ( $limit <= 0 ) $limit = 200;
+
+		$rows = array();
+		foreach ( self::get_requests( $status, $limit, (int) $request->get_param( 'offset' ) ) as $row ) {
+			$rows[] = self::request_payload( $row, false );
+		}
+
+		return rest_ensure_response( array(
+			'ok'       => true,
+			'status'   => $status,
+			'counts'   => self::request_counts(),
+			'statuses' => self::request_statuses(),
+			'requests' => $rows,
+		) );
+	}
+
+	/** GET /prints/requests/{id} */
+	public static function rest_request( $request ) {
+		$row = self::get_request( (int) $request['id'] );
+		if ( ! $row ) {
+			return new WP_Error( 'not_found', 'That application could not be found.', array( 'status' => 404 ) );
+		}
+		return rest_ensure_response( array(
+			'ok'      => true,
+			'request' => self::request_payload( $row, true ),
+		) );
+	}
+
+	/** POST /prints/requests/{id}/approve — body: notes, mode (create|link). */
+	public static function rest_approve_request( $request ) {
+		$id    = (int) $request['id'];
+		$notes = sanitize_textarea_field( (string) $request->get_param( 'notes' ) );
+		$mode  = sanitize_key( (string) $request->get_param( 'mode' ) );
+		if ( $mode !== 'link' ) $mode = 'create';
+
+		$error = self::approve_request( $id, $notes, $mode );
+		if ( $error !== '' ) {
+			return new WP_Error( 'approve_failed', wp_strip_all_tags( html_entity_decode( $error ) ), array( 'status' => 409 ) );
+		}
+
+		$row      = self::get_request( $id );
+		$provider = ( $row && (string) $row->provider_id !== '' ) ? self::get_provider( (string) $row->provider_id ) : null;
+
+		return rest_ensure_response( array(
+			'ok'          => true,
+			'request'     => $row ? self::request_payload( $row, true ) : null,
+			'provider'    => $provider ? self::provider_payload( $provider ) : null,
+			// Present only when approval created a brand-new login.
+			'credentials' => self::consume_new_login(),
+		) );
+	}
+
+	/** POST /prints/requests/{id}/decline — body: notes. */
+	public static function rest_decline_request( $request ) {
+		$id    = (int) $request['id'];
+		$notes = sanitize_textarea_field( (string) $request->get_param( 'notes' ) );
+
+		$error = self::reject_request( $id, $notes );
+		if ( $error !== '' ) {
+			return new WP_Error( 'decline_failed', wp_strip_all_tags( html_entity_decode( $error ) ), array( 'status' => 409 ) );
+		}
+
+		$row = self::get_request( $id );
+		return rest_ensure_response( array(
+			'ok'      => true,
+			'request' => $row ? self::request_payload( $row, true ) : null,
 		) );
 	}
 
@@ -2616,7 +3165,6 @@ if ( count( $parts ) !== 2 ) {
 
 		// ── Account ──
 		$login = '';
-		$pass  = '';
 
 		if ( $mode === 'link' ) {
 			if ( self::user_taken( (int) $existing->ID, $provider['id'] ) ) {
@@ -2629,36 +3177,23 @@ if ( count( $parts ) !== 2 ) {
 			$provider['user_id'] = (int) $existing->ID;
 			$login               = $existing->user_login;
 		} else {
-			$login = self::unique_login_for( $name, $email );
-			$pass  = wp_generate_password( 18, true, false );
-
-			$display = (string) $row->contact_name !== '' ? (string) $row->contact_name : $name;
-			$new_id  = wp_insert_user( array(
-				'user_login'   => $login,
-				'user_email'   => $email,
-				'user_pass'    => $pass,
-				'display_name' => $display,
-				'first_name'   => (string) $row->contact_name,
-				'user_url'     => (string) $row->website,
-				'role'         => self::ROLE,
+			// Same single implementation the admin form and the app use —
+			// WordPress emails the lab a set-password link and the generated
+			// password is surfaced to the reviewer exactly once.
+			$created = self::create_provider_login( array(
+				'name'    => $name,
+				'email'   => $email,
+				'display' => (string) $row->contact_name !== '' ? (string) $row->contact_name : $name,
+				'website' => (string) $row->website,
 			) );
 
-			if ( is_wp_error( $new_id ) ) {
+			if ( is_wp_error( $created ) ) {
 				self::release_request( $id );
-				return 'The provider login could not be created: ' . $new_id->get_error_message();
+				return 'The provider login could not be created: ' . $created->get_error_message();
 			}
 
-			$provider['user_id'] = (int) $new_id;
-
-			// WordPress emails the lab a set-password link; the admin also
-			// sees the generated password once, below.
-			wp_send_new_user_notifications( (int) $new_id, 'both' );
-
-			set_transient( 'tf2pv_new_login_' . get_current_user_id(), array(
-				'login' => $login,
-				'pass'  => $pass,
-				'email' => $email,
-			), 5 * MINUTE_IN_SECONDS );
+			$provider['user_id'] = (int) $created['user_id'];
+			$login               = (string) $created['login'];
 		}
 
 		$providers[] = $provider;
@@ -2784,10 +3319,8 @@ if ( count( $parts ) !== 2 ) {
 
 	/** One-time credentials block, shared with the Provider Accounts page. */
 	private static function render_new_login_notice() {
-		$key   = 'tf2pv_new_login_' . get_current_user_id();
-		$fresh = get_transient( $key );
-		if ( ! is_array( $fresh ) || empty( $fresh['login'] ) ) return;
-		delete_transient( $key );
+		$fresh = self::consume_new_login();
+		if ( ! $fresh ) return;
 
 		echo '<div class="notice notice-success">'
 			. '<p style="margin-bottom:6px;"><strong>Provider login created.</strong> '

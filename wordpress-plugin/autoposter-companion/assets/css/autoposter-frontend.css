@@ -1,0 +1,66 @@
+/* AutoPoster Companion — frontend styles */
+
+.autoposter-follow-row {
+    margin-top: 2.5em;
+    padding-top: 1.5em;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+}
+
+.autoposter-follow-label {
+    font-size: 0.85em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 0.75em;
+}
+
+.autoposter-follow-icons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.autoposter-follow-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    background: #f7fafc;
+    color: #1465f1;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9em;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.autoposter-follow-icon:hover {
+    background: #eaf1fe;
+    transform: translateY(-1px);
+}
+
+.autoposter-follow-glyph {
+    pointer-events: none;
+}
+
+/* Keep TikTok/YouTube embeds the app inserts responsive on any theme. */
+.wp-block-embed.wp-has-aspect-ratio .wp-block-embed__wrapper {
+    position: relative;
+}
+
+.wp-block-embed.wp-has-aspect-ratio .wp-block-embed__wrapper::before {
+    content: "";
+    display: block;
+    padding-top: 56.25%;
+}
+
+.wp-block-embed.wp-has-aspect-ratio .wp-block-embed__wrapper iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Credentials live in EncryptedSharedPreferences and must never be backed up. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="autoposter_secure_prefs.xml" />
+</full-backup-content>

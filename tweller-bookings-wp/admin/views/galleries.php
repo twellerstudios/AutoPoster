@@ -7,7 +7,19 @@
     <?php elseif ( isset( $_GET['deleted'] ) ) : ?>
         <div class="tf2-alert tf2-alert--success">Gallery deleted.</div>
     <?php elseif ( isset( $_GET['printlab'] ) ) : ?>
-        <div class="tf2-alert tf2-alert--success">
+        <?php
+        // The hand-off is reported honestly: only a completed send is a
+        // success notice. Assigned-but-still-building, or a failure, must not
+        // look identical to "done".
+        $tf2_pl_state = isset( $_GET['printlab_state'] ) ? sanitize_key( wp_unslash( $_GET['printlab_state'] ) ) : '';
+        $tf2_pl_class = 'tf2-alert--success';
+        if ( in_array( $tf2_pl_state, array( 'assigned_build_failed', 'assigned_send_failed', 'error' ), true ) ) {
+            $tf2_pl_class = 'tf2-alert--error';
+        } elseif ( in_array( $tf2_pl_state, array( 'assigned_building', 'unassigned' ), true ) ) {
+            $tf2_pl_class = 'tf2-alert--warning';
+        }
+        ?>
+        <div class="tf2-alert <?php echo esc_attr( $tf2_pl_class ); ?>">
             Print order <strong><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab'] ) ) ); ?></strong> created.
             <?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['printlab_note'] ?? '' ) ) ); ?>
         </div>

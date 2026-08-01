@@ -194,6 +194,14 @@
                         <?php if ( $fp_stage && $fp_stage['key'] !== 'none' ) : ?>
                             <br><span class="tf2-po-stage tf2-po-stage--<?php echo esc_attr( $fp_stage['tone'] ); ?>"><?php echo esc_html( $fp_stage['short'] ); ?></span>
                         <?php endif; ?>
+                        <?php
+                        // Which lab has this job, on every assigned order —
+                        // the one question the orders list could not answer.
+                        if ( $fp_stage && ! empty( $fp_stage['provider_name'] ) ) : ?>
+                            <br><span class="tf2-po-lab" title="Assigned print lab">&#9679; <?php echo esc_html( $fp_stage['provider_name'] ); ?></span>
+                        <?php elseif ( $fp_stage ) : ?>
+                            <br><span class="tf2-po-lab tf2-po-lab--none">No lab assigned</span>
+                        <?php endif; ?>
                     </td>
                     <td style="white-space:nowrap;"><?php echo esc_html( date( 'M j, Y g:ia', strtotime( $order->created_at ) ) ); ?></td>
                     <td><button type="button" class="tf2-btn tf2-btn--secondary tf2-btn--sm tf2-po-toggle"><?php echo $is_open ? 'Close' : 'Details'; ?></button></td>
@@ -327,6 +335,7 @@
                                     $fp_econ_name     = $fp_econ_provider ? $fp_econ_provider['name'] : 'Provider';
                                 ?>
                                     <p style="margin:0; font-size:13px; color:#374151; line-height:1.9;">
+                                        With: <strong><?php echo esc_html( $fp_econ_name ); ?></strong><br>
                                         Order value: <strong>TT$ <?php echo esc_html( number_format( $fp_economics['value'], 2 ) ); ?></strong><br>
                                         <?php echo esc_html( $fp_econ_name ); ?> cost: <strong>TT$ <?php echo esc_html( number_format( $fp_economics['provider_cost'], 2 ) ); ?></strong>
                                         <?php if ( $fp_economics['unpriced_items'] > 0 ) : ?>
@@ -336,7 +345,10 @@
                                         Margin: <strong style="color:#065F46;">TT$ <?php echo esc_html( number_format( $fp_economics['margin'], 2 ) ); ?></strong>
                                     </p>
                                 <?php else : ?>
-                                    <p style="margin:0; font-size:13px; color:#9CA3AF;">No provider assigned yet.</p>
+                                    <p style="margin:0; font-size:13px; color:#9CA3AF;">
+                                        No print lab assigned yet — pick one in <strong>Fulfilment</strong> and the order is assigned straight away,
+                                        even while its files are still building.
+                                    </p>
                                 <?php endif; ?>
 
                                 <?php if ( $order->status === 'new' ) : ?>
@@ -392,6 +404,8 @@
 .tf2-po-status--completed { background:#E5E7EB; color:#374151; }
 .tf2-po-status--cancelled { background:#FEE2E2; color:#B91C1C; }
 .tf2-po-review            { background:#C9A227; color:#101010; margin-top:4px; display:inline-block; }
+.tf2-po-lab               { display:inline-block; margin-top:4px; font-size:11.5px; font-weight:600; color:#7A5C08; }
+.tf2-po-lab--none         { color:#9CA3AF; font-weight:400; }
 .tf2-po-receipt           { display:flex; gap:14px; align-items:flex-start; background:#fff; border:1px solid #E5E7EB; border-radius:10px; padding:12px; }
 .tf2-po-receipt--pending  { border-color:#C9A227; background:#FDFAF1; }
 .tf2-po-confirmpay        { background:#101010; color:#C9A227; font-weight:700; }

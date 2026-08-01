@@ -63,6 +63,21 @@ class TwellerFlow2_Print_Fulfillment {
 	const ADMIN_PAGE     = 'tweller-flow-2-prints';
 	const PROVIDERS_PAGE = 'tweller-flow-2-print-providers';
 
+	/**
+	 * Deferred build continuation.
+	 *
+	 * Assignment is a decision and happens instantly; building the files is a
+	 * slow process. The two are deliberately decoupled — see assign_provider()
+	 * — and this cron hook is what carries a half-built job to completion.
+	 */
+	const CRON_BUILD = 'tweller_print_build_continue';
+
+	/** Seconds one continuation pass may spend rendering. */
+	const CONTINUE_SECONDS = 18;
+
+	/** Throttle for the admin-page-load fallback that backs up WP-Cron. */
+	const RESUME_LOCK = 'tweller_print_resume_lock';
+
 	// ── Bootstrap ──────────────────────────────────────
 
 	public static function init() {
@@ -70,6 +85,13 @@ class TwellerFlow2_Print_Fulfillment {
 		add_action( 'admin_init', array( __CLASS__, 'handle_admin_actions' ) );
 		add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'capability_notice' ) );
+
+		// WP-Cron carries a queued build to completion…
+		add_action( self::CRON_BUILD, array( __CLASS__, 'cron_continue_build' ) );
+		// …and, because WP-Cron never fires on a quiet site (the same lesson
+		// the Google contacts sync learned), every admin page load re-checks
+		// for a queued build and pushes it along. Belt and braces.
+		add_action( 'admin_init', array( __CLASS__, 'resume_pending_builds' ), 20 );
 
 		self::maybe_install();
 	}
@@ -189,6 +211,14 @@ class TwellerFlow2_Print_Fulfillment {
 			// ── Provider portal ──
 			'provider_id'      => '',   // lab currently responsible for the job
 			'assigned_at'      => '',
+			'assign_note'      => '',   // note captured at assignment, emailed with the package
+			// ── Deferred build ──
+			// A job may be assigned long before its files exist. These three
+			// fields are the whole state machine for "we still owe this lab a
+			// package": queued → building → sent, or → failed (never silent).
+			'send_pending'     => 0,    // 1 = email the package as soon as the build finishes
+			'build_error'      => '',   // last hard failure, surfaced in admin + emailed
+			'build_queued_at'  => '',
 			'started_at'       => '',   // provider hit "start printing"
 			'ready_at'         => '',   // provider marked ready
 			'shipped_at'       => '',   // provider handed over / shipped
@@ -241,80 +271,122 @@ class TwellerFlow2_Print_Fulfillment {
 	 * The single source of truth for "where is this order in fulfilment?".
 	 *
 	 * Only `delivered_at` ever produces a delivered reading. An order that has
-	 * merely been emailed to a lab reports "Sent to {lab} — awaiting
-	 * production", never "Delivered": sending hands the job over, it does not
-	 * complete it.
+	 * merely been assigned to a lab reports "Sent to {lab} — awaiting
+	 * production", never "Delivered": handing the job over does not complete it.
 	 *
-	 * @return array{key:string, label:string, short:string, tone:string}
+	 * Every stage also carries `provider_id` / `provider_name`, so every
+	 * surface (orders list, panel, app, emails) can answer "who is this with?"
+	 * from this one call rather than growing a second stage vocabulary.
+	 *
+	 * @return array{key:string, label:string, short:string, tone:string, provider_id:string, provider_name:string}
 	 */
 	public static function fulfillment_stage( $order ) {
 		$f    = self::get_fulfillment( $order );
-		$prov = self::get_provider( $f['provider_id'] );
-		$name = $prov ? $prov['name'] : '';
-		if ( $name === '' && ! empty( $f['sends'] ) ) {
-			$last = end( $f['sends'] );
-			if ( is_array( $last ) ) $name = (string) ( $last['provider_name'] ?? '' );
-		}
-		if ( $name === '' ) $name = 'the provider';
+		$name = self::provider_name_for( $order, $f );
+		$id   = sanitize_key( (string) $f['provider_id'] );
+
+		// Only used for wording; never let it leak as a real provider name.
+		$who = $name !== '' ? $name : 'the provider';
 
 		$build = is_array( $f['build'] ) ? $f['build'] : null;
 		$built = $build && ! empty( $build['done'] );
 
-		if ( (string) $f['delivered_at'] !== '' ) {
+		$stage = function ( $key, $label, $short, $tone ) use ( $id, $name ) {
 			return array(
-				'key'   => 'delivered',
-				'label' => 'Delivered ' . date_i18n( 'M j, Y g:ia', strtotime( (string) $f['delivered_at'] ) )
+				'key'           => $key,
+				'label'         => $label,
+				'short'         => $short,
+				'tone'          => $tone,
+				'provider_id'   => $id,
+				'provider_name' => $name,
+			);
+		};
+
+		if ( (string) $f['delivered_at'] !== '' ) {
+			return $stage(
+				'delivered',
+				'Delivered ' . date_i18n( 'M j, Y g:ia', strtotime( (string) $f['delivered_at'] ) )
 					. ( $f['delivered_via'] === 'scan' ? ' (label scan)' : '' ),
-				'short' => 'Delivered',
-				'tone'  => 'done',
+				'Delivered',
+				'done'
 			);
 		}
 		if ( (string) $f['shipped_at'] !== '' ) {
-			return array(
-				'key'   => 'shipped',
-				'label' => 'Shipped by ' . $name . ' ' . date_i18n( 'M j', strtotime( (string) $f['shipped_at'] ) ) . ' — awaiting delivery scan',
-				'short' => 'Shipped — awaiting delivery',
-				'tone'  => 'active',
+			return $stage(
+				'shipped',
+				'Shipped by ' . $who . ' ' . date_i18n( 'M j', strtotime( (string) $f['shipped_at'] ) ) . ' — awaiting delivery scan',
+				'Shipped by ' . $who . ' — awaiting delivery',
+				'active'
 			);
 		}
 		if ( (string) $f['ready_at'] !== '' ) {
-			return array(
-				'key'   => 'ready',
-				'label' => $name . ' marked this job ready ' . date_i18n( 'M j', strtotime( (string) $f['ready_at'] ) ) . ' — awaiting collection',
-				'short' => 'Ready at ' . $name,
-				'tone'  => 'active',
+			return $stage(
+				'ready',
+				$who . ' marked this job ready ' . date_i18n( 'M j', strtotime( (string) $f['ready_at'] ) ) . ' — awaiting collection',
+				'Ready — ' . $who,
+				'active'
 			);
 		}
 		if ( (string) $f['started_at'] !== '' ) {
-			return array(
-				'key'   => 'printing',
-				'label' => $name . ' started printing ' . date_i18n( 'M j', strtotime( (string) $f['started_at'] ) ),
-				'short' => 'In production at ' . $name,
-				'tone'  => 'active',
+			return $stage(
+				'printing',
+				$who . ' started printing ' . date_i18n( 'M j', strtotime( (string) $f['started_at'] ) ),
+				'In printing — ' . $who,
+				'active'
 			);
 		}
-		if ( ! empty( $f['sends'] ) || (string) $f['provider_id'] !== '' ) {
-			return array(
-				'key'   => 'sent',
-				'label' => 'Sent to ' . $name . ' — awaiting production',
-				'short' => 'Sent to ' . $name . ' — awaiting production',
-				'tone'  => 'active',
+		if ( ! empty( $f['sends'] ) || $id !== '' ) {
+			// Assigned. The files may still be building behind it — that is a
+			// property of the package, not a different place in fulfilment, so
+			// it is spelled out in the label rather than inventing a stage.
+			$suffix = '';
+			if ( (string) $f['build_error'] !== '' ) {
+				$suffix = ' — files failed to build';
+			} elseif ( ! empty( $f['send_pending'] ) ) {
+				$suffix = ' — print files still building';
+			}
+			return $stage(
+				'sent',
+				'Sent to ' . $who . ' — awaiting production' . $suffix,
+				'Sent to ' . $who . ' — awaiting production' . $suffix,
+				'active'
 			);
 		}
 		if ( $built ) {
-			return array(
-				'key'   => 'built',
-				'label' => 'Print files built — not sent to a provider yet',
-				'short' => 'Files built — not sent',
-				'tone'  => 'idle',
+			return $stage(
+				'built',
+				'Print files built — not sent to a provider yet',
+				'Files built — no lab assigned',
+				'idle'
 			);
 		}
-		return array(
-			'key'   => 'none',
-			'label' => 'Print files have not been built yet',
-			'short' => 'Not started',
-			'tone'  => 'idle',
+		return $stage(
+			'none',
+			'Print files have not been built yet',
+			'Not started — no lab assigned',
+			'idle'
 		);
+	}
+
+	/**
+	 * Display name of the lab an order sits with ('' when unassigned).
+	 * Falls back to the last send record so legacy orders still read right.
+	 */
+	public static function provider_name_for( $order, $f = null ) {
+		if ( ! is_array( $f ) ) $f = self::get_fulfillment( $order );
+
+		$prov = self::get_provider( (string) $f['provider_id'] );
+		if ( $prov && $prov['name'] !== '' ) return $prov['name'];
+
+		if ( ! empty( $f['sends'] ) ) {
+			$last = end( $f['sends'] );
+			if ( is_array( $last ) && (string) ( $last['provider_name'] ?? '' ) !== '' ) {
+				return (string) $last['provider_name'];
+			}
+		}
+		// Assigned to an id we no longer have a record for — never silently
+		// report "unassigned" when the JSON says otherwise.
+		return (string) $f['provider_id'] !== '' ? (string) $f['provider_id'] : '';
 	}
 
 	/** Provider id currently responsible for an order ('' when unassigned). */
@@ -2008,6 +2080,10 @@ class TwellerFlow2_Print_Fulfillment {
 
 		do_action( 'tweller_print_order_delivered', $order->order_ref, $via, array( 'actor_type' => $actor_type, 'actor_id' => $actor_id ) );
 
+		// A delivery scan closing the job is a provider transition the studio
+		// wants to hear about; the studio's own "mark delivered" click is not.
+		self::notify_studio_provider_update( self::get_order( $order->id ), 'delivered', $actor_type );
+
 		return array( 'delivered_at' => $now, 'notified' => (bool) $notified, 'already' => false );
 	}
 
@@ -2105,6 +2181,545 @@ class TwellerFlow2_Print_Fulfillment {
 		exit;
 	}
 
+	// ── Assignment (instant) ───────────────────────────
+
+	/**
+	 * Assign an order to a lab. This is a DECISION, not a process: it is
+	 * instant, it never waits on the file builder, and once it has run the
+	 * order counts everywhere that reads the assignment — the provider portal,
+	 * provider_stats(), economics_summary(), the orders list and the app.
+	 *
+	 * Coupling this to a completed build is what let a 116-photo order report
+	 * success from the app while wp-admin showed "No provider assigned yet":
+	 * the build could not finish inside the request, so the assignment that
+	 * lived on the far side of it never happened.
+	 *
+	 * Idempotent: re-assigning the same lab records nothing new and sends no
+	 * second email. Refuses outright on a delivered or cancelled order.
+	 *
+	 * @param int    $order_id
+	 * @param string $provider_id
+	 * @param string $note Optional note carried into the lab's job email.
+	 * @return array|WP_Error {provider_id, provider_name, changed, reassigned, previous_id}
+	 */
+	public static function assign_provider( $order_id, $provider_id, $note = '' ) {
+		$order = self::get_order( (int) $order_id );
+		if ( ! $order ) return new WP_Error( 'not_found', 'Order not found.' );
+
+		$provider = self::get_provider( $provider_id );
+		if ( ! $provider ) {
+			return new WP_Error( 'bad_provider', 'That print provider does not exist.' );
+		}
+
+		$f = self::get_fulfillment( $order );
+
+		// (f) A closed order must never be re-opened by an assignment — that
+		// would corrupt the delivered/cancelled record and the payout figures
+		// derived from it.
+		if ( (string) $f['delivered_at'] !== '' ) {
+			return new WP_Error(
+				'already_delivered',
+				'Order ' . $order->order_ref . ' has already been delivered — it cannot be reassigned to ' . $provider['name'] . '.'
+			);
+		}
+		if ( (string) $order->status === 'cancelled' ) {
+			return new WP_Error(
+				'cancelled',
+				'Order ' . $order->order_ref . ' is cancelled — it cannot be assigned to a print provider.'
+			);
+		}
+
+		$previous   = sanitize_key( (string) $f['provider_id'] );
+		$changed    = ( $previous !== $provider['id'] );
+		$reassigned = ( $changed && $previous !== '' );
+
+		$note = sanitize_textarea_field( (string) $note );
+		if ( $note !== '' ) $f['assign_note'] = $note;
+
+		if ( ! $changed ) {
+			// Nothing moved. Keep the record honest and stay quiet.
+			if ( $note !== '' ) self::save_fulfillment( (int) $order->id, $f );
+			return array(
+				'provider_id'   => $provider['id'],
+				'provider_name' => $provider['name'],
+				'changed'       => false,
+				'reassigned'    => false,
+				'previous_id'   => $previous,
+			);
+		}
+
+		$user = wp_get_current_user();
+		$now  = current_time( 'mysql' );
+
+		$f['provider_id'] = $provider['id'];
+		$f['assigned_at'] = $now;
+
+		// (e) A different lab is a genuine transition: audit where it moved
+		// from as well as where it moved to.
+		$meta = array( 'provider' => $provider['id'] );
+		if ( $reassigned ) {
+			$prev_record       = self::get_provider( $previous );
+			$meta['from']      = $previous;
+			$meta['from_name'] = $prev_record ? $prev_record['name'] : $previous;
+		}
+		$f['audit'][] = array(
+			'at'         => $now,
+			'actor_type' => 'studio',
+			'actor_id'   => ( $user && $user->exists() ) ? (int) $user->ID : 0,
+			'action'     => $reassigned ? 'reassigned_provider' : 'assigned_provider',
+			'meta'       => array_map( 'sanitize_text_field', $meta ),
+		);
+
+		self::save_fulfillment( (int) $order->id, $f );
+
+		do_action( 'tweller_print_order_assigned', (int) $order->id, $provider['id'] );
+
+		self::send_studio_assigned_email( self::get_order( (int) $order->id ), $provider, $reassigned ? $previous : '' );
+
+		return array(
+			'provider_id'   => $provider['id'],
+			'provider_name' => $provider['name'],
+			'changed'       => true,
+			'reassigned'    => $reassigned,
+			'previous_id'   => $previous,
+		);
+	}
+
+	/**
+	 * The one entry point every "send this order to a lab" surface uses —
+	 * wp-admin, the app, the session screen. Assignment happens first and
+	 * always; the package follows when (or as soon as) the files exist.
+	 *
+	 * Handles every permutation:
+	 *   (a) provider + files built   → assign, email the lab the package
+	 *   (b) provider + files pending → assign now, keep building, email later
+	 *   (c) no provider              → nothing assigned, said plainly
+	 *   (d) build failure            → stays assigned, flagged + emailed
+	 *   (e) different lab            → reassign, audit, notify
+	 *   (f) delivered / cancelled    → refused with a clear error
+	 *
+	 * @param int    $order_id
+	 * @param string $provider_id '' = create the order only.
+	 * @param string $note
+	 * @param float  $budget Seconds this request may spend building.
+	 * @return array|WP_Error {state, message, provider_id, provider_name, built, pieces}
+	 */
+	public static function assign_and_send( $order_id, $provider_id, $note = '', $budget = 0 ) {
+		$provider_id = sanitize_key( (string) $provider_id );
+
+		// (c) No lab chosen — an unassigned order, and we say so.
+		if ( $provider_id === '' ) {
+			return array(
+				'state'         => 'unassigned',
+				'message'       => 'Order created — no print lab was chosen, so it is not assigned to anyone yet.',
+				'provider_id'   => '',
+				'provider_name' => '',
+				'built'         => false,
+				'pieces'        => 0,
+			);
+		}
+
+		$assigned = self::assign_provider( $order_id, $provider_id, $note );
+		if ( is_wp_error( $assigned ) ) return $assigned; // (f)
+
+		$order = self::get_order( (int) $order_id );
+		if ( ! $order ) return new WP_Error( 'not_found', 'Order not found.' );
+
+		$f     = self::get_fulfillment( $order );
+		$build = is_array( $f['build'] ) ? $f['build'] : null;
+		$built = is_array( $build ) && ! empty( $build['done'] );
+
+		// (a) Files already exist — hand the package over right now.
+		if ( $built ) {
+			$sent = self::send_to_provider( (int) $order_id, $provider_id, $note );
+			if ( is_wp_error( $sent ) ) {
+				return array(
+					'state'         => 'assigned_send_failed',
+					'message'       => 'Assigned to ' . $assigned['provider_name'] . ', but the job email failed: ' . $sent->get_error_message(),
+					'provider_id'   => $assigned['provider_id'],
+					'provider_name' => $assigned['provider_name'],
+					'built'         => true,
+					'pieces'        => (int) self::build_stats( $build )['pieces'],
+				);
+			}
+			return array(
+				'state'         => 'sent',
+				'message'       => 'Assigned to ' . $assigned['provider_name'] . ' and the job package has been emailed to them.',
+				'provider_id'   => $assigned['provider_id'],
+				'provider_name' => $assigned['provider_name'],
+				'built'         => true,
+				'pieces'        => (int) self::build_stats( $build )['pieces'],
+			);
+		}
+
+		// (b) Files not built. The order is already assigned — mark that we
+		// still owe this lab a package, then spend whatever budget this
+		// request has on the build before handing the rest to cron.
+		$f['send_pending']    = 1;
+		$f['build_error']     = '';
+		$f['build_queued_at'] = current_time( 'mysql' );
+		self::save_fulfillment( (int) $order_id, $f );
+
+		$result = self::continue_build( (int) $order_id, (float) $budget );
+
+		if ( $result['state'] === 'sent' ) {
+			return array(
+				'state'         => 'sent',
+				'message'       => 'Assigned to ' . $assigned['provider_name'] . ' and the job package has been emailed to them.',
+				'provider_id'   => $assigned['provider_id'],
+				'provider_name' => $assigned['provider_name'],
+				'built'         => true,
+				'pieces'        => (int) $result['pieces'],
+			);
+		}
+		if ( $result['state'] === 'failed' ) {
+			return array(
+				'state'         => 'assigned_build_failed',
+				'message'       => 'Assigned to ' . $assigned['provider_name'] . ', but the print files failed to build: ' . $result['message'],
+				'provider_id'   => $assigned['provider_id'],
+				'provider_name' => $assigned['provider_name'],
+				'built'         => false,
+				'pieces'        => 0,
+			);
+		}
+		if ( $result['state'] === 'send_failed' ) {
+			return array(
+				'state'         => 'assigned_send_failed',
+				'message'       => 'Assigned to ' . $assigned['provider_name'] . ', but the job email failed: ' . $result['message'],
+				'provider_id'   => $assigned['provider_id'],
+				'provider_name' => $assigned['provider_name'],
+				'built'         => true,
+				'pieces'        => (int) $result['pieces'],
+			);
+		}
+
+		return array(
+			'state'         => 'assigned_building',
+			'message'       => 'Assigned to ' . $assigned['provider_name'] . '. The print files are still building ('
+				. (int) $result['done'] . ' of ' . (int) $result['total'] . ') — they will be emailed to '
+				. $assigned['provider_name'] . ' automatically as soon as they finish.',
+			'provider_id'   => $assigned['provider_id'],
+			'provider_name' => $assigned['provider_name'],
+			'built'         => false,
+			'pieces'        => 0,
+		);
+	}
+
+	// ── Deferred build ─────────────────────────────────
+
+	/** Queue (or re-queue) a build continuation on WP-Cron. */
+	public static function schedule_build_continue( $order_id ) {
+		$order_id = (int) $order_id;
+		if ( $order_id <= 0 ) return;
+		if ( ! function_exists( 'wp_schedule_single_event' ) ) return;
+		if ( wp_next_scheduled( self::CRON_BUILD, array( $order_id ) ) ) return;
+		wp_schedule_single_event( time() + 60, self::CRON_BUILD, array( $order_id ) );
+	}
+
+	/** WP-Cron entry point. */
+	public static function cron_continue_build( $order_id ) {
+		self::continue_build( (int) $order_id, self::CONTINUE_SECONDS );
+	}
+
+	/**
+	 * Push a queued build along for up to $budget seconds, then either send
+	 * the package, record a failure, or schedule another pass. This is the
+	 * only place that closes out a deferred hand-off.
+	 *
+	 * @return array{state:string, message:string, done:int, total:int, pieces:int}
+	 */
+	public static function continue_build( $order_id, $budget = 0 ) {
+		$order = self::get_order( (int) $order_id );
+		if ( ! $order ) {
+			return array( 'state' => 'failed', 'message' => 'Order not found.', 'done' => 0, 'total' => 0, 'pieces' => 0 );
+		}
+
+		$budget = (float) $budget;
+		if ( $budget <= 0 ) $budget = self::CONTINUE_SECONDS;
+
+		$deadline = microtime( true ) + $budget;
+		$build    = null;
+		$last     = -1;
+
+		do {
+			$build = self::build_chunk( (int) $order->id, false );
+			if ( ! is_array( $build ) ) break;
+			if ( ! empty( $build['error'] ) ) break;
+
+			$next = (int) ( $build['next'] ?? 0 );
+			// A chunk that renders nothing would otherwise spin the deadline
+			// away without progressing — stop and let the next pass retry.
+			if ( $next <= $last ) break;
+			$last = $next;
+		} while ( empty( $build['done'] ) && microtime( true ) < $deadline );
+
+		$done  = is_array( $build ) ? (int) ( $build['next'] ?? 0 ) : 0;
+		$total = is_array( $build ) ? (int) ( $build['total'] ?? 0 ) : 0;
+
+		// (d) Hard failure — the order stays assigned, but nobody is left
+		// guessing: it is flagged in the panel and emailed to the studio.
+		if ( ! is_array( $build ) || ! empty( $build['error'] ) ) {
+			$message = is_array( $build ) ? (string) $build['error'] : 'The print file builder did not respond.';
+			self::record_build_failure( (int) $order->id, $message );
+			return array( 'state' => 'failed', 'message' => $message, 'done' => $done, 'total' => $total, 'pieces' => 0 );
+		}
+
+		if ( empty( $build['done'] ) ) {
+			self::schedule_build_continue( (int) $order->id );
+			return array( 'state' => 'building', 'message' => '', 'done' => $done, 'total' => $total, 'pieces' => 0 );
+		}
+
+		// Built. Did every item actually render?
+		$stats = self::build_stats( $build );
+		$f     = self::get_fulfillment( self::get_order( (int) $order->id ) );
+
+		if ( (int) $stats['files'] === 0 && (int) $stats['errors'] > 0 ) {
+			$message = 'Every item failed to render (' . (int) $stats['errors'] . ' error'
+				. ( (int) $stats['errors'] === 1 ? '' : 's' ) . ') — check the source photos.';
+			self::record_build_failure( (int) $order->id, $message );
+			return array( 'state' => 'failed', 'message' => $message, 'done' => $done, 'total' => $total, 'pieces' => 0 );
+		}
+
+		if ( empty( $f['send_pending'] ) ) {
+			// Built for someone who is not waiting on it (a plain rebuild).
+			return array( 'state' => 'built', 'message' => '', 'done' => $done, 'total' => $total, 'pieces' => (int) $stats['pieces'] );
+		}
+
+		$provider_id = sanitize_key( (string) $f['provider_id'] );
+		if ( $provider_id === '' ) {
+			$f['send_pending'] = 0;
+			self::save_fulfillment( (int) $order->id, $f );
+			return array( 'state' => 'built', 'message' => '', 'done' => $done, 'total' => $total, 'pieces' => (int) $stats['pieces'] );
+		}
+
+		$sent = self::send_to_provider( (int) $order->id, $provider_id, (string) $f['assign_note'] );
+
+		// Re-read: send_to_provider writes its own send record.
+		$f = self::get_fulfillment( self::get_order( (int) $order->id ) );
+		$f['send_pending'] = 0;
+
+		if ( is_wp_error( $sent ) ) {
+			$f['build_error'] = 'The files built, but the job email failed: ' . $sent->get_error_message();
+			self::save_fulfillment( (int) $order->id, $f );
+			self::send_studio_build_failed_email( self::get_order( (int) $order->id ), $f['build_error'] );
+			return array(
+				'state'   => 'send_failed',
+				'message' => $sent->get_error_message(),
+				'done'    => $done,
+				'total'   => $total,
+				'pieces'  => (int) $stats['pieces'],
+			);
+		}
+
+		$f['build_error'] = '';
+		self::save_fulfillment( (int) $order->id, $f );
+
+		return array( 'state' => 'sent', 'message' => '', 'done' => $done, 'total' => $total, 'pieces' => (int) $stats['pieces'] );
+	}
+
+	/** Flag a failed build on the order, audit it, and tell the studio. */
+	private static function record_build_failure( $order_id, $message ) {
+		$order = self::get_order( (int) $order_id );
+		if ( ! $order ) return;
+
+		$f = self::get_fulfillment( $order );
+		$f['build_error']  = sanitize_text_field( (string) $message );
+		$f['send_pending'] = 0;
+		$f['audit'][]      = array(
+			'at'         => current_time( 'mysql' ),
+			'actor_type' => 'studio',
+			'actor_id'   => 0,
+			'action'     => 'build_failed',
+			'meta'       => array( 'error' => sanitize_text_field( (string) $message ) ),
+		);
+		self::save_fulfillment( (int) $order_id, $f );
+
+		self::send_studio_build_failed_email( self::get_order( (int) $order_id ), (string) $message );
+	}
+
+	/**
+	 * Fallback driver for the deferred build.
+	 *
+	 * WP-Cron only runs when somebody visits the site, and on a quiet studio
+	 * site that can be hours. Every admin page load therefore looks for one
+	 * order that still owes a lab its package and pushes it along, throttled
+	 * so a busy admin session never turns into a render storm.
+	 */
+	public static function resume_pending_builds() {
+		global $wpdb;
+
+		if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) return;
+		if ( wp_doing_ajax() ) return;
+		// Never fight the interactive chunked builder on the orders screen.
+		if ( ! empty( $_GET['fp_building'] ) || ( isset( $_GET['tf2pf'] ) && $_GET['tf2pf'] !== '' ) ) return;
+		if ( get_transient( self::RESUME_LOCK ) ) return;
+
+		$table = self::orders_table();
+		if ( ! $table ) return;
+
+		$needle = '%' . $wpdb->esc_like( '"send_pending":1' ) . '%';
+		$row    = $wpdb->get_row( $wpdb->prepare(
+			"SELECT id FROM `{$table}` WHERE fulfillment LIKE %s AND status != 'cancelled' ORDER BY updated_at ASC LIMIT 1",
+			$needle
+		) );
+		if ( ! $row ) return;
+
+		set_transient( self::RESUME_LOCK, 1, 60 );
+		self::continue_build( (int) $row->id, 10 );
+	}
+
+	// ── Studio notifications ───────────────────────────
+
+	/**
+	 * Who at the studio hears about fulfilment movement. Reuses the print
+	 * store's own settings rather than hardcoding anything.
+	 *
+	 * @return array<int,string>
+	 */
+	public static function studio_recipients() {
+		$out = array();
+
+		if ( class_exists( 'TwellerFlow2_Prints' ) ) {
+			$settings = TwellerFlow2_Prints::get_settings();
+			$notify   = sanitize_email( (string) ( $settings['notify_email'] ?? '' ) );
+			if ( $notify !== '' && is_email( $notify ) ) $out[] = $notify;
+
+			if ( method_exists( 'TwellerFlow2_Prints', 'get_partner_alert_emails' ) ) {
+				foreach ( (array) TwellerFlow2_Prints::get_partner_alert_emails() as $extra ) {
+					$extra = sanitize_email( (string) $extra );
+					if ( $extra !== '' && is_email( $extra ) && ! in_array( $extra, $out, true ) ) $out[] = $extra;
+				}
+			}
+		}
+
+		if ( empty( $out ) ) {
+			$admin = sanitize_email( (string) get_option( 'admin_email' ) );
+			if ( $admin !== '' && is_email( $admin ) ) $out[] = $admin;
+		}
+		return $out;
+	}
+
+	/** Public admin deep link to one order's fulfilment panel. */
+	public static function admin_order_url( $order_id ) {
+		return self::order_url( (int) $order_id );
+	}
+
+	/** Piece count for an order, whether or not its files exist yet. */
+	private static function ordered_pieces( $order ) {
+		$pieces = 0;
+		foreach ( self::printable_items( $order ) as $item ) {
+			$pieces += max( 1, (int) ( $item['qty'] ?? 1 ) );
+		}
+		return $pieces;
+	}
+
+	/** Shared shell for the short studio-facing fulfilment emails. */
+	private static function send_studio_email( $subject, $heading, $intro, $rows, $order_id, $cta = 'Open the order' ) {
+		$to = self::studio_recipients();
+		if ( empty( $to ) || ! class_exists( 'TwellerFlow2_Notifications' ) ) return false;
+
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>" . esc_html( $heading ) . "</h2>
+			<p style='color:#3D3630; line-height:1.7;'>" . $intro . "</p>
+			" . TwellerFlow2_Notifications::email_card( 'Job', $rows ) . "
+			" . TwellerFlow2_Notifications::email_button_row( esc_url( self::admin_order_url( (int) $order_id ) ), $cta ) . "
+		";
+
+		return TwellerFlow2_Notifications::send_raw( $to, $subject, $body );
+	}
+
+	/** "This order is now with {lab}" — fired by assign_provider(). */
+	private static function send_studio_assigned_email( $order, $provider, $previous_id = '' ) {
+		if ( ! $order || ! is_array( $provider ) ) return false;
+
+		$previous = $previous_id !== '' ? self::get_provider( $previous_id ) : null;
+		$pieces   = self::ordered_pieces( $order );
+
+		$rows  = TwellerFlow2_Notifications::email_detail_row( 'Order', esc_html( (string) $order->order_ref ) );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Print lab', esc_html( $provider['name'] ) );
+		if ( $previous ) {
+			$rows .= TwellerFlow2_Notifications::email_detail_row( 'Moved from', esc_html( $previous['name'] ) );
+		}
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Customer', esc_html( (string) $order->customer_name ) );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Pieces', (int) $pieces );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Order total', 'TT$ ' . esc_html( number_format( (float) $order->subtotal, 2 ) ) );
+
+		$heading = $previous ? 'Order moved to a new lab' : 'Order sent to a print lab';
+		$intro   = $previous
+			? 'Order <strong>' . esc_html( (string) $order->order_ref ) . '</strong> has been moved from '
+				. esc_html( $previous['name'] ) . ' to <strong>' . esc_html( $provider['name'] ) . '</strong>.'
+			: 'Order <strong>' . esc_html( (string) $order->order_ref ) . '</strong> is now with <strong>'
+				. esc_html( $provider['name'] ) . '</strong>.';
+
+		$subject = ( $previous ? 'Print order ' . $order->order_ref . ' moved to ' : 'Print order ' . $order->order_ref . ' sent to ' )
+			. $provider['name'];
+
+		return self::send_studio_email( $subject, $heading, $intro, $rows, (int) $order->id );
+	}
+
+	/** "The files for this job did not build" — never a silent stall. */
+	private static function send_studio_build_failed_email( $order, $message ) {
+		if ( ! $order ) return false;
+
+		$name = self::provider_name_for( $order );
+		if ( $name === '' ) $name = 'no lab';
+
+		$rows  = TwellerFlow2_Notifications::email_detail_row( 'Order', esc_html( (string) $order->order_ref ) );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Print lab', esc_html( $name ) );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Problem', esc_html( (string) $message ) );
+
+		return self::send_studio_email(
+			'Print files failed to build — ' . $order->order_ref,
+			'Print files failed to build',
+			'The print files for <strong>' . esc_html( (string) $order->order_ref ) . '</strong> could not be prepared, so '
+				. esc_html( $name ) . ' has not received the package. The order is still assigned to them.',
+			$rows,
+			(int) $order->id,
+			'Fix it in the order'
+		);
+	}
+
+	/**
+	 * A provider moved the job. Called from the provider REST transitions and
+	 * from mark_delivered(), and deliberately silent when the studio itself
+	 * performed the action from wp-admin — the person who clicked the button
+	 * does not need an email about their own click.
+	 *
+	 * @param object $order
+	 * @param string $event printing|ready|shipped|delivered
+	 * @param string $actor_type provider|studio
+	 */
+	public static function notify_studio_provider_update( $order, $event, $actor_type = 'provider' ) {
+		if ( ! $order ) return false;
+		if ( $actor_type !== 'provider' ) return false; // studio's own click
+
+		$event = sanitize_key( (string) $event );
+		$name  = self::provider_name_for( $order );
+		if ( $name === '' ) $name = 'The print lab';
+
+		$lines = array(
+			'printing'  => array( 'started printing', 'In production' ),
+			'ready'     => array( 'marked this job ready', 'Ready' ),
+			'shipped'   => array( 'shipped this job', 'Shipped' ),
+			'delivered' => array( 'closed this job with a delivery scan', 'Delivered' ),
+		);
+		if ( ! isset( $lines[ $event ] ) ) return false;
+
+		$rows  = TwellerFlow2_Notifications::email_detail_row( 'Order', esc_html( (string) $order->order_ref ) );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Print lab', esc_html( $name ) );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Now', esc_html( $lines[ $event ][1] ) );
+		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Customer', esc_html( (string) $order->customer_name ) );
+
+		return self::send_studio_email(
+			$order->order_ref . ' — ' . $lines[ $event ][1] . ' at ' . $name,
+			$lines[ $event ][1],
+			'<strong>' . esc_html( $name ) . '</strong> ' . esc_html( $lines[ $event ][0] ) . ' for order <strong>'
+				. esc_html( (string) $order->order_ref ) . '</strong>.',
+			$rows,
+			(int) $order->id
+		);
+	}
+
 	// ── Provider email ─────────────────────────────────
 
 	public static function send_to_provider( $order_id, $provider_id, $note = '' ) {
@@ -2124,6 +2739,13 @@ class TwellerFlow2_Print_Fulfillment {
 		if ( ! is_array( $build ) || empty( $build['done'] ) ) {
 			return new WP_Error( 'not_built', 'Build the print files before sending this order to a provider.' );
 		}
+
+		// Ownership of the job is recorded by the one assignment routine —
+		// which also audits it, fires tweller_print_order_assigned and tells
+		// the studio. Idempotent, so an order assigned a moment ago (while its
+		// files were still building) is not re-announced here.
+		$assigned = self::assign_provider( (int) $order->id, $provider['id'], $note );
+		if ( is_wp_error( $assigned ) ) return $assigned;
 
 		$settings = self::get_settings();
 		$stats    = self::build_stats( $build );
@@ -2196,6 +2818,9 @@ class TwellerFlow2_Print_Fulfillment {
 		$subject = 'Print job ' . $order->order_ref . ' — ' . (int) $stats['pieces'] . ' piece' . ( (int) $stats['pieces'] === 1 ? '' : 's' ) . ' — Tweller Studios';
 		$sent    = TwellerFlow2_Notifications::send_raw( $provider['email'], $subject, $body );
 
+		// Re-read: assign_provider() has already written to this row.
+		$fulfillment = self::get_fulfillment( self::get_order( (int) $order->id ) );
+
 		$user = wp_get_current_user();
 		$fulfillment['sends'][] = array(
 			'provider_id'   => $provider['id'],
@@ -2209,11 +2834,10 @@ class TwellerFlow2_Print_Fulfillment {
 			'sent'          => $sent ? 1 : 0,
 		);
 
-		// The job is now this provider's responsibility — that assignment
-		// is what the provider portal filters on.
-		$fulfillment['provider_id'] = $provider['id'];
-		$fulfillment['assigned_at'] = current_time( 'mysql' );
-		$fulfillment['audit'][]     = array(
+		// The package has actually gone out — the assignment itself was
+		// recorded (and audited) by assign_provider() above.
+		$fulfillment['send_pending'] = 0;
+		$fulfillment['audit'][]      = array(
 			'at'         => current_time( 'mysql' ),
 			'actor_type' => 'studio',
 			'actor_id'   => ( $user && $user->exists() ) ? (int) $user->ID : 0,
@@ -2221,8 +2845,6 @@ class TwellerFlow2_Print_Fulfillment {
 			'meta'       => array( 'provider' => $provider['id'] ),
 		);
 		self::save_fulfillment( $order->id, $fulfillment );
-
-		do_action( 'tweller_print_order_assigned', (int) $order->id, $provider['id'] );
 
 		if ( ! $sent ) {
 			return new WP_Error( 'send_failed', 'The email to ' . $provider['name'] . ' could not be sent — check the SMTP settings.' );
@@ -2409,10 +3031,17 @@ class TwellerFlow2_Print_Fulfillment {
 			$provider_id = sanitize_key( wp_unslash( $_POST['provider_id'] ?? '' ) );
 			$note        = sanitize_textarea_field( wp_unslash( $_POST['provider_note'] ?? '' ) );
 
-			$result = self::send_to_provider( $order_id, $provider_id, $note );
+			// Assignment first, package second — a big job is assigned (and so
+			// counts in economics, stats and the portal) even when its files
+			// cannot finish inside this request.
+			$result = self::assign_and_send( $order_id, $provider_id, $note, 15 );
 			$args   = array();
 			if ( is_wp_error( $result ) ) {
 				$args['fp_error'] = rawurlencode( $result->get_error_message() );
+			} elseif ( in_array( $result['state'], array( 'assigned_build_failed', 'assigned_send_failed' ), true ) ) {
+				$args['fp_error'] = rawurlencode( $result['message'] );
+			} elseif ( $result['state'] === 'assigned_building' ) {
+				$args['fp_queued'] = rawurlencode( $result['message'] );
 			} else {
 				$args['fp_sent'] = 1;
 			}
@@ -2568,6 +3197,10 @@ class TwellerFlow2_Print_Fulfillment {
 		if ( ! empty( $_GET['fp_sent'] ) ) {
 			echo '<div class="tf2-alert tf2-alert--success">Order sent to the print provider — it is now awaiting production.</div>';
 		}
+		if ( ! empty( $_GET['fp_queued'] ) ) {
+			echo '<div class="tf2-alert tf2pf__progress-notice">'
+				. esc_html( sanitize_text_field( rawurldecode( wp_unslash( $_GET['fp_queued'] ) ) ) ) . '</div>';
+		}
 		if ( ! empty( $_GET['fp_built'] ) ) {
 			echo '<div class="tf2-alert tf2-alert--success">Print files built and packaged.</div>';
 		}
@@ -2620,6 +3253,11 @@ class TwellerFlow2_Print_Fulfillment {
 		.tf2pf__stage--active { background:#FDFAF1; border:1px solid #E7CF87; color:#7A5C08; }
 		.tf2pf__stage--done   { background:#101010; border:1px solid #101010; color:#C9A227; }
 		.tf2pf__stage .dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex:0 0 8px; }
+
+		/* Who has this job — answered without opening anything else. */
+		.tf2pf__with { margin:-4px 0 10px; font-size:12.5px; color:#4B5563; }
+		.tf2pf__with strong { color:#111827; }
+		.tf2pf__with--none { color:#9CA3AF; }
 
 		/* Build progress */
 		.tf2pf__progress-notice { background:#FDFAF1; border:1px solid #C9A227; color:#3D3630; }
@@ -2704,6 +3342,16 @@ class TwellerFlow2_Print_Fulfillment {
 		$has_label   = (string) $fulfillment['label_printed_at'] !== '';
 		$send_form   = 'tf2pf-send-' . $order_id;
 
+		// Who has this job, and does the lab still owe us a package?
+		$assigned_id   = sanitize_key( (string) $fulfillment['provider_id'] );
+		$assigned_name = self::provider_name_for( $order, $fulfillment );
+		$send_pending  = ! empty( $fulfillment['send_pending'] );
+		$build_error   = (string) $fulfillment['build_error'];
+		$package_sent  = false;
+		foreach ( (array) $fulfillment['sends'] as $s ) {
+			if ( ! empty( $s['sent'] ) ) { $package_sent = true; break; }
+		}
+
 		// Exactly one action is the natural next step at any moment.
 		$next_step = 'build';
 		if ( $is_built && ! $is_stale ) $next_step = $is_sent ? ( $has_label ? '' : 'label' ) : 'send';
@@ -2719,6 +3367,35 @@ class TwellerFlow2_Print_Fulfillment {
 				<span class="dot"></span>
 				<span><?php echo esc_html( ( $delivered ? "✓ " : '' ) . $stage['label'] ); ?></span>
 			</div>
+
+			<?php if ( $assigned_name !== '' ) : ?>
+				<p class="tf2pf__with">
+					With <strong><?php echo esc_html( $assigned_name ); ?></strong>
+					<?php if ( (string) $fulfillment['assigned_at'] !== '' ) : ?>
+						since <?php echo esc_html( date_i18n( 'M j, Y g:ia', strtotime( (string) $fulfillment['assigned_at'] ) ) ); ?>
+					<?php endif; ?>
+					· <?php echo $package_sent ? 'job package emailed' : 'package not emailed yet'; ?>
+				</p>
+			<?php else : ?>
+				<p class="tf2pf__with tf2pf__with--none">No print lab assigned yet — this order is not with anyone.</p>
+			<?php endif; ?>
+
+			<?php if ( $build_error !== '' ) : ?>
+				<div class="tf2pf__warn">
+					<strong>Print files failed to build.</strong>
+					<?php echo esc_html( $build_error ); ?>
+					<?php if ( $assigned_name !== '' ) : ?>
+						<br><?php echo esc_html( $assigned_name ); ?> is still assigned to this order but has not received the package.
+					<?php endif; ?>
+					<br>Fix the source photos, then use <strong>Rebuild print files</strong> above.
+				</div>
+			<?php elseif ( $send_pending ) : ?>
+				<div class="tf2pf__soft">
+					<strong>Print files are still building.</strong>
+					They will be emailed to <?php echo esc_html( $assigned_name !== '' ? $assigned_name : 'the assigned lab' ); ?>
+					automatically as soon as they finish. This continues in the background and on every admin page load.
+				</div>
+			<?php endif; ?>
 
 			<?php if ( $building ) : ?>
 				<?php self::render_progress( $order_id, false ); ?>
@@ -2737,16 +3414,20 @@ class TwellerFlow2_Print_Fulfillment {
 				if ( empty( $providers ) ) {
 					self::action_button( array( 'label' => 'No provider set up', 'state' => 'todo', 'disabled' => true ) );
 				} else {
+					// Assignment does not wait on the build. A big job is
+					// assigned immediately and the package follows by itself.
 					self::action_button( array(
 						'form'     => $send_form,
-						'label'    => $is_sent ? 'Sent ✓' : 'Send order to provider',
-						'state'    => $is_sent ? 'done' : ( $next_step === 'send' ? 'next' : 'todo' ),
-						'disabled' => ! $is_built,
+						'label'    => $is_sent ? ( $package_sent ? 'Sent ✓' : 'Assigned ✓' ) : 'Send order to provider',
+						'state'    => $is_sent ? 'done' : ( in_array( $next_step, array( 'send', 'build' ), true ) ? 'next' : 'todo' ),
+						'disabled' => $delivered,
 						'confirm'  => 'Send ' . $order->order_ref . ' to the selected provider'
 							. ( $is_sent ? ' again?' : '?' ),
-						'title'    => $is_built
-							? ( $is_sent ? 'Already sent — use this to send the job again' : 'Email the job package to the selected provider' )
-							: 'Build the print files first',
+						'title'    => $delivered
+							? 'This order has been delivered — it cannot be reassigned'
+							: ( $is_built
+								? ( $is_sent ? 'Already assigned — use this to send the job again or move it to another lab' : 'Assign the lab and email them the job package' )
+								: 'Assign the lab now — the files keep building and are emailed to them automatically' ),
 					) );
 				}
 
@@ -2759,8 +3440,8 @@ class TwellerFlow2_Print_Fulfillment {
 				) );
 				?>
 			</div>
-			<?php if ( ! $is_built ) : ?>
-				<p class="tf2pf__acthint">Build the print files before sending this order to a provider.</p>
+			<?php if ( ! $is_built && ! $delivered ) : ?>
+				<p class="tf2pf__acthint">You can assign a lab now — the print files keep building and are emailed to them the moment they are ready.</p>
 			<?php endif; ?>
 
 			<div class="tf2pf__grid">
@@ -2835,7 +3516,12 @@ class TwellerFlow2_Print_Fulfillment {
 
 				<!-- ── Provider ── -->
 				<div class="tf2pf__col">
-					<p style="margin:0 0 6px; font-size:12px; color:#6B7280;"><strong>Send to a print provider</strong></p>
+					<p style="margin:0 0 6px; font-size:12px; color:#6B7280;">
+						<strong>Send to a print provider</strong>
+						<?php if ( $assigned_name !== '' ) : ?>
+							<br><span style="color:#7A5C08;">Currently with <?php echo esc_html( $assigned_name ); ?></span>
+						<?php endif; ?>
+					</p>
 					<?php if ( empty( $providers ) ) : ?>
 						<p style="font-size:12.5px; color:#6B7280;">
 							No active providers yet —
@@ -2848,8 +3534,15 @@ class TwellerFlow2_Print_Fulfillment {
 							<input type="hidden" name="order_id" value="<?php echo (int) $order_id; ?>">
 							<select name="provider_id">
 								<?php foreach ( $providers as $p ) : ?>
-									<option value="<?php echo esc_attr( $p['id'] ); ?>" <?php selected( $default && $default['id'] === $p['id'] ); ?>>
-										<?php echo esc_html( $p['name'] ); ?><?php echo ! empty( $p['default'] ) ? ' (default)' : ''; ?>
+									<?php
+									// Pre-select the lab that already has it, so
+									// "send again" cannot silently reassign.
+									$is_selected = $assigned_id !== ''
+										? ( $assigned_id === $p['id'] )
+										: ( $default && $default['id'] === $p['id'] );
+									?>
+									<option value="<?php echo esc_attr( $p['id'] ); ?>" <?php selected( $is_selected ); ?>>
+										<?php echo esc_html( $p['name'] ); ?><?php echo ! empty( $p['default'] ) ? ' (default)' : ''; ?><?php echo $assigned_id === $p['id'] ? ' — currently assigned' : ''; ?>
 									</option>
 								<?php endforeach; ?>
 							</select>

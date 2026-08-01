@@ -1470,9 +1470,64 @@
                     notes: card.querySelector('#lab-notes').value,
                     notify_customer: card.querySelector('#lab-notify').checked ? '1' : ''
                 });
-                toast('Print order ' + (res.order_ref || '') + ' created.');
+                // The order being created is only half the story. The server
+                // reports what actually happened with the lab — assignment is
+                // instant, but the files may still be building, the package
+                // email may have failed, or no lab was picked at all. A bare
+                // "created" here is what hid a 116-photo hand-off that never
+                // reached a provider.
+                var ref = res.order_ref || '';
+                var state = res.provider_state || '';
+                var lab = res.provider_name || '';
+                var note = res.provider_note || '';
+
+                if (state === 'sent') {
+                    toast('Print order ' + ref + ' created and sent to ' + lab + '.', 5000);
+                    refreshPrintsBadge();
+                    renderRoot('prints');
+                    return;
+                }
+
+                // Anything other than a clean send stays on screen until the
+                // studio has actually read it.
+                btn.disabled = false;
+                btn.textContent = 'Create print order';
+
+                var tone = (state === 'assigned_building' || state === 'unassigned') ? 'gold' : 'red';
+                var headline;
+                if (state === 'assigned_building') {
+                    headline = 'Order ' + ref + ' created and assigned to ' + lab + ' — files still building';
+                } else if (state === 'unassigned') {
+                    headline = 'Order ' + ref + ' created — no print lab chosen';
+                } else if (state === 'assigned_build_failed') {
+                    headline = 'Order ' + ref + ' assigned to ' + lab + ', but the print files failed';
+                } else if (state === 'assigned_send_failed') {
+                    headline = 'Order ' + ref + ' assigned to ' + lab + ', but the email to them failed';
+                } else {
+                    headline = 'Order ' + ref + ' created — the hand-off did not complete';
+                }
+
+                var old = card.querySelector('.lab-result');
+                if (old && old.parentNode) old.parentNode.removeChild(old);
+
+                var msg = el(
+                    '<div class="lab-result" style="margin-top:14px; padding:12px 14px; border-radius:12px; ' +
+                    (tone === 'gold'
+                        ? 'background:var(--gold-soft); color:var(--gold-deep);'
+                        : 'background:var(--red-soft); color:var(--red);') + '">' +
+                    '<div style="font-weight:700; margin-bottom:4px;">' + esc(headline) + '</div>' +
+                    '<div style="font-size:13px; line-height:1.6;">' + esc(note) + '</div>' +
+                    '</div>'
+                );
+                var openBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:10px;">Open the Print Store</button>');
+                openBtn.addEventListener('click', function () {
+                    refreshPrintsBadge();
+                    renderRoot('prints');
+                });
+                msg.appendChild(openBtn);
+                card.appendChild(msg);
+
                 refreshPrintsBadge();
-                renderRoot('prints');
             } catch (e) {
                 btn.disabled = false;
                 btn.textContent = 'Create print order';
@@ -1596,6 +1651,34 @@
     function orderPill(status) {
         var m = orderMeta(status);
         return '<span class="pill pill--' + m.pill + '">' + esc(m.label) + '</span>';
+    }
+
+    /**
+     * Who a print job was sent to. The server puts the assigned lab on every
+     * order in the list payload, so this never costs an extra call — and an
+     * unassigned order says so plainly rather than looking finished.
+     */
+    function labName(o) {
+        if (!o) return '';
+        if (o.provider_name) return String(o.provider_name);
+        if (o.fulfillment_stage && o.fulfillment_stage.provider_name) {
+            return String(o.fulfillment_stage.provider_name);
+        }
+        return '';
+    }
+
+    /** Short "who has it" line for an order card. */
+    function labLine(o) {
+        var name = labName(o);
+        var st = o && o.fulfillment_stage;
+        if (!name) {
+            if (st && st.key === 'delivered') return '';
+            return '<div class="row__meta" style="color:var(--ink-3);">Not sent to a lab yet</div>';
+        }
+        var extra = '';
+        if (st && st.build_error) extra = ' · files failed to build';
+        else if (st && st.send_pending) extra = ' · files still building';
+        return '<div class="row__meta" style="color:var(--gold-deep);">Sent to ' + esc(name) + esc(extra) + '</div>';
     }
 
     function orderItems(order) {
@@ -1737,7 +1820,8 @@
                         '<span class="row__body"><div class="row__name">' + esc(o.customer_name || o.order_ref) +
                         (hasReceipt && o.status === 'new' ? ' <span class="pill pill--red" style="font-size:10px;">Receipt in — verify</span>' : '') + '</div>' +
                         '<div class="row__meta">' + esc(o.order_ref) + ' · ' + items.length + ' item' + (items.length === 1 ? '' : 's') +
-                        ' · ' + esc(money(o.subtotal)) + '</div></span>' +
+                        ' · ' + esc(money(o.subtotal)) + '</div>' +
+                        labLine(o) + '</span>' +
                         '<span class="row__end">' + orderPill(o.status) + '</span>' +
                     '</div>'
                 );
@@ -1772,6 +1856,9 @@
             '</div>'
         );
         wrap.appendChild(cust);
+
+        // Print lab — the same answer the orders list gives, spelled out.
+        wrap.appendChild(buildLabCard(o));
 
         // Items — the grouped summary the server already sends, with the
         // full per-photo list collapsed behind a toggle. A 116-photo order
@@ -1916,6 +2003,47 @@
 
         view.innerHTML = '';
         view.appendChild(screen);
+    }
+
+    /**
+     * "Who is this with?" on the order detail screen. Reads the stage the
+     * server derived — never a second opinion computed on the phone.
+     */
+    function buildLabCard(o) {
+        var card = el('<div class="card"><div class="card__title">Print lab</div></div>');
+        var name = labName(o);
+        var st = (o && o.fulfillment_stage) || null;
+
+        if (!name) {
+            card.appendChild(el('<p class="hint" style="margin:0;">This order has not been sent to a print lab yet.</p>'));
+            return card;
+        }
+
+        card.appendChild(el(
+            '<div class="kv"><span class="kv__k">Sent to</span><span class="kv__v">' + esc(name) + '</span></div>'
+        ));
+        if (o.assigned_at) {
+            card.appendChild(el(
+                '<div class="kv"><span class="kv__k">Since</span><span class="kv__v">' + esc(fmtStamp(o.assigned_at)) + '</span></div>'
+            ));
+        }
+        if (st && st.short) {
+            card.appendChild(el(
+                '<div class="kv"><span class="kv__k">Status</span><span class="kv__v">' + esc(st.short) + '</span></div>'
+            ));
+        }
+        if (st && st.build_error) {
+            card.appendChild(el(
+                '<p class="hint" style="margin:8px 0 0; color:var(--red);">Print files failed to build, so ' +
+                esc(name) + ' has not received the package yet. ' + esc(st.build_error) + '</p>'
+            ));
+        } else if (st && st.send_pending) {
+            card.appendChild(el(
+                '<p class="hint" style="margin:8px 0 0;">The print files are still being prepared — they are emailed to ' +
+                esc(name) + ' automatically as soon as they finish.</p>'
+            ));
+        }
+        return card;
     }
 
     /**

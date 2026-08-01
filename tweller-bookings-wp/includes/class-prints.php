@@ -1647,6 +1647,36 @@ class TwellerFlow2_Prints {
             $decoded = json_decode( (string) $row->payment, true );
             if ( is_array( $decoded ) ) $payment = $decoded;
         }
+
+        // Who has this job. Carried on every order in the list payload so the
+        // app can answer "which lab is this with?" without a second call, and
+        // read straight off fulfillment_stage() so the wording can never drift
+        // from wp-admin's.
+        $provider_id   = '';
+        $provider_name = '';
+        $assigned_at   = '';
+        $stage         = null;
+        if ( class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
+            $st = TwellerFlow2_Print_Fulfillment::fulfillment_stage( $row );
+            $f  = TwellerFlow2_Print_Fulfillment::get_fulfillment( $row );
+
+            $provider_id   = (string) $st['provider_id'];
+            $provider_name = (string) $st['provider_name'];
+            $assigned_at   = (string) $f['assigned_at'];
+            $stage         = array(
+                'key'           => (string) $st['key'],
+                'short'         => (string) $st['short'],
+                'label'         => (string) $st['label'],
+                'tone'          => (string) $st['tone'],
+                'provider_id'   => $provider_id,
+                'provider_name' => $provider_name,
+                // Honest about the package even when the lab is assigned.
+                'files_built'   => ( is_array( $f['build'] ) && ! empty( $f['build']['done'] ) ) ? 1 : 0,
+                'send_pending'  => ! empty( $f['send_pending'] ) ? 1 : 0,
+                'build_error'   => (string) $f['build_error'],
+            );
+        }
+
         return array(
             'id'                       => (int) $row->id,
             'order_ref'                => $row->order_ref,
@@ -1673,6 +1703,10 @@ class TwellerFlow2_Prints {
             'receipt_confirmed_amount' => ( isset( $row->receipt_confirmed_amount ) && $row->receipt_confirmed_amount !== null ) ? (float) $row->receipt_confirmed_amount : null,
             'receipt_uploaded_at'      => isset( $row->receipt_uploaded_at ) ? $row->receipt_uploaded_at : null,
             'portal_url'               => self::portal_url( $row ),
+            'provider_id'              => $provider_id,
+            'provider_name'            => $provider_name,
+            'assigned_at'              => $assigned_at,
+            'fulfillment_stage'        => $stage,
             'created_at'               => $row->created_at,
             'updated_at'               => $row->updated_at,
         );
@@ -1897,7 +1931,8 @@ class TwellerFlow2_Prints {
      * @param array $args session_id, product_id, qty, photo_ids, fulfilment,
      *                    meetup_location, shipping, notes, provider_id,
      *                    notify_customer.
-     * @return array|WP_Error {order_id, order_ref, portal_url, pieces, subtotal, provider_note}
+     * @return array|WP_Error {order_id, order_ref, portal_url, pieces, subtotal,
+     *                         provider_state, provider_note, provider_id, provider_name, files_built}
      */
     public static function create_studio_order( $args ) {
         $args = array_merge( array(
@@ -1998,45 +2033,67 @@ class TwellerFlow2_Prints {
             self::send_customer_confirmation( $order );
         }
 
-        $provider_note = self::hand_off_to_provider( $order, sanitize_key( (string) $args['provider_id'] ) );
+        $handoff = self::hand_off_to_provider( $order, sanitize_key( (string) $args['provider_id'] ) );
 
         return array(
-            'order_id'      => (int) $order_id,
-            'order_ref'     => (string) $order->order_ref,
-            'portal_url'    => self::portal_url( $order ),
-            'pieces'        => (int) $summary['pieces'],
-            'subtotal'      => round( (float) $order->subtotal, 2 ),
-            'provider_note' => $provider_note,
+            'order_id'       => (int) $order_id,
+            'order_ref'      => (string) $order->order_ref,
+            'portal_url'     => self::portal_url( $order ),
+            'pieces'         => (int) $summary['pieces'],
+            'subtotal'       => round( (float) $order->subtotal, 2 ),
+            // What ACTUALLY happened with the lab — never a bare "created".
+            'provider_state' => (string) $handoff['state'],
+            'provider_note'  => (string) $handoff['message'],
+            'provider_id'    => (string) $handoff['provider_id'],
+            'provider_name'  => (string) $handoff['provider_name'],
+            'files_built'    => ! empty( $handoff['built'] ) ? 1 : 0,
         );
     }
 
     /**
-     * Build the print files and hand the job to a provider. The builder is
-     * chunked, so we give it a bounded slice of this request — if the job is
-     * too big to finish here the order simply waits in Print Store → Orders
-     * with its files half-built, and the studio finishes the send there.
+     * Hand the job to a provider.
+     *
+     * Assignment is a decision and is recorded IMMEDIATELY; building the files
+     * is a slow process that runs behind it. They used to be coupled — this
+     * method looped the chunked builder against a 20-second deadline and only
+     * assigned the provider if the build reported done, so a 116-photo order
+     * (15 chunks) could never reach the assignment and silently ended up with
+     * "No provider assigned yet" while the app reported success.
+     *
+     * @return array {state, message, provider_id, provider_name, built}
      */
     private static function hand_off_to_provider( $order, $provider_id ) {
-        if ( $provider_id === '' ) return '';
+        if ( $provider_id === '' ) {
+            return array(
+                'state'         => 'unassigned',
+                'message'       => 'Order created — no print lab was chosen, so it is not assigned to anyone yet.',
+                'provider_id'   => '',
+                'provider_name' => '',
+                'built'         => false,
+            );
+        }
         if ( ! class_exists( 'TwellerFlow2_Print_Fulfillment' ) ) {
-            return 'The fulfilment module is unavailable, so nothing was sent to a provider.';
+            return array(
+                'state'         => 'error',
+                'message'       => 'The fulfilment module is unavailable, so nothing was sent to a provider.',
+                'provider_id'   => '',
+                'provider_name' => '',
+                'built'         => false,
+            );
         }
 
-        $deadline = microtime( true ) + 20;
-        $build    = null;
-        do {
-            $build = TwellerFlow2_Print_Fulfillment::build_chunk( (int) $order->id );
-        } while ( is_array( $build ) && empty( $build['done'] ) && microtime( true ) < $deadline );
+        $result = TwellerFlow2_Print_Fulfillment::assign_and_send( (int) $order->id, $provider_id, '', 15 );
 
-        if ( ! is_array( $build ) || empty( $build['done'] ) ) {
-            return 'The print files are still building — open the order in Print Store → Orders to finish sending it.';
+        if ( is_wp_error( $result ) ) {
+            return array(
+                'state'         => 'error',
+                'message'       => 'The order was created, but it could not be assigned to that lab: ' . $result->get_error_message(),
+                'provider_id'   => '',
+                'provider_name' => '',
+                'built'         => false,
+            );
         }
-
-        $sent = TwellerFlow2_Print_Fulfillment::send_to_provider( (int) $order->id, $provider_id, '' );
-        if ( is_wp_error( $sent ) ) {
-            return 'The order was created, but sending it to the provider failed: ' . $sent->get_error_message();
-        }
-        return 'Sent to the print lab.';
+        return $result;
     }
 
     /** Providers available for the "Send to print lab" pickers. */
@@ -2728,8 +2785,9 @@ class TwellerFlow2_Prints {
             }
 
             wp_redirect( add_query_arg( array(
-                'printlab'      => rawurlencode( $result['order_ref'] ),
-                'printlab_note' => rawurlencode( $result['provider_note'] ),
+                'printlab'       => rawurlencode( $result['order_ref'] ),
+                'printlab_note'  => rawurlencode( $result['provider_note'] ),
+                'printlab_state' => rawurlencode( $result['provider_state'] ),
             ), $base ) );
             exit;
         }

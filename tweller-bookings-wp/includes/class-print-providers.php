@@ -1747,6 +1747,7 @@ class TwellerFlow2_Print_Providers {
 		self::audit( $order->id, 'provider', get_current_user_id(), 'status_' . $status );
 
 		$order = self::get_order_by_ref( $order->order_ref );
+		self::notify_studio( $order, $status );
 		return rest_ensure_response( array(
 			'ok'    => true,
 			'order' => self::order_payload( $order, $provider, true ),
@@ -1774,10 +1775,25 @@ class TwellerFlow2_Print_Providers {
 		self::audit( $order->id, 'provider', get_current_user_id(), 'shipped' );
 
 		$order = self::get_order_by_ref( $order->order_ref );
+		self::notify_studio( $order, 'shipped' );
+
 		return rest_ensure_response( array(
 			'ok'    => true,
 			'order' => self::order_payload( $order, $provider, true ),
 		) );
+	}
+
+	/**
+	 * Tell the studio a provider moved one of its jobs. Delegates to the one
+	 * fulfilment-side implementation so the wording, the recipient list and
+	 * the "don't email the studio about its own click" rule live in one place.
+	 */
+	private static function notify_studio( $order, $event ) {
+		if ( ! $order ) return;
+		if ( ! class_exists( 'TwellerFlow2_Print_Fulfillment' )
+			|| ! method_exists( 'TwellerFlow2_Print_Fulfillment', 'notify_studio_provider_update' ) ) return;
+
+		TwellerFlow2_Print_Fulfillment::notify_studio_provider_update( $order, $event, 'provider' );
 	}
 
 	/**

@@ -133,6 +133,15 @@ a { color: var(--gold-deep); text-decoration: none; }
     padding: 16px;
     margin: 12px 0;
 }
+/* Amber advisory card — used where a figure is knowably incomplete (a
+   lab with unpriced products), so the screen says so instead of showing
+   a total that quietly understates what we owe. No left accent bar. */
+.card--warn {
+    background: #FEF6E7;
+    border-color: rgba(201, 162, 39, 0.38);
+}
+.card--warn .hint { color: #6B5310; }
+
 .card__title {
     font-size: 12px;
     font-weight: 700;

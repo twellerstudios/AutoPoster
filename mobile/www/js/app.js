@@ -2293,6 +2293,121 @@
      * @param {array} products Active catalog, one cost row each.
      * @param {object} [creds] One-time credentials to surface at the top.
      */
+    /**
+     * One lab's dashboard, studio side: where every job they hold is, what
+     * they have earned and what we kept.
+     *
+     * Every figure is painted straight from the server's provider_dashboard
+     * payload — the phone does no arithmetic of its own, so this screen and
+     * wp-admin cannot disagree about a number.
+     */
+    async function renderProviderDashboard(provider) {
+        var myScreen = currentScreen();
+        var pid = provider.id;
+
+        var cache = TwellerApi.cachedProviderDashboard(pid);
+        if (cache && cache.data) {
+            paintProviderDashboard(cache.data, true);
+        } else {
+            view.innerHTML = '';
+            view.appendChild(topbar(provider.name));
+            view.appendChild(el('<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>'));
+        }
+
+        try {
+            var data = await TwellerApi.fetchProviderDashboard(pid);
+            if (currentScreen() === myScreen) paintProviderDashboard(data, false);
+        } catch (e) {
+            if (!(cache && cache.data) && currentScreen() === myScreen) {
+                view.innerHTML = '';
+                view.appendChild(topbar(provider.name));
+                view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load this lab\'s dashboard.<br>' +
+                    esc(e.message) + '</p></div></div>'));
+            }
+        }
+    }
+
+    function paintProviderDashboard(data, isStale) {
+        var p = data.provider || {};
+        var s = data.stats || {};
+        var t = data.totals || {};
+        var orders = data.orders || [];
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar(p.name || 'Print lab'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        if (isStale) wrap.appendChild(el('<p class="hint" style="color:var(--ink-3);">Refreshing…</p>'));
+
+        // Payout totals are only true once every product has a cost price
+        // for this lab. Say so rather than showing a number that quietly
+        // understates what we owe them.
+        if (data.unpriced_products && data.unpriced_products.length) {
+            wrap.appendChild(el(
+                '<div class="card card--warn"><p class="hint" style="margin:0;">' +
+                    '<strong>' + data.unpriced_products.length + ' product' +
+                    (data.unpriced_products.length === 1 ? ' has' : 's have') +
+                    ' no cost price for this lab</strong> (' + esc(data.unpriced_products.slice(0, 4).join(', ')) +
+                    (data.unpriced_products.length > 4 ? '…' : '') +
+                    '). Their earnings below leave those lines out. Set pricing on the lab screen.' +
+                '</p></div>'
+            ));
+        }
+
+        wrap.appendChild(el(
+            '<div class="stats">' +
+                '<div class="stat"><div class="stat__num">' + (t.open_jobs || 0) + '</div><div class="stat__label">Open jobs</div></div>' +
+                '<div class="stat"><div class="stat__num">' + (s.completed_month || 0) + '</div><div class="stat__label">Done ' + esc(data.month || 'this month') + '</div></div>' +
+                '<div class="stat"><div class="stat__num">' + esc(money(s.earned_month || 0)) + '</div><div class="stat__label">They earned this month</div></div>' +
+                '<div class="stat"><div class="stat__num">' + esc(money(s.earned_all_time || 0)) + '</div><div class="stat__label">They earned all time</div></div>' +
+                '<div class="stat"><div class="stat__num">' + esc(money(s.avg_per_job || 0)) + '</div><div class="stat__label">Average per job</div></div>' +
+                '<div class="stat stat--accent"><div class="stat__num">' + esc(money(t.margin || 0)) + '</div><div class="stat__label">Our margin</div></div>' +
+            '</div>'
+        ));
+
+        var card = el('<div class="card"><div class="card__title">Their jobs</div></div>');
+        if (!orders.length) {
+            card.appendChild(el('<p class="empty">No jobs have been sent to ' + esc(p.name || 'this lab') + ' yet.</p>'));
+        }
+        orders.forEach(function (o) {
+            var toneClass = o.tone === 'done' ? 'pill--green' : (o.tone === 'active' ? 'pill--gold' : 'pill--gray');
+            var flag = o.unpriced_items > 0
+                ? '<div class="row__meta" style="color:var(--red);">' + o.unpriced_items +
+                  ' line' + (o.unpriced_items === 1 ? '' : 's') + ' not priced</div>'
+                : '';
+            card.appendChild(el(
+                '<div class="row">' +
+                    '<span class="row__body">' +
+                        '<div class="row__name">' + esc(o.order_ref) + '</div>' +
+                        '<div class="row__meta"><span class="pill ' + toneClass + '">' + esc(o.stage) + '</span></div>' +
+                        '<div class="row__meta">' + esc(o.created_label) + ' · ' + (o.pieces || 0) + ' print' +
+                            ((o.pieces || 0) === 1 ? '' : 's') + '</div>' +
+                        flag +
+                    '</span>' +
+                    '<span class="row__end">' +
+                        '<span class="kv__v">' + esc(money(o.provider_cost || 0)) + '</span>' +
+                        '<div class="row__meta">they earn</div>' +
+                    '</span>' +
+                '</div>'
+            ));
+        });
+        wrap.appendChild(card);
+
+        if (orders.length) {
+            wrap.appendChild(el(
+                '<div class="card"><div class="card__title">Totals — cancelled jobs excluded</div>' +
+                    '<div class="kv"><span class="kv__k">Customers paid</span><span class="kv__v">' + esc(money(t.value || 0)) + '</span></div>' +
+                    '<div class="kv"><span class="kv__k">They earn</span><span class="kv__v">' + esc(money(t.provider_cost || 0)) + '</span></div>' +
+                    '<div class="kv"><span class="kv__k">We keep</span><span class="kv__v">' + esc(money(t.margin || 0)) + '</span></div>' +
+                '</div>'
+            ));
+        }
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
     function renderProviderDetail(provider, products, creds) {
         var rec = provider || {
             id: '', name: '', contact_name: '', email: '', phone: '', address: '', notes: '',
@@ -2308,6 +2423,17 @@
         screen.appendChild(wrap);
 
         if (creds) wrap.appendChild(credentialsCard(creds));
+
+        // Their dashboard sits above the edit form: "how is this lab
+        // doing" is the question you open a lab to ask far more often
+        // than "what is their phone number".
+        if (!isNew) {
+            var dashBtn = el('<button class="btn btn--dark">View their dashboard</button>');
+            dashBtn.addEventListener('click', function () {
+                push(function () { renderProviderDashboard(rec); });
+            });
+            wrap.appendChild(dashBtn);
+        }
 
         // ── Details ──
         var form = el(

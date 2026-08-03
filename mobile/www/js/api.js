@@ -178,6 +178,28 @@ var TwellerApi = (function () {
         return data;
     }
 
+    /**
+     * One lab's dashboard as the studio sees it: every job they hold, the
+     * stage each is at, what they have earned and what we kept. Cached per
+     * provider so reopening it paints instantly, the same way the lab list
+     * does.
+     */
+    async function fetchProviderDashboard(providerId) {
+        var url = base() + '/prints/providers/' + encodeURIComponent(providerId) + '/dashboard?' + keyParam();
+        var data = await getJson(url);
+        try {
+            localStorage.setItem('tb_pvdash_' + providerId, JSON.stringify({ at: Date.now(), data: data }));
+        } catch (e) {}
+        return data;
+    }
+
+    function cachedProviderDashboard(providerId) {
+        try {
+            var raw = localStorage.getItem('tb_pvdash_' + providerId);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
     function cachedProviders() {
         try {
             var raw = localStorage.getItem('tb_providers_cache');
@@ -422,6 +444,8 @@ var TwellerApi = (function () {
         scanPrintDelivery: scanPrintDelivery,
         fetchProviders: fetchProviders,
         cachedProviders: cachedProviders,
+        fetchProviderDashboard: fetchProviderDashboard,
+        cachedProviderDashboard: cachedProviderDashboard,
         saveProvider: saveProvider,
         deleteProvider: deleteProvider,
         createProviderAccount: createProviderAccount,

@@ -1439,6 +1439,18 @@ class TwellerFlow2_Prints {
             $data['payment_review'] = 0;
         }
         $wpdb->update( $table, $data, array( 'id' => intval( $order_id ) ) );
+
+        // A cancelled order that is sitting with a print lab has to reach
+        // the lab, not just the customer — otherwise they print a job that
+        // nobody is going to pay for. Sent regardless of $notify, which
+        // governs the customer's copy, not the lab's.
+        if ( $status === 'cancelled' && class_exists( 'TwellerFlow2_Print_Providers' ) ) {
+            $cancelled = self::get_order( $order_id );
+            if ( $cancelled ) {
+                TwellerFlow2_Print_Providers::notify_provider_order_update( $cancelled, 'cancelled' );
+            }
+        }
+
         if ( $notify ) {
             $order = self::get_order( $order_id );
             if ( $order ) {

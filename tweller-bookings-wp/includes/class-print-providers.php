@@ -1184,10 +1184,122 @@ class TwellerFlow2_Print_Providers {
 				. ' <a href="' . esc_url( self::requests_url() ) . '">Open Provider Requests</a></p></div>';
 		}
 
+		// One partner's dashboard, when asked for. It replaces the list
+		// rather than sitting under it — this is a "look at RJM" screen,
+		// not a section of the management screen.
+		$dash_id = isset( $_GET['dash'] ) ? sanitize_key( wp_unslash( $_GET['dash'] ) ) : '';
+		if ( $dash_id !== '' ) {
+			self::render_provider_dashboard( $dash_id );
+			echo '</div>';
+			return;
+		}
+
 		self::render_provider_table( $providers );
 		self::render_provider_form( $editing );
 
 		echo '</div>';
+	}
+
+	/**
+	 * The studio looking over one partner's shoulder: every job they hold,
+	 * where each one is, what they have earned and what we kept.
+	 *
+	 * Reads provider_dashboard() — the same payload the app renders — so
+	 * the two surfaces cannot drift apart.
+	 */
+	private static function render_provider_dashboard( $provider_id ) {
+		$data = self::provider_dashboard( $provider_id );
+		$back = self::admin_url_for();
+
+		if ( is_wp_error( $data ) ) {
+			echo '<div class="notice notice-error"><p>' . esc_html( $data->get_error_message() ) . '</p></div>';
+			echo '<p><a href="' . esc_url( $back ) . '">&larr; Back to providers</a></p>';
+			return;
+		}
+
+		$p     = $data['provider'];
+		$s     = $data['stats'];
+		$t     = $data['totals'];
+		$money = function ( $n ) { return 'TT$' . number_format( (float) $n, 2 ); };
+
+		echo '<p style="margin:4px 0 18px;"><a href="' . esc_url( $back ) . '">&larr; All providers</a></p>';
+		echo '<h2 style="margin:0 0 2px;">' . esc_html( $p['name'] ) . '</h2>';
+		echo '<p style="color:#646970; margin:0 0 20px;">'
+			. esc_html( $p['contact_name'] !== '' ? $p['contact_name'] . ' · ' . $p['email'] : $p['email'] )
+			. ( empty( $p['active'] ) ? ' <span style="color:#b32d2e;">· Inactive</span>' : '' )
+			. '</p>';
+
+		// Payout figures are only trustworthy once every product this
+		// partner might print has a cost price. Say so plainly rather than
+		// showing a total that quietly understates what we owe them.
+		if ( ! empty( $data['unpriced_products'] ) ) {
+			echo '<div class="notice notice-warning"><p><strong>'
+				. (int) count( $data['unpriced_products'] )
+				. ' product' . ( count( $data['unpriced_products'] ) === 1 ? ' has' : 's have' )
+				. ' no cost price for this partner</strong> ('
+				. esc_html( implode( ', ', array_slice( $data['unpriced_products'], 0, 6 ) ) )
+				. ( count( $data['unpriced_products'] ) > 6 ? '…' : '' )
+				. '). Their earnings below exclude those lines. '
+				. '<a href="' . esc_url( self::admin_url_for( array( 'edit' => $p['id'] ) ) ) . '">Set their pricing</a>.</p></div>';
+		}
+
+		$tiles = array(
+			array( 'Open jobs',            (string) (int) $t['open_jobs'],            'Sent, printing or ready' ),
+			array( 'Completed this month', (string) (int) $s['completed_month'],      $data['month'] ),
+			array( 'Earned this month',    $money( $s['earned_month'] ),              'What we owe them for ' . $data['month'] ),
+			array( 'Earned all time',      $money( $s['earned_all_time'] ),           (int) $s['jobs_completed'] . ' completed job' . ( (int) $s['jobs_completed'] === 1 ? '' : 's' ) ),
+			array( 'Average per job',      $money( $s['avg_per_job'] ),               'Across completed jobs' ),
+			array( 'Our margin',           $money( $t['margin'] ),                    'Retail ' . $money( $t['value'] ) . ' less their ' . $money( $t['provider_cost'] ) ),
+		);
+
+		echo '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:0 0 26px;">';
+		foreach ( $tiles as $tile ) {
+			echo '<div style="background:#fff; border:1px solid #dcdcde; border-radius:8px; padding:14px 16px;">'
+				. '<div style="font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#646970;">' . esc_html( $tile[0] ) . '</div>'
+				. '<div style="font-size:23px; font-weight:600; color:#1d2327; margin:6px 0 3px;">' . esc_html( $tile[1] ) . '</div>'
+				. '<div style="font-size:12px; color:#646970;">' . esc_html( $tile[2] ) . '</div>'
+				. '</div>';
+		}
+		echo '</div>';
+
+		echo '<h2 style="margin:0 0 10px;">Their jobs</h2>';
+		if ( empty( $data['orders'] ) ) {
+			echo '<p style="color:#646970;">No jobs have been sent to ' . esc_html( $p['name'] ) . ' yet.</p>';
+			return;
+		}
+
+		echo '<table class="widefat striped"><thead><tr>'
+			. '<th>Order</th><th>Sent</th><th>Where it is</th><th>Prints</th>'
+			. '<th style="text-align:right;">Customer paid</th>'
+			. '<th style="text-align:right;">They earn</th>'
+			. '<th style="text-align:right;">We keep</th>'
+			. '</tr></thead><tbody>';
+
+		$tone_colour = array( 'done' => '#1a7f37', 'active' => '#996800', 'idle' => '#646970' );
+		foreach ( $data['orders'] as $o ) {
+			$colour = isset( $tone_colour[ $o['tone'] ] ) ? $tone_colour[ $o['tone'] ] : '#646970';
+			$flag   = $o['unpriced_items'] > 0
+				? '<br><span style="color:#b32d2e; font-size:12px;">' . (int) $o['unpriced_items'] . ' line' . ( $o['unpriced_items'] === 1 ? '' : 's' ) . ' not priced</span>'
+				: '';
+
+			echo '<tr>';
+			echo '<td><code>' . esc_html( $o['order_ref'] ) . '</code></td>';
+			echo '<td>' . esc_html( $o['created_label'] ) . '</td>';
+			echo '<td style="color:' . esc_attr( $colour ) . ';">' . esc_html( $o['stage'] ) . '</td>';
+			echo '<td>' . (int) $o['pieces'] . ' &middot; ' . (int) $o['photos'] . ' photo' . ( (int) $o['photos'] === 1 ? '' : 's' ) . '</td>';
+			echo '<td style="text-align:right;">' . esc_html( $money( $o['value'] ) ) . '</td>';
+			echo '<td style="text-align:right;">' . esc_html( $money( $o['provider_cost'] ) ) . wp_kses_post( $flag ) . '</td>';
+			echo '<td style="text-align:right;">' . esc_html( $money( $o['margin'] ) ) . '</td>';
+			echo '</tr>';
+		}
+
+		echo '<tr style="background:#f6f7f7; font-weight:600;">';
+		echo '<td colspan="4">Total &mdash; excluding cancelled</td>';
+		echo '<td style="text-align:right;">' . esc_html( $money( $t['value'] ) ) . '</td>';
+		echo '<td style="text-align:right;">' . esc_html( $money( $t['provider_cost'] ) ) . '</td>';
+		echo '<td style="text-align:right;">' . esc_html( $money( $t['margin'] ) ) . '</td>';
+		echo '</tr>';
+		echo '</tbody></table>';
 	}
 
 	private static function render_provider_table( $providers ) {
@@ -1224,7 +1336,8 @@ class TwellerFlow2_Print_Providers {
 			echo '<td>' . ( $p['does_delivery'] ? 'Provider ships' : 'Studio delivers' ) . '</td>';
 			echo '<td>' . (int) $open . ' open &middot; ' . (int) $stats['completed_month'] . ' done<br><span style="color:#646970;">TT$ ' . esc_html( number_format( (float) $stats['value_month'], 2 ) ) . '</span></td>';
 			echo '<td>' . ( $p['active'] ? 'Active' : 'Inactive' ) . '</td>';
-			echo '<td><a href="' . esc_url( $edit_url ) . '">Edit</a>';
+			echo '<td><a href="' . esc_url( self::admin_url_for( array( 'dash' => $p['id'] ) ) ) . '"><strong>Dashboard</strong></a>';
+			echo ' | <a href="' . esc_url( $edit_url ) . '">Edit</a>';
 			if ( $user && $user->exists() ) {
 				echo ' | <a href="' . esc_url( $resend_url ) . '">Resend password email</a>';
 				echo ' | <a href="' . esc_url( $unlink_url ) . '" onclick="return confirm(\'Unlink this account?\');">Unlink</a>';
@@ -1606,6 +1719,17 @@ class TwellerFlow2_Print_Providers {
 			'permission_callback' => $studio,
 		) );
 
+		// One partner's dashboard as the studio sees it — their jobs, their
+		// stage on each, their payout and our margin. Declared before
+		// /providers/save so the literal routes are not shadowed by this
+		// pattern; provider ids are sanitize_key()'d, so the character
+		// class matches what an id can actually be.
+		register_rest_route( $ns, '/prints/providers/(?P<id>[a-z0-9_\-]+)/dashboard', array(
+			'methods'             => 'GET',
+			'callback'            => array( __CLASS__, 'rest_provider_dashboard' ),
+			'permission_callback' => $studio,
+		) );
+
 		register_rest_route( $ns, '/prints/providers/save', array(
 			'methods'             => 'POST',
 			'callback'            => array( __CLASS__, 'rest_save_provider' ),
@@ -1947,6 +2071,115 @@ if ( count( $parts ) !== 2 ) {
 			'account'       => self::account_payload( $provider ),
 			'stats'         => self::provider_stats( $provider['id'] ),
 		);
+	}
+
+	/**
+	 * Everything the studio needs to see ONE partner's dashboard: where
+	 * they are on every job they hold, and what they have earned.
+	 *
+	 * Deliberately built from the same provider_stats() / order_economics()
+	 * the partner's own screen and the economics rollup use, so the studio
+	 * view and the partner view can never disagree about a number. This is
+	 * the studio side of the glass, so unlike the partner payload it does
+	 * carry margin — what Tweller keeps on each job.
+	 *
+	 * @param string $provider_id
+	 * @return array|WP_Error
+	 */
+	public static function provider_dashboard( $provider_id ) {
+		$provider = self::get_provider( sanitize_key( (string) $provider_id ) );
+		if ( ! $provider ) {
+			return new WP_Error( 'no_provider', 'That print partner no longer exists.', array( 'status' => 404 ) );
+		}
+
+		$orders    = array();
+		$totals    = array( 'value' => 0.0, 'provider_cost' => 0.0, 'margin' => 0.0, 'unpriced_orders' => 0 );
+		$open      = 0;
+		$month     = self::month_start_ts();
+		$has_stage = class_exists( 'TwellerFlow2_Print_Fulfillment' );
+
+		foreach ( self::provider_orders( $provider['id'] ) as $order ) {
+			$eco   = self::order_economics( $order, $provider );
+			$stage = $has_stage
+				? TwellerFlow2_Print_Fulfillment::fulfillment_stage( $order )
+				: array( 'key' => (string) $order->status, 'short' => (string) $order->status, 'tone' => 'idle' );
+
+			$status = (string) $order->status;
+			if ( $status !== 'cancelled' ) {
+				$totals['value']         += $eco['value'];
+				$totals['provider_cost'] += $eco['provider_cost'];
+				$totals['margin']        += $eco['margin'];
+				if ( $eco['unpriced_items'] > 0 ) $totals['unpriced_orders']++;
+				if ( $status !== 'completed' ) $open++;
+			}
+
+			$created = strtotime( (string) $order->created_at );
+
+			// Counts come from summarize_items(), never from a column —
+			// the orders table has no photo/piece count, and that summary
+			// is the same one the customer's email and the lab's job sheet
+			// are built from, so the three cannot disagree. It already
+			// excludes delivery and crop-service lines from "pieces".
+			$pieces = 0;
+			$photos = 0;
+			if ( class_exists( 'TwellerFlow2_Prints' ) ) {
+				$sum    = TwellerFlow2_Prints::summarize_items( self::order_items( $order ) );
+				$pieces = (int) $sum['pieces'];
+				$photos = (int) $sum['photos'];
+			}
+
+			$orders[] = array(
+				'order_ref'      => (string) $order->order_ref,
+				'status'         => $status,
+				'stage'          => (string) $stage['short'],
+				'stage_key'      => (string) $stage['key'],
+				'tone'           => (string) $stage['tone'],
+				'created_at'     => (string) $order->created_at,
+				'created_label'  => $created ? date_i18n( 'M j, Y', $created ) : '',
+				'this_month'     => ( $created && $created >= $month ) ? 1 : 0,
+				'photos'         => $photos,
+				'pieces'         => $pieces,
+				// Retail, payout and what the studio keeps — studio eyes only.
+				'value'          => $eco['value'],
+				'provider_cost'  => $eco['provider_cost'],
+				'margin'         => $eco['margin'],
+				'unpriced_items' => (int) $eco['unpriced_items'],
+			);
+		}
+
+		foreach ( array( 'value', 'provider_cost', 'margin' ) as $k ) {
+			$totals[ $k ] = round( $totals[ $k ], 2 );
+		}
+		$totals['open_jobs'] = $open;
+
+		// How many catalog products this partner has no cost price for.
+		// Until that reaches zero their payout figures are understated,
+		// so the screen has to say so rather than quietly showing a total.
+		$catalog  = self::product_catalog();
+		$prices   = is_array( $provider['prices'] ) ? $provider['prices'] : array();
+		$unpriced = array();
+		foreach ( $catalog as $p ) {
+			if ( ! isset( $prices[ $p['id'] ] ) ) $unpriced[] = $p['name'];
+		}
+
+		return array(
+			'ok'               => true,
+			'currency'         => 'TT$',
+			'month'            => date_i18n( 'F Y', current_time( 'timestamp' ) ),
+			'provider'         => self::provider_payload( $provider ),
+			'stats'            => self::provider_stats( $provider['id'] ),
+			'totals'           => $totals,
+			'orders'           => $orders,
+			'unpriced_products' => $unpriced,
+			'dashboard_url'    => self::page_url(),
+		);
+	}
+
+	/** GET /prints/providers/<id>/dashboard — the studio looking over one partner's shoulder. */
+	public static function rest_provider_dashboard( $request ) {
+		$data = self::provider_dashboard( (string) $request['id'] );
+		if ( is_wp_error( $data ) ) return $data;
+		return rest_ensure_response( $data );
 	}
 
 	/** The active catalog, so the app can draw cost rows without a 2nd call. */
@@ -3551,10 +3784,101 @@ if ( count( $parts ) !== 2 ) {
 		return TwellerFlow2_Notifications::send_raw( $to, $subject, $body );
 	}
 
-	private static function btn( $url, $label, $solid = true ) {
+	/**
+	 * The one way anything reaches a print partner's inbox.
+	 *
+	 * Every partner email ends with a button into their dashboard —
+	 * appended here rather than written into each template, so a new
+	 * partner email cannot ship without one. Partners live in that
+	 * dashboard; an email that tells them something changed but leaves
+	 * them to hunt for the sign-in page is a dead end.
+	 *
+	 * @param string|array $to      Partner address(es).
+	 * @param string       $subject
+	 * @param string       $body    Message HTML, without the dashboard button.
+	 * @param string       $cta     Button label — name the thing they are going there to do.
+	 * @param string       $sign    Closing line; pass '' to supply your own.
+	 */
+	public static function mail_provider( $to, $subject, $body, $cta = 'Open your partner dashboard', $sign = 'Tweller Studios' ) {
+		if ( ! self::can_email() ) return false;
+		if ( is_array( $to ) ) {
+			$to = array_values( array_filter( $to, 'is_email' ) );
+			if ( empty( $to ) ) return false;
+		} elseif ( ! is_email( (string) $to ) ) {
+			return false;
+		}
+
+		if ( $sign !== '' ) {
+			$body .= "<p style='color:#3D3630;'>Thank you,<br><strong>" . esc_html( $sign ) . "</strong></p>";
+		}
+
+		// Tight margin under the button so the caption reads as its
+		// subtitle. Negative margins are unreliable across mail clients,
+		// so the spacing is done by shrinking the row instead.
+		$body .= self::btn( self::page_url(), $cta, false, 22 )
+			. "<p style='color:#8A8178; font-size:12.5px; text-align:center; margin:0;'>Every job, its files and its status live in your dashboard.</p>";
+
+		return self::mail( $to, $subject, $body );
+	}
+
+	/**
+	 * Tell a partner that something changed on a job they hold.
+	 *
+	 * Studio-side edits used to be silent on the partner's side — the
+	 * order moved on in wp-admin and the lab found out the next time it
+	 * happened to open the dashboard. Called for the events that change
+	 * what the partner should actually do.
+	 *
+	 * @param object $order
+	 * @param string $event       assigned|reassigned|unassigned|cancelled|updated
+	 * @param string $detail      Optional studio note.
+	 * @param string $provider_id Address a specific partner. Needed on a
+	 *                            reassignment, where the one who must hear
+	 *                            about it is the partner the order no
+	 *                            longer points at.
+	 */
+	public static function notify_provider_order_update( $order, $event, $detail = '', $provider_id = '' ) {
+		if ( ! $order || ! self::can_email() ) return false;
+
+		$provider_id = sanitize_key( (string) $provider_id );
+		if ( $provider_id === '' ) $provider_id = self::order_provider_id( $order );
+		if ( $provider_id === '' ) return false;
+		$provider = self::get_provider( $provider_id );
+		if ( ! $provider || ! is_email( (string) $provider['email'] ) ) return false;
+
+		$ref  = esc_html( (string) $order->order_ref );
+		$copy = array(
+			'assigned'   => array( 'New print job ' . $ref, 'A new job is waiting for you', 'has been assigned to you. The files and full spec are in your dashboard.', 'Open the job' ),
+			'reassigned' => array( 'Print job ' . $ref . ' has moved', 'This job has moved to another partner', 'is no longer assigned to you &mdash; there is nothing further to do on it.', 'Open your dashboard' ),
+			'unassigned' => array( 'Print job ' . $ref . ' withdrawn', 'This job has been withdrawn', 'has been taken back by the studio. Please hold off on printing it.', 'Open your dashboard' ),
+			'cancelled'  => array( 'Print job ' . $ref . ' cancelled', 'This job has been cancelled', 'has been cancelled. Please stop work on it &mdash; if it is already printed, tell us and we will settle it.', 'Open your dashboard' ),
+			'updated'    => array( 'Print job ' . $ref . ' updated', 'A job you hold has changed', 'has been updated by the studio. Check the details before you print.', 'Open the job' ),
+		);
+		if ( ! isset( $copy[ $event ] ) ) return false;
+		list( $subject, $heading, $sentence, $cta ) = $copy[ $event ];
+
+		$greeting = (string) $provider['contact_name'] !== ''
+			? 'Hi ' . esc_html( (string) $provider['contact_name'] ) . ','
+			: 'Hello,';
+
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>" . esc_html( $heading ) . "</h2>
+			<p style='color:#3D3630;'>{$greeting}</p>
+			<p style='color:#3D3630; line-height:1.7;'>Print job <strong>{$ref}</strong> {$sentence}</p>
+		";
+
+		if ( trim( (string) $detail ) !== '' ) {
+			$body .= self::card( 'Note from the studio',
+				"<p style='margin:0; color:#3D3630; line-height:1.7;'>" . nl2br( esc_html( $detail ) ) . "</p>" );
+		}
+
+		return self::mail_provider( (string) $provider['email'], $subject . ' — Tweller Studios', $body, $cta );
+	}
+
+	private static function btn( $url, $label, $solid = true, $margin = 30 ) {
 		if ( ! self::can_email() ) return '';
 		if ( method_exists( 'TwellerFlow2_Notifications', 'email_button_row' ) ) {
-			return TwellerFlow2_Notifications::email_button_row( $url, $label, $solid );
+			return TwellerFlow2_Notifications::email_button_row( $url, $label, $solid, $margin );
 		}
 		return "<div style='text-align:center; margin:28px 0;'>"
 			. TwellerFlow2_Notifications::email_button( $url, $label, $solid )
@@ -3622,15 +3946,14 @@ if ( count( $parts ) !== 2 ) {
 	private static function send_approved_email( $row, $provider, $login ) {
 		if ( (string) $row->email === '' ) return false;
 
-		$first     = esc_html( self::first_name_of( $row ) );
-		$dashboard = self::page_url();
+		$first = esc_html( self::first_name_of( $row ) );
 
+		// No inline dashboard button here — mail_provider() appends the one
+		// every partner email carries, so this cannot end up with two.
 		$body = "
 			<h2 style='color:#101010; font-weight:600;'>Welcome aboard</h2>
 			<p style='color:#3D3630;'>Hi {$first},</p>
 			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $provider['name'] ) . "</strong> is approved as a Tweller Studios print partner &mdash; your dashboard is ready for your first job.</p>
-
-			" . self::btn( $dashboard, 'Open your partner dashboard' ) . "
 
 			" . self::card( 'Your account',
 				self::row( 'Username', (string) $login )
@@ -3643,7 +3966,13 @@ if ( count( $parts ) !== 2 ) {
 			<p style='color:#3D3630;'>Welcome to the team,<br><strong>The Tweller Studios Team</strong></p>
 		";
 
-		return self::mail( (string) $row->email, 'You are in — welcome to the Tweller Studios print partners', $body );
+		return self::mail_provider(
+			(string) $row->email,
+			'You are in — welcome to the Tweller Studios print partners',
+			$body,
+			'Open your partner dashboard',
+			'' // the welcome sign-off above is the closing line
+		);
 	}
 
 	/**

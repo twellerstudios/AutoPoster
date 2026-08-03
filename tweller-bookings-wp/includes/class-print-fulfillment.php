@@ -2276,6 +2276,18 @@ class TwellerFlow2_Print_Fulfillment {
 
 		self::send_studio_assigned_email( self::get_order( (int) $order->id ), $provider, $reassigned ? $previous : '' );
 
+		// The lab that just lost the job has to be told, or it prints an
+		// order that is no longer theirs. The lab that gained it hears
+		// through the job-package email, which carries the files.
+		if ( $reassigned && class_exists( 'TwellerFlow2_Print_Providers' ) ) {
+			TwellerFlow2_Print_Providers::notify_provider_order_update(
+				self::get_order( (int) $order->id ),
+				'reassigned',
+				$note,
+				$previous
+			);
+		}
+
 		return array(
 			'provider_id'   => $provider['id'],
 			'provider_name' => $provider['name'],
@@ -2816,7 +2828,15 @@ class TwellerFlow2_Print_Fulfillment {
 		";
 
 		$subject = 'Print job ' . $order->order_ref . ' — ' . (int) $stats['pieces'] . ' piece' . ( (int) $stats['pieces'] === 1 ? '' : 's' ) . ' — Tweller Studios';
-		$sent    = TwellerFlow2_Notifications::send_raw( $provider['email'], $subject, $body );
+
+		// Through the partner mailer, so this carries the dashboard button
+		// every partner email carries. The ZIP link above expires; the
+		// dashboard does not, and it is where they mark the job Printing
+		// and Ready — so it has to be one tap away from this email.
+		$sent = class_exists( 'TwellerFlow2_Print_Providers' )
+			&& method_exists( 'TwellerFlow2_Print_Providers', 'mail_provider' )
+			? TwellerFlow2_Print_Providers::mail_provider( $provider['email'], $subject, $body, 'Open this job in your dashboard', '' )
+			: TwellerFlow2_Notifications::send_raw( $provider['email'], $subject, $body );
 
 		// Re-read: assign_provider() has already written to this row.
 		$fulfillment = self::get_fulfillment( self::get_order( (int) $order->id ) );

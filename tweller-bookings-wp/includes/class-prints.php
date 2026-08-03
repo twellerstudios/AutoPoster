@@ -15,6 +15,14 @@ class TwellerFlow2_Prints {
     const UPLOAD_SUBDIR = 'tweller-prints';
     const VERSION       = '2.1.0';
 
+    /**
+     * Client-side receipt OCR. One constant so the customer portal and the
+     * inline bank-transfer step load the identical library — the OCR is a
+     * convenience that pre-fills the amount; if it never loads the customer
+     * simply types the amount and the upload works exactly the same.
+     */
+    const OCR_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+
     const OPT_PRODUCTS = 'tweller_prints_products';
     const OPT_SETTINGS = 'tweller_prints_settings';
     const OPT_PAGE     = 'tweller_flow_2_prints_page';
@@ -461,6 +469,13 @@ class TwellerFlow2_Prints {
             'meetupLabel'   => (string) $s['meetup_label'],
             'meetupPoints'  => array_values( self::get_meetup_points() ),
         );
+
+        // Payment. "Pay by card" is only ever offered when WiPay is really
+        // configured; with it off the checkout quietly becomes bank
+        // transfer only rather than showing a button that cannot work.
+        $defaults['wipay']    = ( class_exists( 'TwellerFlow2_WiPay' ) && TwellerFlow2_WiPay::is_enabled() ) ? 1 : 0;
+        $defaults['bankText'] = self::get_payment_instructions();
+        $defaults['ocrUrl']   = self::OCR_SCRIPT_URL;
         wp_localize_script( 'tweller-flow-2-prints', 'twellerFlow2Prints', array_merge( $defaults, $config ) );
     }
 
@@ -628,7 +643,7 @@ class TwellerFlow2_Prints {
         ) );
         if ( $awaiting_pay ) {
             // Same client-side OCR stack as the booking receipt flow.
-            wp_enqueue_script( 'tesseract-js', 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', array(), null, true );
+            wp_enqueue_script( 'tesseract-js', self::OCR_SCRIPT_URL, array(), null, true );
         }
 
         // WiPay return banners
@@ -1028,15 +1043,35 @@ class TwellerFlow2_Prints {
         self::send_customer_confirmation( $order );
         self::send_studio_alert( $order );
 
-        $settings = self::get_settings();
-        return rest_ensure_response( array(
+        return rest_ensure_response( self::order_created_payload( $order ) );
+    }
+
+    /**
+     * What the checkout gets back after an order is stored.
+     *
+     * `subtotal` is read straight off the saved row — it is the number
+     * insert_order() computed from the catalog plus the server-side fee
+     * lines, never anything the browser posted — and it is what the
+     * payment step is told to collect. `pay_url` lets the card path go
+     * directly into WiPay's hosted page instead of parking the customer on
+     * an extra screen; `portal_token` lets the bank-transfer path run the
+     * same tokenized receipt upload inline.
+     */
+    private static function order_created_payload( $order ) {
+        $settings  = self::get_settings();
+        $wipay_ok  = class_exists( 'TwellerFlow2_WiPay' ) && TwellerFlow2_WiPay::is_enabled();
+
+        return array(
             'ok'                   => true,
             'order_ref'            => $order->order_ref,
             'subtotal'             => (float) $order->subtotal,
             'portal_url'           => self::portal_url( $order ),
+            'portal_token'         => self::portal_token( $order->order_ref, $order->customer_email ),
+            'wipay'                => $wipay_ok ? 1 : 0,
+            'pay_url'              => $wipay_ok ? TwellerFlow2_WiPay::checkout_url( 'print', $order->order_ref ) : '',
             'payment_instructions' => self::get_payment_instructions(),
             'pickup_note'          => (string) $settings['pickup_note'],
-        ));
+        );
     }
 
     /** POST /prints/public-order — public upload page checkout (multipart) */
@@ -1188,15 +1223,7 @@ class TwellerFlow2_Prints {
         self::send_customer_confirmation( $order );
         self::send_studio_alert( $order );
 
-        $settings = self::get_settings();
-        return rest_ensure_response( array(
-            'ok'                   => true,
-            'order_ref'            => $order->order_ref,
-            'subtotal'             => (float) $order->subtotal,
-            'portal_url'           => self::portal_url( $order ),
-            'payment_instructions' => self::get_payment_instructions(),
-            'pickup_note'          => (string) $settings['pickup_note'],
-        ));
+        return rest_ensure_response( self::order_created_payload( $order ) );
     }
 
     /** GET /prints/orders?status=&search= (API key) */

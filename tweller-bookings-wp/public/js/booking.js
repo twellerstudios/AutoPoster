@@ -233,7 +233,22 @@ const tfBooking = {
 
         const loading = document.getElementById('tf2-booking-loading');
         const errorMsg = document.getElementById('tf2-booking-error');
-        
+        const submitBtn = document.getElementById('tf2-submit-btn');
+
+        // Read the label off the DOM rather than hard-coding it, so the
+        // button always restores to whatever the shortcode rendered —
+        // "Reserve Booking · Continue to Payment" today, anything later.
+        const submitLabel = submitBtn ? submitBtn.textContent : '';
+        const restoreSubmit = () => {
+            if (!submitBtn) return;
+            submitBtn.disabled = false;
+            submitBtn.textContent = submitLabel;
+        };
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Reserving your session…';
+        }
+
         loading.style.display = 'flex';
         errorMsg.style.display = 'none';
 
@@ -253,11 +268,13 @@ const tfBooking = {
                 window.location.href = tUrl + sep + 'code=' + data.tracking_code;
             } else {
                 loading.style.display = 'none';
+                restoreSubmit();
                 errorMsg.innerText = data.message || 'An error occurred. Please try again.';
                 errorMsg.style.display = 'block';
             }
         } catch (err) {
             loading.style.display = 'none';
+            restoreSubmit();
             errorMsg.innerText = 'Network error. Please try again.';
             errorMsg.style.display = 'block';
         }

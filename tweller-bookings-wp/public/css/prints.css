@@ -827,21 +827,48 @@ body.tf2p-noscroll {
     white-space: nowrap;
 }
 
+/*
+ * Storefront action bar — the storefront's one persistent cart/next-step
+ * control.
+ *
+ * `bottom: 18px` alone put it underneath iOS Safari's bottom browser
+ * chrome: the bar looked "tucked away" and the tap landed on the toolbar
+ * instead of the button. env(safe-area-inset-bottom) lifts it clear of
+ * that chrome on iOS and resolves to 0px everywhere else, so the
+ * desktop position is unchanged. prints.js also re-parents this element
+ * into the body-level .tf2p-root overlay, so no themed ancestor with a
+ * transform/filter/contain can turn position:fixed into a containing
+ * block and strand it mid-page.
+ */
 .tf2-prints__cartbar {
     position: fixed;
-    left: 50%;
-    bottom: 18px;
-    transform: translateX(-50%);
-    z-index: 99998;
+    /*
+     * left:16 + right:16 rather than left:50% + translateX(-50%). Both
+     * centre the pill, but a shrink-to-fit box positioned only from the
+     * left is offered barely half the viewport, so at 360px the pill was
+     * capped around 265px and squeezed "Continue to checkout →" into a
+     * 105px button that wrapped onto three lines. Insetting from both
+     * edges offers the box the full 328px and `width:fit-content` +
+     * `margin:0 auto` keeps it centred and no wider than its contents.
+     */
+    left: 16px;
+    right: 16px;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    width: -moz-fit-content;
+    width: fit-content;
+    margin: 0 auto;
+    /* Hard cap: `right` is dropped when the box is over-constrained, so
+       without this a long label could push the pill past the 16px inset. */
+    max-width: calc(100vw - 32px);
+    z-index: 99999;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     background: var(--tf2p-black);
     color: var(--tf2p-white);
     border-radius: 100px;
-    padding: 10px 12px 10px 22px;
+    padding: 10px 12px 10px 16px;
     box-shadow: 0 10px 30px rgba(16, 16, 16, 0.35);
-    max-width: calc(100vw - 32px);
     box-sizing: border-box;
 }
 
@@ -849,6 +876,47 @@ body.tf2p-noscroll {
     font-size: 13.5px;
     font-weight: 600;
     white-space: nowrap;
+    /* Shrinkable, so the label — not the tap target — is what gives if a
+       long label ever exceeds the pill's full width. */
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 6px;
+}
+
+/* The button is the thing being tapped: it never shrinks or wraps. */
+.tf2-prints__cartbar .tf2p-btn {
+    flex: none;
+    white-space: nowrap;
+}
+
+/* Cart chip: shown only when the bar's primary button is doing
+   something else, so exactly one control ever opens the cart. */
+.tf2p-cartbar__cart {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 100px;
+    padding: 7px 12px 7px 10px;
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--tf2p-gold);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+}
+.tf2p-cartbar__cart:hover { background: rgba(255, 255, 255, 0.2); }
+.tf2p-cartbar__cart svg { display: block; stroke: var(--tf2p-gold); }
+
+/* Measured at 360px: chip 51px + gaps 24px + button 163px leaves 54px for
+   the label against 107px of text, so it was rendering as "1 ph…". Below
+   430px the chip and the button carry the whole message instead. */
+@media (max-width: 430px) {
+    .tf2-prints__cartbar--compact .tf2-prints__cartbar-label { display: none; }
 }
 
 @media (max-width: 480px) {
@@ -2747,15 +2815,55 @@ a.tf2p-btn {
     .tf2p-co__aside { flex: 0 0 372px; position: sticky; top: 18px; }
 }
 
-/* Success card */
-.tf2p-success__refline,
-.tf2p-success__ref,
-.tf2p-success__note,
-.tf2p-success__pay,
-.tf2p-success__portal,
-.tf2p-success__done { max-width: 460px; }
+/* ── Payment choice (checkout summary column) ─────── */
+
+/* Reuses .tf2p-fulfil / .tf2p-fulfil__opt wholesale — meet-up vs
+   delivery and card vs bank transfer are the same kind of decision and
+   must look like it. */
+.tf2p-pay { margin: 0 0 12px; }
+.tf2p-pay__title { margin-top: 16px; }
+.tf2p-receiptflow .tf2p-field,
+#tf2pp-receipt-flow .tf2p-field { margin-bottom: 12px; }
+
+/* ── Post-order payment surface ───────────────────── */
+
+/*
+ * On desktop the drawer is a full-viewport checkout, so the success
+ * content used to be a column of loose, differently-measured blocks
+ * floating in 1280px of empty panel — the reported misalignment. One
+ * real card, centred at a single measure, lines it up with the checkout
+ * it replaced and reads as a deliberate step, not a leftover screen.
+ *
+ * The per-child 460px measure is dropped first: the card now sets the
+ * measure, and children that kept their own ended up narrower than the
+ * card and visibly off-centre inside it.
+ */
+.tf2p-success > * { max-width: none; }
+
+.tf2p-success__card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    background: var(--tf2p-white);
+    border: 1px solid var(--tf2p-gray-200);
+    border-radius: 16px;
+    padding: 26px 22px 22px;
+    text-align: center;
+}
 
 .tf2p-success h3 { margin-bottom: 6px; }
+.tf2p-success__due {
+    margin: 0 0 18px;
+    font-size: 14px;
+    color: var(--tf2p-gray-700);
+}
+.tf2p-success__due strong {
+    font-size: 19px;
+    color: var(--tf2p-black);
+    letter-spacing: -0.02em;
+    margin-left: 6px;
+}
 .tf2p-success__ref {
     background: var(--tf2p-white);
     border: 1px solid var(--tf2p-gray-200);
@@ -2772,6 +2880,8 @@ a.tf2p-btn {
     text-align: left;
     margin-top: 14px;
 }
+.tf2p-success__note:empty { display: none; }
+#tf2p-success-receipt { margin-top: 14px; }
 
 /* Cart rows must never force sideways scrolling on a phone */
 .tf2p-citem { box-sizing: border-box; max-width: 100%; }

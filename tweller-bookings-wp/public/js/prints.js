@@ -72,6 +72,15 @@
         ? fulfilCfg.meetupPoints : [];
 
     /**
+     * Payment. WIPAY_ON is the server's own is_enabled() answer — with the
+     * gateway off we never offer a card button that cannot work, and the
+     * checkout falls back to bank transfer only.
+     */
+    var WIPAY_ON  = !!cfg.wipay;
+    var BANK_TEXT = trim(cfg.bankText);   // trim() is a hoisted declaration
+    var OCR_URL   = trim(cfg.ocrUrl);
+
+    /**
      * Cart items (flat, so getCountFor()/checkout payloads stay compatible):
      * {batch_id, product_id, product_name, category, price, qty, filename,
      *  photo_url, thumb_url, crop:{x,y,w,h,zoom}, source_w, source_h,
@@ -570,24 +579,51 @@
                       '<button type="button" class="tf2p-btn tf2p-btn--ghost tf2p-btn--full" id="tf2p-add-size">&#65291; Add another size</button>' +
                       '<button type="button" class="tf2p-btn tf2p-btn--ghost tf2p-btn--full" id="tf2p-continue">Continue adding photos</button>' +
                     '</div>' +
+                    paymentChoiceHtml() +
                     '<button type="submit" form="tf2p-checkout-form" class="tf2p-btn tf2p-btn--gold tf2p-btn--full" id="tf2p-checkout-btn">Place Order</button>' +
-                    '<p class="tf2p-payhint">Pay after checkout from your order page — by card (via WiPay) or bank transfer.</p>' +
+                    '<p class="tf2p-payhint" id="tf2p-payhint"></p>' +
                   '</div>' +
                 '</aside>' +
               '</div>' +
             '</div>' +
+            // Post-order surface. The card path never sees this — it goes
+            // straight to WiPay. For bank transfer this IS the payment
+            // step: the order has to exist before a receipt can be attached
+            // to it, so the bank details and the OCR receipt upload live
+            // here, in the same drawer, rather than on another page.
+            // The single centred card is what fixes the desktop
+            // misalignment: everything used to be loose full-bleed text
+            // floating in a 1280px-wide panel.
             '<div class="tf2p-success" id="tf2p-success" style="display:none;">' +
+              '<div class="tf2p-success__card">' +
                 '<div class="tf2p-success__icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>' +
-                '<h3>Order received!</h3>' +
+                '<h3 id="tf2p-success-title">Order received!</h3>' +
                 '<p class="tf2p-success__refline">Your order reference</p>' +
                 '<p class="tf2p-success__ref" id="tf2p-success-ref"></p>' +
+                '<p class="tf2p-success__due" id="tf2p-success-due" style="display:none;"></p>' +
                 '<div class="tf2p-success__pay" id="tf2p-success-pay" style="display:none;">' +
-                    '<h4>Payment — Bank Transfer</h4>' +
+                    '<h4>Pay by bank transfer</h4>' +
                     '<pre id="tf2p-success-pay-text"></pre>' +
+                    '<div id="tf2p-success-receipt" style="display:none;">' +
+                        '<input type="file" id="tf2ps-receipt-input" accept="image/*" style="display:none;">' +
+                        '<button type="button" class="tf2p-btn tf2p-btn--gold tf2p-btn--full" id="tf2ps-receipt-pick">Upload transfer receipt</button>' +
+                        '<div class="tf2p-receiptflow" id="tf2ps-receipt-flow" style="display:none;">' +
+                            '<img id="tf2ps-receipt-preview" class="tf2-portal__receipt-preview" alt="Receipt preview">' +
+                            '<p id="tf2ps-receipt-note" class="tf2-portal__receipt-note"></p>' +
+                            '<label class="tf2p-field"><span>Amount transferred (TT$)</span><input type="number" step="0.01" min="0" inputmode="decimal" id="tf2ps-receipt-amount"></label>' +
+                            '<p class="tf2p-error" id="tf2ps-receipt-error" style="display:none;"></p>' +
+                            '<button type="button" class="tf2p-btn tf2p-btn--gold tf2p-btn--full" id="tf2ps-receipt-submit">Confirm &amp; submit receipt</button>' +
+                        '</div>' +
+                        '<div class="tf2-portal__received" id="tf2ps-receipt-done" style="display:none;">' +
+                            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+                            'Receipt received — we’ll confirm shortly.' +
+                        '</div>' +
+                    '</div>' +
                 '</div>' +
                 '<p class="tf2p-success__note" id="tf2p-success-note"></p>' +
                 '<p class="tf2p-success__bye">We’ll be in touch shortly to confirm everything. A confirmation email is on its way to you.</p>' +
                 '<button type="button" class="tf2p-btn tf2p-btn--dark tf2p-btn--full" id="tf2p-success-done">Done</button>' +
+              '</div>' +
             '</div>';
 
         // ── Crop editor ──
@@ -622,6 +658,10 @@
         // ── Persistent cart FAB ──
         fab = btn('tf2p-fab', '');
         fab.setAttribute('aria-label', 'Open your print cart');
+        // Every control that opens the cart carries this marker, so
+        // "is there exactly one way into the cart right now?" is a
+        // question the UI can be checked against rather than assumed.
+        fab.setAttribute('data-tf2p-cart', '1');
         fab.innerHTML =
             '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>' +
             '<span class="tf2p-fab__badge" id="tf2p-fab-badge">0</span>';
@@ -651,6 +691,27 @@
         var meetSelect = drawer.querySelector('#tf2p-meet-point');
         if (meetSelect) {
             meetSelect.addEventListener('change', function() { renderCart(); });
+        }
+
+        // Card vs bank transfer — the same radio-card behaviour as the
+        // fulfilment choice above it. This only changes what happens AFTER
+        // the order is stored; it never touches the money, which is
+        // computed server-side in insert_order().
+        var payWrapEl = drawer.querySelector('#tf2p-pay');
+        if (payWrapEl) {
+            var payOpts = payWrapEl.querySelectorAll('.tf2p-fulfil__opt');
+            for (var pi = 0; pi < payOpts.length; pi++) {
+                (function(o) {
+                    o.addEventListener('click', function() {
+                        for (var k = 0; k < payOpts.length; k++) {
+                            payOpts[k].className = 'tf2p-fulfil__opt';
+                        }
+                        o.className = 'tf2p-fulfil__opt tf2p-fulfil__opt--on';
+                        payMode = o.getAttribute('data-pay') === 'bank' ? 'bank' : 'card';
+                        syncPayFields();
+                    });
+                })(payOpts[pi]);
+            }
         }
 
         root.appendChild(backdrop);
@@ -699,11 +760,67 @@
         }
 
         bindCropGestures();
+        syncPayFields();
         updateInternalUI();
     }
 
     function poolAsList() {
         return photoPool.slice(0);
+    }
+
+    /**
+     * The payment choice, immediately above Place Order — same radio-card
+     * pattern as meet-up vs delivery, so the checkout has one control
+     * language rather than two.
+     *
+     * Card is only offered when the server says WiPay is really enabled;
+     * with it off there is nothing to choose, so the block collapses to a
+     * plain line of copy instead of a one-option radio group.
+     */
+    function paymentChoiceHtml() {
+        if (!WIPAY_ON) return '';
+        return '<h4 class="tf2p-form__title tf2p-pay__title">How would you like to pay?</h4>' +
+            '<div class="tf2p-fulfil tf2p-pay" id="tf2p-pay">' +
+              '<button type="button" class="tf2p-fulfil__opt tf2p-fulfil__opt--on" data-pay="card">' +
+                '<span class="tf2p-fulfil__radio"></span>' +
+                '<span class="tf2p-fulfil__body">' +
+                  '<span class="tf2p-fulfil__title">Pay by card</span>' +
+                  '<span class="tf2p-fulfil__note">Visa &amp; Mastercard · secure checkout</span>' +
+                '</span>' +
+              '</button>' +
+              '<button type="button" class="tf2p-fulfil__opt" data-pay="bank">' +
+                '<span class="tf2p-fulfil__radio"></span>' +
+                '<span class="tf2p-fulfil__body">' +
+                  '<span class="tf2p-fulfil__title">Pay by bank transfer</span>' +
+                  '<span class="tf2p-fulfil__note">Transfer, then upload your receipt right here</span>' +
+                '</span>' +
+              '</button>' +
+            '</div>';
+    }
+
+    /**
+     * Keep the submit button and the hint honest about what pressing it
+     * will actually do next.
+     */
+    function syncPayFields() {
+        var btnEl  = document.getElementById('tf2p-checkout-btn');
+        var hint   = document.getElementById('tf2p-payhint');
+        var byCard = WIPAY_ON && payMode === 'card';
+
+        if (btnEl && !submitting) {
+            btnEl.textContent = byCard ? 'Place Order & Pay by Card' : 'Place Order';
+        }
+        if (hint) {
+            if (byCard) {
+                hint.textContent = 'You’ll go straight to WiPay’s secure card page — nothing is charged until you complete it there.';
+            } else if (BANK_TEXT) {
+                hint.textContent = 'We’ll show you our bank details next, and you can upload your transfer receipt right here.';
+            } else {
+                // No bank details configured — promising a screen that
+                // would come up empty would just strand the customer.
+                hint.textContent = 'We’ll email you payment details as soon as your order is in.';
+            }
+        }
     }
 
     /** <option> list for the meet-up points configured in wp-admin. */
@@ -747,6 +864,7 @@
         else document.body.classList.remove('tf2p-noscroll');
 
         updateFab();
+        renderStoreBar();
     }
 
     function closeFlow() {
@@ -778,10 +896,13 @@
     function updateFab() {
         if (!fab) return;
         var n = cartCount();
-        // On the storefront the descriptive status bar (renderStoreBar)
-        // already offers the same "continue to checkout" action with more
-        // context — showing the plain circular FAB too would just be a
-        // second button doing the same thing at the same time.
+        // On the storefront the action bar (renderStoreBar) carries the
+        // cart with far more context — count, running total and the next
+        // step — so the plain circular FAB would be a second button doing
+        // the same job. The bar is now guaranteed to expose the cart in
+        // EVERY state it can be in (see renderStoreBar), which is what
+        // makes suppressing the FAB here safe rather than leaving the
+        // storefront with no way back to the cart at all.
         var hidden = n <= 0 || isDrawerOpen() || isFlowOpen() || isCropOpen() || mode === 'public';
         fab.style.display = hidden ? 'none' : '';
         var badge = document.getElementById('tf2p-fab-badge');
@@ -1756,10 +1877,22 @@
         var feesEl   = document.getElementById('tf2p-fees');
         var pickupEl = document.getElementById('tf2p-pickup-note');
         var addRow   = drawer ? drawer.querySelector('.tf2p-drawer__addrow') : null;
+        var payEl    = document.getElementById('tf2p-pay');
+        var payTitle = drawer ? drawer.querySelector('.tf2p-pay__title') : null;
+        var payHint  = document.getElementById('tf2p-payhint');
+        var payBtn   = document.getElementById('tf2p-checkout-btn');
         if (!list) return;
 
         list.innerHTML = '';
         if (feesEl) feesEl.innerHTML = '';
+
+        // An empty cart has nothing to pay for — the payment choice and
+        // Place Order stay out of the way until there is.
+        var showPay = cart.length > 0;
+        if (payEl)    payEl.style.display    = showPay ? '' : 'none';
+        if (payTitle) payTitle.style.display = showPay ? '' : 'none';
+        if (payHint)  payHint.style.display  = showPay ? '' : 'none';
+        if (payBtn)   payBtn.style.display   = showPay ? '' : 'none';
 
         if (!cart.length) {
             if (empty) empty.style.display = '';
@@ -1788,6 +1921,7 @@
         }
 
         syncFulfilFields();
+        syncPayFields();
         renderFeeLines();
 
         var subEl = document.getElementById('tf2p-subtotal');
@@ -1904,6 +2038,7 @@
 
     var submitting = false;
     var shipMode   = 'meetup';
+    var payMode    = WIPAY_ON ? 'card' : 'bank';
 
     function val(id) {
         var e = document.getElementById(id);
@@ -2003,6 +2138,18 @@
                 button.textContent = btnLabel;
             }
             if (data && data.ok && data.order_ref) {
+                // Card: the order is stored, so hand the customer straight
+                // to WiPay's hosted page. No confirmation screen in
+                // between — the return trip lands on their order portal
+                // with the payment banner already showing.
+                if (WIPAY_ON && payMode === 'card' && data.pay_url) {
+                    cart = [];
+                    lastBatchPhotos = [];
+                    notifyCountChange();
+                    if (button) button.textContent = 'Opening secure payment…';
+                    window.location.href = data.pay_url;
+                    return;
+                }
                 showSuccess(data);
                 cart = [];
                 lastBatchPhotos = [];
@@ -2123,7 +2270,9 @@
     function showSuccess(data) {
         var body    = document.getElementById('tf2p-drawer-body');
         var success = document.getElementById('tf2p-success');
+        var titleEl = document.getElementById('tf2p-success-title');
         var refEl   = document.getElementById('tf2p-success-ref');
+        var dueEl   = document.getElementById('tf2p-success-due');
         var payWrap = document.getElementById('tf2p-success-pay');
         var payText = document.getElementById('tf2p-success-pay-text');
         var noteEl  = document.getElementById('tf2p-success-note');
@@ -2132,12 +2281,30 @@
         if (body) body.style.display = 'none';
         if (refEl) refEl.textContent = data.order_ref;
 
+        // Amount due is the STORED subtotal echoed back by the server —
+        // catalog prices plus the fee lines insert_order() applied — not
+        // anything this page added up.
+        var due = parseFloat(data.subtotal);
+        if (dueEl) {
+            if (isFinite(due) && due > 0) {
+                dueEl.innerHTML = 'Amount due <strong>' + esc(money(due)) + '</strong>';
+                dueEl.style.display = '';
+            } else {
+                dueEl.style.display = 'none';
+            }
+        }
+        if (titleEl) {
+            titleEl.textContent = data.payment_instructions
+                ? 'Order placed — one step left'
+                : 'Order received!';
+        }
+
         if (!portalBtn && success) {
             portalBtn = document.createElement('a');
             portalBtn.id = 'tf2p-success-portal';
             portalBtn.className = 'tf2p-btn tf2p-btn--gold tf2p-btn--full';
             portalBtn.style.marginBottom = '10px';
-            portalBtn.textContent = 'View your order / Make payment';
+            portalBtn.textContent = 'Open your order page';
             var doneBtn = document.getElementById('tf2p-success-done');
             if (doneBtn && doneBtn.parentNode) doneBtn.parentNode.insertBefore(portalBtn, doneBtn);
             else success.appendChild(portalBtn);
@@ -2159,9 +2326,63 @@
                 payWrap.style.display = 'none';
             }
         }
+
+        // The receipt upload — the SAME tokenized endpoint and the same
+        // client-side OCR the order portal uses, bound to this screen's
+        // fields instead of the portal's. Nothing is duplicated but the ids.
+        var receiptWrap = document.getElementById('tf2p-success-receipt');
+        if (receiptWrap) {
+            var canUpload = !!(data.payment_instructions && data.order_ref && data.portal_token);
+            receiptWrap.style.display = canUpload ? '' : 'none';
+            if (canUpload) {
+                successReceiptCreds = { order: data.order_ref, token: data.portal_token };
+                bindSuccessReceipt();
+                ensureOcrLib(noop);
+            }
+        }
+
         if (noteEl) noteEl.textContent = data.pickup_note || '';
         if (success) success.style.display = '';
         openDrawer();
+    }
+
+    // ── Inline bank-transfer receipt (success screen) ──
+
+    var successReceiptCreds = null;
+    var successReceiptBound = false;
+
+    function bindSuccessReceipt() {
+        if (successReceiptBound) return;
+        var ok = bindReceiptFlow({
+            pick:    'tf2ps-receipt-pick',
+            input:   'tf2ps-receipt-input',
+            flow:    'tf2ps-receipt-flow',
+            preview: 'tf2ps-receipt-preview',
+            note:    'tf2ps-receipt-note',
+            amount:  'tf2ps-receipt-amount',
+            error:   'tf2ps-receipt-error',
+            submit:  'tf2ps-receipt-submit',
+            done:    'tf2ps-receipt-done',
+            creds:   function() { return successReceiptCreds; }
+        });
+        successReceiptBound = !!ok;
+    }
+
+    /**
+     * Load the OCR library on demand. It is a convenience only: when it
+     * never arrives, runReceiptOcr() reports "couldn't read it" and the
+     * customer types the amount, which is the same path the portal takes.
+     */
+    var ocrLoading = false;
+    function ensureOcrLib(cb) {
+        if (window.Tesseract || !OCR_URL || ocrLoading) { cb(); return; }
+        ocrLoading = true;
+        var s = document.createElement('script');
+        s.src = OCR_URL;
+        s.async = true;
+        s.onload  = function() { cb(); };
+        s.onerror = function() { cb(); };
+        document.head.appendChild(s);
     }
 
     // ── Public storefront shell ────────────────────────
@@ -2267,11 +2488,16 @@
     }
 
     /**
-     * The floating pill under the upload grid — the one place a customer
-     * can always see what to do next and tap straight into it, instead of
-     * being left looking at a grid of thumbnails with no way forward.
-     * Two states: photos picked but no size chosen yet, or a batch already
-     * sitting in the cart waiting on checkout.
+     * The floating pill — the storefront's one persistent control: what to
+     * do next, and the way back into the cart.
+     *
+     * It used to show the cart ONLY when nothing was selected, so the
+     * moment a customer ticked another photo their cart vanished behind a
+     * "Choose sizes" button and the storefront had no cart affordance at
+     * all (the FAB is deliberately suppressed in public mode). Now a cart
+     * chip appears whenever the primary button is busy with something
+     * else, so there is always exactly one control that opens the cart —
+     * never two at once, never none.
      */
     function renderStoreBar() {
         var bar   = document.getElementById('tf2p-cartbar');
@@ -2279,27 +2505,93 @@
         var cbtn  = document.getElementById('tf2p-cartbar-btn');
         if (!bar || !label || !cbtn) return;
 
+        // The bar belongs to the storefront, the FAB to everywhere else.
+        // Keying that off the mode rather than off whichever markup happens
+        // to be on the page makes the two mutually exclusive by
+        // construction, so "exactly one cart control" cannot be broken by a
+        // page that ends up carrying both shells.
+        if (mode !== 'public') {
+            bar.style.display = 'none';
+            cbtn.removeAttribute('data-tf2p-cart');
+            return;
+        }
+
         var picked = selectedUploadKeys();
         var count  = cartCount();
 
+        var chip = ensureCartChip(bar);
+
+        // While the checkout / ordering flow is open the bar would only sit
+        // behind the backdrop offering a duplicate way in.
+        if (isDrawerOpen() || isFlowOpen() || isCropOpen()) {
+            bar.style.display = 'none';
+            return;
+        }
+
         if (picked.length) {
             bar.style.display = 'flex';
-            label.textContent = picked.length + ' photo' + (picked.length === 1 ? '' : 's') + ' selected';
+            // With the chip beside it the pill is 52px too narrow at 360px
+            // for "N photos selected", and the label was being truncated to
+            // "1 ph...". The short form fits, and below 430px the compact
+            // class drops the label entirely: the chip and the button
+            // already say the count and the next step.
+            bar.className = count > 0
+                ? 'tf2-prints__cartbar tf2-prints__cartbar--compact'
+                : 'tf2-prints__cartbar';
+            label.textContent = count > 0
+                ? picked.length + ' selected'
+                : picked.length + ' photo' + (picked.length === 1 ? '' : 's') + ' selected';
             cbtn.textContent = 'Choose sizes \u2192';
+            cbtn.removeAttribute('data-tf2p-cart');
             cbtn.onclick = function() {
                 var keys = selectedUploadKeys();
                 uploadSelected = {};
                 renderUploadGrid();
                 startFlow({ step: 2, photos: poolAsList(), selected: keys });
             };
+            // The primary button is taken, so the chip carries the cart.
+            setCartChip(chip, count > 0, count);
         } else if (count > 0) {
             bar.style.display = 'flex';
-            label.textContent = count + ' print' + (count === 1 ? '' : 's') + ' ready \u00b7 ' + money(subtotal());
-            cbtn.textContent = 'Continue to checkout \u2192';
+            bar.className = 'tf2-prints__cartbar';
+            // Wording measured against the 328px the pill gets at 360px:
+            // "N prints ready - TT$x" plus "Continue to checkout" wanted
+            // 397px. Trimmed to this it wants 307px, so the running total
+            // (the part worth keeping) is never ellipsised away.
+            label.textContent = count + ' print' + (count === 1 ? '' : 's') + ' \u00b7 ' + money(subtotal());
+            cbtn.textContent = 'Checkout \u2192';
+            cbtn.setAttribute('data-tf2p-cart', '1');
             cbtn.onclick = function() { openDrawer(); };
+            // The primary button IS the cart control, so no chip beside it.
+            setCartChip(chip, false, count);
         } else {
             bar.style.display = 'none';
+            cbtn.removeAttribute('data-tf2p-cart');
+            setCartChip(chip, false, 0);
         }
+    }
+
+    /** Lazily build the cart chip inside the storefront bar. */
+    function ensureCartChip(bar) {
+        var chip = document.getElementById('tf2p-cartbar-cart');
+        if (chip) return chip;
+        chip = btn('tf2p-cartbar__cart', '');
+        chip.id = 'tf2p-cartbar-cart';
+        chip.setAttribute('aria-label', 'Open your print cart');
+        chip.setAttribute('data-tf2p-cart', '1');
+        chip.innerHTML =
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>' +
+            '<span id="tf2p-cartbar-count">0</span>';
+        chip.addEventListener('click', function() { openDrawer(); });
+        bar.insertBefore(chip, bar.firstChild);
+        return chip;
+    }
+
+    function setCartChip(chip, show, count) {
+        if (!chip) return;
+        chip.style.display = show ? '' : 'none';
+        var n = document.getElementById('tf2p-cartbar-count');
+        if (n) n.textContent = String(count);
     }
 
     function buildUploadTile(entry, index) {
@@ -2340,6 +2632,17 @@
         var startBtn = document.getElementById('tf2p-start-order');
 
         loadProducts(null);
+
+        // position:fixed is only relative to the viewport while no ancestor
+        // creates a containing block. A single theme wrapper with a
+        // transform, filter or contain would silently pin the bar inside
+        // that wrapper and leave it stranded halfway down the page. Moving
+        // it into the body-level overlay root (which sets nothing but a
+        // font) removes that whole class of failure — the bar's styling is
+        // class-based, so nothing about it changes.
+        buildOverlay();
+        var bar = document.getElementById('tf2p-cartbar');
+        if (bar && root && bar.parentNode !== root) root.appendChild(bar);
 
         // Storefront product cards start the order with that size locked in.
         var cards = document.querySelectorAll('[data-tf2p-product]');
@@ -2501,18 +2804,32 @@
         }
     }
 
-    function initPortal() {
-        var pick   = document.getElementById('tf2pp-receipt-pick');
-        var input  = document.getElementById('tf2pp-receipt-input');
-        var flowWrap = document.getElementById('tf2pp-receipt-flow');
-        if (!pick || !input || !flowWrap) return;
+    /**
+     * The bank-transfer receipt flow: choose an image → read the amount off
+     * it client-side → confirm → POST to /prints/portal-receipt.
+     *
+     * One implementation, two surfaces. The tokenized order portal binds it
+     * to its own fields; the inline checkout binds it to the success
+     * screen's. Both hit the same endpoint with the same order ref + token,
+     * so there is exactly one receipt mechanism on the site.
+     *
+     * @param ids {pick,input,flow,preview,note,amount,error,submit,done,creds}
+     *            creds() returns {order, token} — the portal reads them from
+     *            the page config, the checkout from the order it just made.
+     * @return true when it bound, false when the fields aren't present.
+     */
+    function bindReceiptFlow(ids) {
+        var pick     = document.getElementById(ids.pick);
+        var input    = document.getElementById(ids.input);
+        var flowWrap = document.getElementById(ids.flow);
+        if (!pick || !input || !flowWrap) return false;
 
-        var preview  = document.getElementById('tf2pp-receipt-preview');
-        var note     = document.getElementById('tf2pp-receipt-note');
-        var amount   = document.getElementById('tf2pp-receipt-amount');
-        var errEl    = document.getElementById('tf2pp-receipt-error');
-        var submit   = document.getElementById('tf2pp-receipt-submit');
-        var doneEl   = document.getElementById('tf2pp-receipt-done');
+        var preview  = document.getElementById(ids.preview);
+        var note     = document.getElementById(ids.note);
+        var amount   = document.getElementById(ids.amount);
+        var errEl    = document.getElementById(ids.error);
+        var submit   = document.getElementById(ids.submit);
+        var doneEl   = document.getElementById(ids.done);
 
         var pendingFile = null;
         var pendingRef  = null;
@@ -2580,10 +2897,19 @@
                 var oldLabel = submit.textContent;
                 submit.textContent = 'Uploading…';
 
+                var creds = ids.creds ? ids.creds() : null;
+                if (!creds || !creds.order || !creds.token) {
+                    busy = false;
+                    submit.disabled = false;
+                    submit.textContent = oldLabel;
+                    showError('We lost track of this order. Please open your order link from the confirmation email.');
+                    return;
+                }
+
                 var fd = new FormData();
                 fd.append('receipt', pendingFile, pendingFile.name || 'receipt.jpg');
-                fd.append('order', cfg.orderRef || '');
-                fd.append('t', cfg.portalToken || '');
+                fd.append('order', creds.order);
+                fd.append('t', creds.token);
                 fd.append('ocr_amounts', 'TTD ' + val.toFixed(2));
                 fd.append('confirmed_amount', val.toFixed(2));
                 if (pendingRef) fd.append('ocr_reference', pendingRef);
@@ -2610,6 +2936,25 @@
                     });
             });
         }
+        return true;
+    }
+
+    /** Tokenized order portal — the customer's durable link to the order. */
+    function initPortal() {
+        bindReceiptFlow({
+            pick:    'tf2pp-receipt-pick',
+            input:   'tf2pp-receipt-input',
+            flow:    'tf2pp-receipt-flow',
+            preview: 'tf2pp-receipt-preview',
+            note:    'tf2pp-receipt-note',
+            amount:  'tf2pp-receipt-amount',
+            error:   'tf2pp-receipt-error',
+            submit:  'tf2pp-receipt-submit',
+            done:    'tf2pp-receipt-done',
+            creds:   function() {
+                return { order: cfg.orderRef || '', token: cfg.portalToken || '' };
+            }
+        });
     }
 
     // ── Internal UI sync ───────────────────────────────

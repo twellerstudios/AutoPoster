@@ -131,7 +131,8 @@ class TwellerFlow2_Booking_Shortcode {
                         </div>
                     </div>
 
-                    <button type="submit" class="tf2-btn-submit" id="tf2-submit-btn">Complete Booking</button>
+                    <button type="submit" class="tf2-btn-submit" id="tf2-submit-btn">Reserve Booking &middot; Continue to Payment</button>
+                    <p class="tf2-submit-hint">This step reserves your session &mdash; nothing is charged yet. On the next screen you&rsquo;ll pay by debit/credit card or bank transfer.</p>
                     <div id="tf2-booking-error" class="tf2-error-msg" style="display:none;"></div>
                 </form>
             </div>

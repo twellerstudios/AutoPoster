@@ -460,6 +460,26 @@ class TwellerFlow2_Admin {
                 exit;
             }
 
+            // "Sync all bookings to calendar" — back-fill every existing
+            // booking that predates the calendar connection. Batched inside
+            // sync_all(), so a large history takes a few clicks rather than
+            // one long request; the result counts are shown on the page.
+            if ( ! empty( $_POST['tweller_flow_2_google_sync_all'] ) ) {
+                $res = array( 'ok' => false, 'synced' => 0, 'failed' => 0, 'remaining' => 0, 'reason' => 'Calendar sync is unavailable.' );
+                if ( class_exists( 'TwellerFlow2_Google_Calendar' ) ) {
+                    $res = TwellerFlow2_Google_Calendar::sync_all( 25 );
+                }
+                wp_redirect( add_query_arg( array_map( 'rawurlencode', array(
+                    'page'          => 'tweller-flow-2-settings',
+                    'gcal_backfill' => empty( $res['ok'] ) ? 'blocked' : '1',
+                    'gb_synced'     => (string) (int) $res['synced'],
+                    'gb_failed'     => (string) (int) $res['failed'],
+                    'gb_remaining'  => (string) (int) $res['remaining'],
+                    'gb_reason'     => (string) ( $res['reason'] ?? '' ),
+                ) ), admin_url( 'admin.php' ) ) );
+                exit;
+            }
+
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-settings&saved=1' ) );
             exit;
         }

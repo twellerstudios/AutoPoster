@@ -230,6 +230,33 @@
                     <?php endif; ?>
                 <?php endif; ?>
 
+                <?php if ( isset( $_GET['gcal_backfill'] ) ) : ?>
+                    <?php
+                    $gb_synced    = intval( $_GET['gb_synced'] ?? 0 );
+                    $gb_failed    = intval( $_GET['gb_failed'] ?? 0 );
+                    $gb_remaining = intval( $_GET['gb_remaining'] ?? 0 );
+                    ?>
+                    <?php if ( $_GET['gcal_backfill'] === 'blocked' ) : ?>
+                        <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">
+                            Couldn't sync your bookings: <?php echo esc_html( wp_unslash( $_GET['gb_reason'] ?? 'Calendar sync is unavailable.' ) ); ?>
+                        </div>
+                    <?php else : ?>
+                        <div class="tf2-alert" style="background:#EFF6FF; color:#1E3A8A;">
+                            <strong>Added <?php echo esc_html( $gb_synced ); ?> booking<?php echo $gb_synced === 1 ? '' : 's'; ?> to your calendar.</strong>
+                            <?php if ( $gb_failed > 0 ) : ?>
+                                <?php echo esc_html( $gb_failed ); ?> couldn't be synced &mdash; see the log below for why.
+                            <?php endif; ?>
+                            <?php if ( $gb_remaining > 0 ) : ?>
+                                <br><?php echo esc_html( $gb_remaining ); ?> more still to go &mdash; click <em>Sync all bookings to calendar</em> again to continue.
+                            <?php elseif ( $gb_synced === 0 && $gb_failed === 0 ) : ?>
+                                Every booking with a date is already on your calendar &mdash; you're all caught up.
+                            <?php else : ?>
+                                That's everything &mdash; your calendar is up to date.
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+
                 <?php if ( $g_connected && ! $g_cal_ok ) : ?>
                     <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">
                         <strong>Reconnect Google to enable calendar sync.</strong>
@@ -278,9 +305,12 @@
                             <?php endif; ?>
                         </p>
                         <button type="submit" name="tweller_flow_2_google_test_sync" value="1" class="tf2-btn tf2-btn--primary tf2-btn--sm">Save &amp; Test Sync Now</button>
+                        <?php if ( $g_cal_ok ) : ?>
+                            <button type="submit" name="tweller_flow_2_google_sync_all" value="1" class="tf2-btn tf2-btn--secondary tf2-btn--sm">Sync all bookings to calendar</button>
+                        <?php endif; ?>
                         <a class="tf2-btn tf2-btn--secondary tf2-btn--sm"
                            href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-settings&tf2_google=disconnect' ), 'tf2_google_disconnect' ) ); ?>">Disconnect</a>
-                        <div class="tf2-field__hint" style="margin-top:8px;">Test runs the contact + calendar sync for your most recent session and shows the exact result (or Google's error) above.</div>
+                        <div class="tf2-field__hint" style="margin-top:8px;">Test runs the contact + calendar sync for your most recent session. <strong>Sync all bookings</strong> back-fills every past booking onto your calendar (in batches — click again if it says more remain).</div>
                     <?php elseif ( ! empty( $g_config['client_id'] ) && ! empty( $g_config['client_secret'] ) ) : ?>
                         <a class="tf2-btn tf2-btn--primary" href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Connect Google Account</a>
                         <div class="tf2-field__hint" style="margin-top:8px;">Save settings first if you just entered the Client ID / Secret.</div>

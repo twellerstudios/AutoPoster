@@ -76,6 +76,75 @@ class TwellerFlow2_Google_Calendar {
     // ── Sync ───────────────────────────────────────────
 
     /**
+     * Back-fill: push every existing booking onto the calendar.
+     *
+     * New bookings sync on creation, but sessions booked before the Google
+     * account was connected (or before calendar sync worked) never fired a
+     * sync — so the calendar is missing history. This walks the bookings
+     * that have a date, are not cancelled, and don't yet have an event, and
+     * creates each. Already-synced bookings are left alone, so running it
+     * twice never duplicates. It processes newest-first and stops after
+     * $limit real API calls, reporting how many remain, so one click can
+     * never hang the admin request on a large back-catalogue — click again
+     * to continue.
+     *
+     * @param int $limit Max bookings to push in this run.
+     * @return array{ ok:bool, reason:string, synced:int, failed:int, skipped:int, remaining:int, total:int }
+     */
+    public static function sync_all( $limit = 25 ) {
+        $out = array( 'ok' => false, 'reason' => '', 'synced' => 0, 'failed' => 0, 'skipped' => 0, 'remaining' => 0, 'total' => 0 );
+
+        if ( ! self::is_ready() ) {
+            $out['reason'] = ! self::is_enabled()
+                ? 'Calendar sync is turned off.'
+                : ( ! TwellerFlow2_Google_Contacts::is_connected()
+                    ? 'Google account is not connected.'
+                    : 'Calendar permission is missing — reconnect Google to grant it.' );
+            return $out;
+        }
+
+        $limit = max( 1, (int) $limit );
+
+        // Every booking with a date, newest first. per_page is generous —
+        // the batching below, not the query, is what bounds the work.
+        $sessions = TwellerFlow2_Session::get_all( array(
+            'per_page' => 2000,
+            'orderby'  => 'session_date',
+            'order'    => 'DESC',
+        ) );
+        if ( ! is_array( $sessions ) ) $sessions = array();
+
+        foreach ( $sessions as $session ) {
+            // Not a real booking on the calendar's terms.
+            if ( empty( $session->session_date ) || (string) $session->current_stage === 'cancelled' ) {
+                $out['skipped']++;
+                continue;
+            }
+
+            // Already on the calendar — leave it (idempotent).
+            if ( get_option( self::EVENT_OPT_PREFIX . $session->id, '' ) !== '' ) {
+                continue;
+            }
+
+            $out['total']++;
+
+            if ( $out['synced'] + $out['failed'] >= $limit ) {
+                $out['remaining']++;
+                continue;
+            }
+
+            if ( self::sync_session( (int) $session->id ) ) {
+                $out['synced']++;
+            } else {
+                $out['failed']++;
+            }
+        }
+
+        $out['ok'] = true;
+        return $out;
+    }
+
+    /**
      * Create-or-update the calendar event for a session on the connected
      * account's primary calendar. Logs every outcome.
      *

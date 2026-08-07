@@ -643,21 +643,91 @@
         ].forEach(function (r) { if (r) contact.appendChild(r); });
         wrap.appendChild(contact);
 
-        // Payment
+        // Payment — figures come from the server so the app never recomputes.
+        var payInfo = d.payment || {
+            total: s.total_amount || 0,
+            deposit: s.deposit_amount || 0,
+            balance: Math.max(0, (s.total_amount || 0) - (s.deposit_amount || 0))
+        };
         var pay = el(
             '<div class="card"><div class="card__title">Payment</div>' +
-                '<div class="kv"><span class="kv__k">Package total</span><span class="kv__v kv__v--big">' + esc(money(s.total_amount)) + '</span></div>' +
-                '<div class="kv"><span class="kv__k">Deposit</span><span class="kv__v">' + esc(money(s.deposit_amount)) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Package total</span><span class="kv__v kv__v--big">' + esc(money(payInfo.total)) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Received</span><span class="kv__v">' + esc(money(payInfo.deposit)) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Balance due</span><span class="kv__v">' + (payInfo.balance > 0 ? esc(money(payInfo.balance)) : 'Paid in full') + '</span></div>' +
                 '<div class="kv"><span class="kv__k">Status</span><span class="kv__v">' + payPill(s.payment_status) + '</span></div>' +
             '</div>'
         );
-        if (d.receipt && d.receipt.url) {
-            pay.appendChild(el(
-                '<div class="kv"><span class="kv__k">Receipt' + (d.receipt.ocr ? ' · detected ' + esc(d.receipt.ocr) : '') + '</span>' +
-                '<span class="kv__v"><a href="' + esc(d.receipt.url) + '" target="_blank">View ↗</a></span></div>'
+
+        var receipt = d.receipt;
+        var receiptStatus = receipt && receipt.status ? receipt.status : 'pending';
+
+        // The receipt itself, shown inline — no more hunting a bare link.
+        if (receipt && receipt.url) {
+            var rc = el('<div style="margin-top:12px;"></div>');
+            rc.appendChild(el(
+                '<div class="kv"><span class="kv__k">Bank transfer receipt' +
+                (receiptStatus !== 'pending' ? ' · ' + esc(receiptStatus) : '') +
+                '</span><span class="kv__v"><a href="' + esc(receipt.url) + '" target="_blank">Open ↗</a></span></div>'
             ));
+            rc.appendChild(el(
+                '<a href="' + esc(receipt.url) + '" target="_blank">' +
+                '<img src="' + esc(receipt.url) + '" alt="Receipt" style="width:100%; border-radius:10px; margin-top:8px; border:1px solid var(--line);"></a>'
+            ));
+            pay.appendChild(rc);
         }
-        if (s.payment_status !== 'paid') {
+
+        // Awaiting verification → the real approve/reject flow, in-app.
+        if (s.payment_status === 'verifying' || (receipt && receipt.url && receiptStatus === 'pending')) {
+            var approve = el('<div class="card card--warn" style="margin-top:12px;"><div class="card__title">Verify this payment</div></div>');
+            approve.appendChild(el('<p class="hint" style="margin-top:0;">' +
+                (receipt && receipt.ocr
+                    ? 'Detected on the receipt: <strong>' + esc(receipt.ocr) + '</strong>. '
+                    : '') +
+                'Enter the amount actually received.</p>'));
+
+            var amtVal = payInfo.total ? parseFloat(payInfo.total).toFixed(2) : '';
+            approve.appendChild(el('<div class="field"><label>Amount received (TT$)</label>' +
+                '<input type="number" id="verify-amt" min="0" step="0.01" inputmode="decimal" value="' + amtVal + '"></div>'));
+            approve.appendChild(el('<p class="hint" style="margin-top:0;">The full ' + esc(money(payInfo.total)) +
+                ' marks the booking paid; anything less is a deposit, and the client is emailed their balance.</p>'));
+
+            var actions = el('<div style="display:flex; gap:10px; margin-top:4px;"></div>');
+            var approveBtn = el('<button class="btn btn--dark" style="flex:1;">Approve &amp; confirm</button>');
+            var rejectBtn = el('<button class="btn btn--danger" style="flex:1;">Reject</button>');
+            actions.appendChild(approveBtn);
+            actions.appendChild(rejectBtn);
+            approve.appendChild(actions);
+
+            approveBtn.addEventListener('click', async function () {
+                var amt = parseFloat((document.getElementById('verify-amt') || {}).value);
+                if (isNaN(amt) || amt <= 0) { toast('Enter the amount received.'); return; }
+                approveBtn.disabled = true; rejectBtn.disabled = true;
+                try {
+                    var r = await TwellerApi.verifyReceipt(code, 'approve', amt);
+                    toast(r && r.status === 'paid'
+                        ? 'Confirmed — marked paid in full.'
+                        : 'Confirmed — deposit recorded, balance emailed to the client.');
+                    renderSession(code);
+                } catch (e) {
+                    approveBtn.disabled = false; rejectBtn.disabled = false;
+                    toast('Could not approve: ' + e.message, 5000);
+                }
+            });
+            rejectBtn.addEventListener('click', async function () {
+                if (!confirm('Reject this receipt? The client will be asked to re-upload.')) return;
+                approveBtn.disabled = true; rejectBtn.disabled = true;
+                try {
+                    await TwellerApi.verifyReceipt(code, 'reject', 0);
+                    toast('Receipt rejected — client asked to re-upload.');
+                    renderSession(code);
+                } catch (e) {
+                    approveBtn.disabled = false; rejectBtn.disabled = false;
+                    toast('Could not reject: ' + e.message, 5000);
+                }
+            });
+            pay.appendChild(approve);
+        } else if (s.payment_status !== 'paid') {
+            // Nothing to verify — keep a simple manual "mark paid".
             var markPaid = el('<button class="btn btn--sm btn--ghost" style="margin-top:12px;">Mark as fully paid</button>');
             markPaid.addEventListener('click', async function () {
                 if (!confirm('Mark ' + s.client_name + ' as fully paid?')) return;

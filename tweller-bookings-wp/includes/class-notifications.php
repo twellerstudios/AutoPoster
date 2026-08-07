@@ -73,6 +73,82 @@ class TwellerFlow2_Notifications {
         }
     }
 
+    /**
+     * Studio-facing "new booking" alert.
+     *
+     * Goes to the studio inbox(es) ONLY, never the client — sent through
+     * send_raw() rather than send_email() so the client's address is never
+     * prepended. This is the notification the owner used to rely on: the
+     * booking create path emails the client and drops an ICS on the
+     * calendar Gmail, but nothing ever told hello@ that a booking arrived.
+     *
+     * @param int $session_id
+     * @return bool
+     */
+    public static function notify_studio_new_booking( $session_id ) {
+        $session = TwellerFlow2_Session::get( $session_id );
+        if ( ! $session ) return false;
+
+        $recipients = array_values( array_unique( array_filter( array(
+            get_option( 'admin_email' ),
+            self::STUDIO_EMAIL,
+        ) ) ) );
+        if ( empty( $recipients ) ) return false;
+
+        $packages    = get_option( 'tweller_flow_2_packages', array() );
+        $pkg         = $packages[ $session->package_type ] ?? array();
+        $pkg_name    = $pkg['name'] ?? ucfirst( $session->package_type );
+        $review_link = admin_url( 'admin.php?page=tweller-flow-2-session&id=' . (int) $session->id );
+
+        $rows  = self::email_detail_row( 'Client', esc_html( $session->client_name ) );
+        if ( $session->client_email ) $rows .= self::email_detail_row( 'Email', esc_html( $session->client_email ) );
+        if ( $session->client_phone ) $rows .= self::email_detail_row( 'Phone', esc_html( $session->client_phone ) );
+        $rows .= self::email_detail_row( 'Package', esc_html( $pkg_name ) );
+        if ( $session->session_date ) {
+            $rows .= self::email_detail_row( 'Date', date( 'l, F j, Y', strtotime( $session->session_date ) ) );
+        }
+        if ( ! empty( $session->session_time ) ) {
+            $rows .= self::email_detail_row( 'Time', date( 'g:i A', strtotime( $session->session_date . ' ' . $session->session_time ) ) );
+        }
+        if ( $session->location ) $rows .= self::email_detail_row( 'Location', esc_html( $session->location ) );
+        if ( $session->total_amount > 0 ) {
+            $rows .= self::email_detail_row( 'Total', 'TTD $' . number_format( $session->total_amount, 2 ) );
+            $rows .= self::email_detail_row( 'Deposit to confirm (50%)', 'TTD $' . number_format( $session->total_amount / 2, 2 ) );
+        }
+        $rows .= self::email_detail_row( 'Shoot code', $session->tracking_code );
+
+        $subject = "New booking — {$session->client_name}";
+        $body = "
+            <h2 style='color:" . self::C_BLACK . "; font-weight:600;'>A new booking just came in</h2>
+            <p style='color:" . self::C_TEXT . "; line-height:1.7;'><strong>" . esc_html( $session->client_name ) . "</strong> just booked a session. Their welcome email with payment details has already gone out &mdash; they'll send a bank-transfer receipt or pay by card to confirm.</p>
+            " . self::email_card( 'Booking Details', $rows ) . "
+            " . self::email_button_row( $review_link, 'Open in Tweller Bookings Dashboard' ) . "
+        ";
+
+        return self::send_raw( $recipients, $subject, $body );
+    }
+
+    /**
+     * Client email when a receipt could not be verified — asks them to
+     * re-upload. Extracted from the admin handler so the app's reject
+     * action sends the identical message.
+     *
+     * @param object $session
+     * @return bool
+     */
+    public static function send_receipt_rejected_email( $session ) {
+        if ( empty( $session->client_email ) ) return false;
+        $tracker_url = self::get_tracker_url( $session->tracking_code );
+        $body = "
+            <h2 style='color:" . self::C_BLACK . "; font-weight:600;'>We couldn't verify your receipt</h2>
+            <p style='color:" . self::C_TEXT . ";'>Hi {$session->client_name},</p>
+            <p style='color:" . self::C_TEXT . "; line-height:1.7;'>We ran into a problem verifying the bank transfer receipt you uploaded &mdash; it may have been the wrong image, or the amount didn't match. No worries at all; these things happen.</p>
+            <p style='color:" . self::C_TEXT . "; line-height:1.7;'>Please re-upload the correct receipt through your client portal and we'll take another look right away. Your date is still being held for you.</p>
+            " . self::email_button_row( $tracker_url, 'Re-upload My Receipt' ) . "
+            <p style='color:" . self::C_TEXT . ";'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>";
+        return self::send_email( $session, "Quick fix needed — we couldn't verify your receipt", $body );
+    }
+
     public static function send_email( $session, $subject, $body, $attachments = array(), $extra_recipients = array() ) {
         $recipients = array_merge( array( $session->client_email ), $extra_recipients );
         $sent = self::send_raw( $recipients, $subject, $body, $attachments );
@@ -247,6 +323,36 @@ class TwellerFlow2_Notifications {
         return self::email_card( 'Your Session', $rows );
     }
 
+    /**
+     * Payment breakdown for the confirmation email: what we received and
+     * what remains. Only rendered when there is a total and a balance
+     * story worth telling — a fully-paid booking shows "Paid in full"
+     * rather than a zero balance line.
+     *
+     * @param object $session
+     * @return string Card HTML, or '' when there is nothing to say.
+     */
+    public static function payment_summary_card( $session ) {
+        $total = (float) $session->total_amount;
+        if ( $total <= 0 ) return '';
+
+        $paid    = (float) $session->deposit_amount;
+        $balance = max( 0, round( $total - $paid, 2 ) );
+
+        $rows  = self::email_detail_row( 'Package total', 'TTD $' . number_format( $total, 2 ) );
+        $rows .= self::email_detail_row( 'Received', 'TTD $' . number_format( $paid, 2 ) );
+
+        if ( $balance <= 0 ) {
+            $rows .= self::email_detail_row( 'Balance due', 'Paid in full — thank you!' );
+            return self::email_card( 'Payment', $rows );
+        }
+
+        $rows .= self::email_detail_row( 'Balance due', 'TTD $' . number_format( $balance, 2 ) );
+        $rows .= "<p style='margin:12px 0 0; font-family:" . self::FONT_STACK . "; font-size:13px; color:" . self::C_MUTED . "; line-height:1.6;'>The balance is due on the day of your session.</p>";
+
+        return self::email_card( 'Payment', $rows );
+    }
+
     public static function get_email_template( $stage, $session ) {
         $banking   = get_option( 'tweller_flow_2_banking', '' );
         $packages  = get_option( 'tweller_flow_2_packages', array() );
@@ -353,6 +459,8 @@ class TwellerFlow2_Notifications {
             <p style='color:" . self::C_TEXT . "; line-height:1.7;'>Lovely news — we've verified your payment and your session is now <strong>officially confirmed</strong>. Thank you for trusting Tweller Studios; we're truly looking forward to this.</p>
 
             " . self::session_details_card( $session, $pkg_name ) . "
+
+            " . self::payment_summary_card( $session ) . "
 
             <p style='color:" . self::C_TEXT . "; line-height:1.7;'>The confirmed calendar event is attached to this email — if you use Gmail or Apple Calendar it will update automatically, replacing the earlier tentative hold.</p>
 

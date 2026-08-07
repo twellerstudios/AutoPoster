@@ -63,6 +63,14 @@ class TwellerFlow2_Photo_Automation {
             'permission_callback' => array( __CLASS__, 'verify_api_key' ),
         ));
 
+        // Mobile app: approve or reject a client's bank-transfer receipt —
+        // the same action the studio takes in wp-admin, from the phone.
+        register_rest_route( 'tweller-flow-2/v1', '/automation/session/(?P<code>[a-zA-Z0-9\-]+)/verify-receipt', array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'rest_verify_receipt' ),
+            'permission_callback' => array( __CLASS__, 'verify_api_key' ),
+        ));
+
         // Mobile app: delete a session and every file that belongs to it
         register_rest_route( 'tweller-flow-2/v1', '/automation/session/(?P<code>[a-zA-Z0-9\-]+)/delete', array(
             'methods'  => 'POST',
@@ -375,11 +383,16 @@ class TwellerFlow2_Photo_Automation {
         $receipt_out = null;
         if ( is_array( $receipt ) ) {
             $receipt_out = array(
-                'url'       => $receipt['url'] ?? '',
-                'ocr'       => $receipt['ocr'] ?? '',
-                'confirmed' => ! empty( $receipt['confirmed'] ),
-                'bank'      => $receipt['bank'] ?? '',
-                'date'      => $receipt['date'] ?? '',
+                'url'          => $receipt['url'] ?? '',
+                'ocr'          => $receipt['ocr'] ?? '',
+                'confirmed'    => ! empty( $receipt['confirmed'] ),
+                'bank'         => $receipt['bank'] ?? '',
+                'date'         => $receipt['date'] ?? '',
+                'ref'          => $receipt['ref'] ?? '',
+                // pending until the studio acts, then approved / rejected —
+                // lets the app hide the approve card once it's been handled.
+                'status'       => $receipt['status'] ?? 'pending',
+                'processed_at' => $receipt['processed_at'] ?? '',
             );
         }
 
@@ -388,6 +401,16 @@ class TwellerFlow2_Photo_Automation {
             'tracker' => $tracker_page ? $tracker_page . ( strpos( $tracker_page, '?' ) !== false ? '&' : '?' ) . 'code=' . $session->tracking_code : '',
             'culling' => class_exists( 'TwellerFlow2_Culling' ) ? TwellerFlow2_Culling::get_culling_page_url( $session->tracking_code ) : '',
             'gallery' => $session->gallery_url,
+        );
+
+        // Money context so the app can show "Balance due TT$X" on the
+        // approval card without recomputing from stale fields.
+        $total   = (float) $session->total_amount;
+        $deposit = (float) $session->deposit_amount;
+        $payment = array(
+            'total'   => $total,
+            'deposit' => $deposit,
+            'balance' => max( 0, round( $total - $deposit, 2 ) ),
         );
 
         return rest_ensure_response( array(
@@ -399,8 +422,41 @@ class TwellerFlow2_Photo_Automation {
             'selections' => $selections,
             'gallery'    => $gallery,
             'receipt'    => $receipt_out,
+            'payment'    => $payment,
             'links'      => $links,
         ));
+    }
+
+    /**
+     * Mobile app: approve or reject a bank-transfer receipt.
+     *
+     * Delegates to the same TwellerFlow2_Session::verify_receipt() the
+     * wp-admin form uses, so approving from the phone does exactly what
+     * approving from the desktop does — sets the amount, moves the booking
+     * to Confirmed, emails the client their balance, and recolours the
+     * calendar event.
+     */
+    public static function rest_verify_receipt( $request ) {
+        $session = TwellerFlow2_Session::get_by_code( sanitize_text_field( $request['code'] ) );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $action = sanitize_text_field( (string) $request->get_param( 'action' ) );
+        if ( ! in_array( $action, array( 'approve', 'reject' ), true ) ) {
+            return new WP_Error( 'bad_action', 'action must be approve or reject', array( 'status' => 400 ) );
+        }
+
+        $amount = (float) $request->get_param( 'amount' );
+        $result = TwellerFlow2_Session::verify_receipt( $session->id, $action, $amount );
+        if ( is_wp_error( $result ) ) return $result;
+
+        TwellerFlow2_Session::record_stage_history(
+            $session->id, $session->current_stage, $session->current_stage_index,
+            '[Mobile] Receipt ' . ( $action === 'approve' ? 'approved' : 'rejected' )
+        );
+
+        return rest_ensure_response( $result );
     }
 
     /** Update the fields the mobile app can edit. */

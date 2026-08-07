@@ -325,6 +325,21 @@ var TwellerApi = (function () {
         return postForm(base() + '/automation/session/' + encodeURIComponent(code) + '/update', fields);
     }
 
+    /**
+     * Approve or reject a client's bank-transfer receipt — the same action
+     * the studio takes in wp-admin. On approve, `amount` is what was
+     * received (deposit vs paid-in-full is decided server-side against the
+     * package total); the client is emailed their balance automatically.
+     */
+    async function verifyReceipt(code, action, amount) {
+        var fields = { action: action };
+        if (amount !== undefined && amount !== null && amount !== '') fields.amount = amount;
+        var res = await postForm(base() + '/automation/session/' + encodeURIComponent(code) + '/verify-receipt', fields);
+        // The detail is now stale (status, stage, deposit all changed).
+        try { localStorage.removeItem('tb_detail_' + code); } catch (e) {}
+        return res;
+    }
+
     // ── Culling (proofs for client selection) ───────────────────
 
     /** Existing proof filenames — used to skip re-uploads. */
@@ -460,6 +475,7 @@ var TwellerApi = (function () {
         cachedOverview: cachedOverview,
         advanceStage: advanceStage,
         updateSession: updateSession,
+        verifyReceipt: verifyReceipt,
         proofFilenames: proofFilenames,
         uploadProof: uploadProof,
         markCullingReady: markCullingReady,

@@ -67,6 +67,35 @@ class TwellerFlow2_WiPay {
             . 'type=' . rawurlencode( $type ) . '&ref=' . rawurlencode( $ref );
     }
 
+    /**
+     * Customer fields for the WiPay request, never empty.
+     *
+     * WiPay's LIVE gateway is stricter than sandbox and can refuse a
+     * transaction outright when required customer fields are blank. Sandbox
+     * lets a missing email/phone slide; live may not. We always send a
+     * name, a valid email (falling back to the studio inbox so the field is
+     * never empty), and a digits-only phone when we have one — so a missing
+     * field can never be the reason a live charge is declined.
+     *
+     * @return array{ name:string, email:string, phone?:string }
+     */
+    private static function customer_fields( $name, $email, $phone = '' ) {
+        $out = array();
+        $out['name'] = trim( (string) $name ) !== '' ? sanitize_text_field( $name ) : 'Guest Customer';
+
+        $email = trim( (string) $email );
+        if ( ! is_email( $email ) ) {
+            $fallback = get_option( 'admin_email' );
+            $email    = is_email( $fallback ) ? $fallback : 'no-reply@twellerstudios.com';
+        }
+        $out['email'] = $email;
+
+        $phone = preg_replace( '/[^0-9+]/', '', (string) $phone );
+        if ( $phone !== '' ) $out['phone'] = $phone;
+
+        return $out;
+    }
+
     // ── Checkout: build request, send client to WiPay ────
 
     public static function rest_checkout( $request ) {
@@ -94,8 +123,11 @@ class TwellerFlow2_WiPay {
             }
             $amount = (float) $session->total_amount
                     - ( $session->payment_status === 'deposit' ? (float) $session->deposit_amount : 0 );
-            if ( $session->client_name )  $customer['name']  = $session->client_name;
-            if ( is_email( $session->client_email ) ) $customer['email'] = $session->client_email;
+            $customer = self::customer_fields(
+                $session->client_name,
+                $session->client_email,
+                isset( $session->client_phone ) ? $session->client_phone : ''
+            );
         } else {
             if ( ! class_exists( 'TwellerFlow2_Prints' ) ) {
                 self::redirect_with( home_url( '/' ), array( 'payment' => 'error', 'pmsg' => 'Print orders are not available.' ) );
@@ -110,8 +142,11 @@ class TwellerFlow2_WiPay {
                 self::redirect_with( self::entity_url( 'print', $ref ), array( 'payment' => 'error', 'pmsg' => 'This order has already been paid or processed.' ) );
             }
             $amount = (float) $order->subtotal;
-            if ( ! empty( $order->customer_name ) )  $customer['name']  = $order->customer_name;
-            if ( ! empty( $order->customer_email ) && is_email( $order->customer_email ) ) $customer['email'] = $order->customer_email;
+            $customer = self::customer_fields(
+                $order->customer_name,
+                $order->customer_email,
+                isset( $order->customer_phone ) ? $order->customer_phone : ''
+            );
         }
 
         if ( $amount < 1 ) {
@@ -163,6 +198,11 @@ class TwellerFlow2_WiPay {
             wp_redirect( esc_url_raw( $data['url'] ) );
             exit;
         }
+
+        // Record the raw gateway reply verbatim so a live decline like
+        // "[3-RA6]: … Denied." is visible in the WiPay log on the Settings
+        // screen, not just a generic "gateway error".
+        self::log( $type, $ref, 'error', 'HTTP ' . $http . ' raw: ' . substr( (string) wp_remote_retrieve_body( $response ), 0, 220 ) );
 
         $msg = is_array( $data ) && ! empty( $data['message'] ) ? (string) $data['message'] : 'Payment gateway error (HTTP ' . $http . ').';
         self::log( $type, $ref, 'error', $msg );

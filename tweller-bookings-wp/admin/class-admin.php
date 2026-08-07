@@ -282,61 +282,13 @@ class TwellerFlow2_Admin {
             $session = TwellerFlow2_Session::get( $id );
             
             if ( $session ) {
-                if ( $action === 'approve' || $action === 'approve_paid' || $action === 'approve_deposit' ) {
-                    $amt = isset( $_POST['amount_paid'] ) ? floatval( $_POST['amount_paid'] ) : 0;
-                    $status = ( $session->total_amount > 0 && $amt >= $session->total_amount ) ? 'paid' : 'deposit';
-                    
-                    // Update payment status and the manually verified amount
-                    $update_data = array( 
-                        'payment_status' => $status,
-                        'deposit_amount' => $amt
-                    );
-                    
-                    TwellerFlow2_Session::update( $id, $update_data );
-                    
-                    // Physically lock them into the Confirmed stage!
-                    // Note: We won't trigger the generic notification email since we want the highly custom one
-                    TwellerFlow2_Session::set_stage( $id, 'confirmed', 'Payment verified and booking confirmed.', false );
-
-                    // Keep the receipt on file (marked verified) so it stays
-                    // visible in the session detail screen.
-                    $receipt = get_option( 'tf_receipt_' . $id );
-                    if ( $receipt ) {
-                        $receipt['status']       = 'approved';
-                        $receipt['processed_at'] = current_time( 'mysql' );
-                        update_option( 'tf_receipt_' . $id, $receipt );
-                    }
-
-                    // One confirmation email: verified payment + confirmed
-                    // calendar event attached (replaces the old two emails).
-                    TwellerFlow2_Notifications::send_confirmed_email( $session );
-                } elseif ( $action === 'reject' ) {
-                    TwellerFlow2_Session::update( $id, array( 'payment_status' => 'pending' ) );
-
-                    $receipt = get_option( 'tf_receipt_' . $id );
-                    if ( $receipt ) {
-                        $receipt['status']       = 'rejected';
-                        $receipt['processed_at'] = current_time( 'mysql' );
-                        update_option( 'tf_receipt_' . $id, $receipt );
-                    }
-
-                    if ( !empty($session->client_email) ) {
-                        $tracker_url = TwellerFlow2_Notifications::get_tracker_url( $session->tracking_code );
-                        $reject_body = "
-                            <h2 style='color:#101010; font-weight:600;'>We couldn't verify your receipt</h2>
-                            <p style='color:#3D3630;'>Hi {$session->client_name},</p>
-                            <p style='color:#3D3630; line-height:1.7;'>We ran into a problem verifying the bank transfer receipt you uploaded — it may have been the wrong image, or the amount didn't match. No worries at all; these things happen.</p>
-                            <p style='color:#3D3630; line-height:1.7;'>Please re-upload the correct receipt through your client portal and we'll take another look right away. Your date is still being held for you.</p>
-                            <div style='text-align:center; margin:28px 0;'>
-                                " . TwellerFlow2_Notifications::email_button( $tracker_url, 'Re-upload My Receipt' ) . "
-                            </div>
-                            <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>";
-                        TwellerFlow2_Notifications::send_email( $session, "Quick fix needed — we couldn't verify your receipt", $reject_body );
-                    }
-                }
-
-                // Payment status changed — flip the Google Calendar event color
-                do_action( 'tweller_flow_2_payment_updated', $id );
+                // Shared with the mobile app's verify-receipt endpoint, so the
+                // two paths cannot diverge. It handles the amount → deposit/paid
+                // decision, the Confirmed stage move, the receipt stamp, the
+                // client email (confirmation with balance, or re-upload request)
+                // and the calendar recolour.
+                $amt = isset( $_POST['amount_paid'] ) ? floatval( $_POST['amount_paid'] ) : 0;
+                TwellerFlow2_Session::verify_receipt( $id, $action, $amt );
             }
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-session&id=' . $id . '&receipt_processed=1' ) );
             exit;
@@ -448,10 +400,17 @@ class TwellerFlow2_Admin {
                 $wipay_origin  = preg_replace( '/[^A-Za-z0-9_-]/', '', sanitize_text_field( $_POST['wipay_origin'] ?? '' ) );
                 $wipay_origin  = substr( $wipay_origin, 0, 32 );
 
+                // A blank API-key field means "leave it as-is", not "erase
+                // it". Blanking the live key silently breaks the response
+                // hash check — the card is charged but comes back unverified.
+                $wipay_existing = TwellerFlow2_WiPay::get_settings();
+                $wipay_posted_key = sanitize_text_field( $_POST['wipay_api_key'] ?? '' );
+                $wipay_api_key    = $wipay_posted_key !== '' ? $wipay_posted_key : ( $wipay_existing['api_key'] ?? '' );
+
                 update_option( 'tweller_flow_2_wipay', array(
                     'enabled'        => ! empty( $_POST['wipay_enabled'] ),
                     'account_number' => $wipay_account !== '' ? $wipay_account : '8694059828',
-                    'api_key'        => sanitize_text_field( $_POST['wipay_api_key'] ?? '' ),
+                    'api_key'        => $wipay_api_key,
                     'environment'    => $wipay_env,
                     'fee_structure'  => $wipay_fee,
                     'origin'         => $wipay_origin !== '' ? $wipay_origin : 'TwellerBookings-WP',

@@ -78,15 +78,106 @@ class TwellerFlow2_Session {
         if ( $session_id ) {
             self::record_stage_history( $session_id, 'booked', 0, 'Session created' );
 
-            // One welcome email only — it includes the payment details and
-            // carries the tentative calendar hold as an attachment.
+            // One welcome email to the client — it includes the payment
+            // details and carries the tentative calendar hold as an
+            // attachment — PLUS a separate alert to the studio inbox so the
+            // owner actually hears a booking came in. This is the single
+            // choke point for every create path (public /book, the mobile
+            // app, Lightroom), so both fire everywhere, and both respect
+            // the skip_notifications flag.
             if ( empty( $data['skip_notifications'] ) ) {
                 TwellerFlow2_Notifications::on_stage_change( $session_id, 'booked' );
+                TwellerFlow2_Notifications::notify_studio_new_booking( $session_id );
             }
             do_action( 'tweller_flow_2_session_created', $session_id, $data );
         }
 
         return $session_id;
+    }
+
+    /**
+     * Verify (approve or reject) a client's bank-transfer receipt.
+     *
+     * THE single source of truth for receipt verification — wp-admin and
+     * the mobile app both call this, so the two can never diverge on what
+     * "approve" does. Mirrors the behaviour that used to live inline in the
+     * admin POST handler.
+     *
+     * On approve: the confirmed amount decides deposit vs paid-in-full,
+     * the booking moves to the Confirmed stage, the receipt is stamped
+     * approved, and the client is emailed a confirmation that now states
+     * their remaining balance. On reject: the payment is reset to pending,
+     * the receipt is stamped rejected, and the client is asked to re-upload.
+     * Either way the calendar event recolours (yellow ↔ blue).
+     *
+     * @param int    $id     Session id.
+     * @param string $action approve|reject (approve_paid / approve_deposit accepted as legacy aliases).
+     * @param float  $amount Amount confirmed received (approve only).
+     * @return array|WP_Error { ok, status, deposit, balance } or an error.
+     */
+    public static function verify_receipt( $id, $action, $amount = 0 ) {
+        $id      = (int) $id;
+        $session = self::get( $id );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found.', array( 'status' => 404 ) );
+        }
+
+        $approve = in_array( $action, array( 'approve', 'approve_paid', 'approve_deposit' ), true );
+        $reject  = ( $action === 'reject' );
+        if ( ! $approve && ! $reject ) {
+            return new WP_Error( 'bad_action', 'Unknown verification action.', array( 'status' => 400 ) );
+        }
+
+        if ( $approve ) {
+            $amt    = round( (float) $amount, 2 );
+            $total  = (float) $session->total_amount;
+            $status = ( $total > 0 && $amt >= $total ) ? 'paid' : 'deposit';
+
+            self::update( $id, array(
+                'payment_status' => $status,
+                'deposit_amount' => $amt,
+            ) );
+
+            // Lock into Confirmed without the generic stage email — the
+            // custom confirmation below is the one the client should get.
+            self::set_stage( $id, 'confirmed', 'Payment verified and booking confirmed.', false );
+
+            $receipt = get_option( 'tf_receipt_' . $id );
+            if ( $receipt ) {
+                $receipt['status']       = 'approved';
+                $receipt['amount']       = $amt;
+                $receipt['processed_at'] = current_time( 'mysql' );
+                update_option( 'tf_receipt_' . $id, $receipt );
+            }
+
+            // Re-read so the email/calendar see the updated amount & status —
+            // the caller's $session is now stale.
+            $fresh = self::get( $id );
+            TwellerFlow2_Notifications::send_confirmed_email( $fresh );
+
+            do_action( 'tweller_flow_2_payment_updated', $id );
+
+            $balance = max( 0, round( $total - $amt, 2 ) );
+            return array( 'ok' => true, 'status' => $status, 'deposit' => $amt, 'balance' => $balance );
+        }
+
+        // Reject.
+        self::update( $id, array( 'payment_status' => 'pending' ) );
+
+        $receipt = get_option( 'tf_receipt_' . $id );
+        if ( $receipt ) {
+            $receipt['status']       = 'rejected';
+            $receipt['processed_at'] = current_time( 'mysql' );
+            update_option( 'tf_receipt_' . $id, $receipt );
+        }
+
+        if ( ! empty( $session->client_email ) ) {
+            TwellerFlow2_Notifications::send_receipt_rejected_email( $session );
+        }
+
+        do_action( 'tweller_flow_2_payment_updated', $id );
+
+        return array( 'ok' => true, 'status' => 'pending', 'deposit' => 0.0, 'balance' => (float) $session->total_amount );
     }
 
     public static function get( $id ) {

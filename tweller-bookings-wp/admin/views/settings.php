@@ -185,6 +185,163 @@
             </div>
         </div>
 
+        <!-- Google Sync (Contacts + Calendar) -->
+        <div class="tf2-card tf2-mb-6">
+            <div class="tf2-settings-section">
+                <h3>Google Sync (Contacts + Calendar)</h3>
+                <p class="tf2-description">New booking clients are added to your Google Contacts (they sync straight to your phone), and every session appears on your Google Calendar — yellow while reserved, blue once fully paid.</p>
+
+                <?php
+                $g_config       = TwellerFlow2_Google_Contacts::get_config();
+                $g_connected    = TwellerFlow2_Google_Contacts::is_connected();
+                $g_cal_ok       = TwellerFlow2_Google_Contacts::is_calendar_authorized();
+                $g_cal_enabled  = ! array_key_exists( 'calendar_enabled', (array) $g_config ) || ! empty( $g_config['calendar_enabled'] );
+                $g_log          = TwellerFlow2_Google_Contacts::get_log( 10 );
+                ?>
+
+                <?php if ( isset( $_GET['google'] ) && $_GET['google'] === 'connected' ) : ?>
+                    <div class="tf2-alert tf2-alert--success">Google account connected — new bookings will sync to your contacts and calendar.</div>
+                <?php elseif ( isset( $_GET['google'] ) && $_GET['google'] === 'error' ) : ?>
+                    <div class="tf2-alert" style="background:#FEE2E2; color:#991B1B;">Google connection failed. Check the Client ID / Secret and try again.</div>
+                <?php endif; ?>
+
+                <?php if ( isset( $_GET['google_test'] ) ) : ?>
+                    <?php
+                    $test_session_id = intval( $_GET['google_test'] );
+                    $test_entries    = array();
+                    foreach ( $g_log as $entry ) {
+                        if ( intval( $entry['session_id'] ) === $test_session_id ) {
+                            $test_entries[] = $entry;
+                        }
+                        if ( count( $test_entries ) >= 2 ) break; // newest contact + calendar result
+                    }
+                    ?>
+                    <?php if ( $test_session_id && ! empty( $test_entries ) ) : ?>
+                        <div class="tf2-alert" style="background:#EFF6FF; color:#1E3A8A;">
+                            <strong>Test sync results (session #<?php echo esc_html( $test_session_id ); ?>):</strong>
+                            <?php foreach ( array_reverse( $test_entries ) as $entry ) : ?>
+                                <br><?php echo $entry['ok'] ? '&#10003;' : '&#10007;'; ?>
+                                <strong><?php echo esc_html( ucfirst( $entry['type'] ) ); ?>:</strong>
+                                <?php echo esc_html( $entry['message'] ); ?>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php elseif ( ! $test_session_id ) : ?>
+                        <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">No sessions exist yet — create a booking first, then test the sync.</div>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <?php if ( $g_connected && ! $g_cal_ok ) : ?>
+                    <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">
+                        <strong>Reconnect Google to enable calendar sync.</strong>
+                        Your current connection was made before calendar sync existed, so Google hasn't granted calendar permission yet.
+                        Click below to reconnect (same account) — contacts keep working either way.<br>
+                        <a class="tf2-btn tf2-btn--primary tf2-btn--sm" style="margin-top:8px;"
+                           href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Reconnect Google</a>
+                    </div>
+                <?php endif; ?>
+
+                <div class="tf2-row" style="max-width:640px;">
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Google OAuth Client ID</label>
+                        <input type="text" name="google_client_id" value="<?php echo esc_attr( $g_config['client_id'] ?? '' ); ?>" placeholder="xxxx.apps.googleusercontent.com">
+                    </div>
+                    <div class="tf2-field">
+                        <label class="tf2-field__label">Client Secret</label>
+                        <input type="password" name="google_client_secret" value="<?php echo esc_attr( $g_config['client_secret'] ?? '' ); ?>">
+                    </div>
+                </div>
+
+                <div class="tf2-field" style="max-width:640px;">
+                    <label class="tf2-toggle">
+                        <input type="checkbox" name="google_sync_enabled" value="1" <?php checked( ! empty( $g_config['enabled'] ) ); ?>>
+                        <span class="tf2-toggle__switch"></span>
+                        <span class="tf2-toggle__label">Sync new bookings to Google Contacts</span>
+                    </label>
+                </div>
+
+                <div class="tf2-field" style="max-width:640px;">
+                    <label class="tf2-toggle">
+                        <input type="checkbox" name="google_calendar_enabled" value="1" <?php checked( $g_cal_enabled ); ?>>
+                        <span class="tf2-toggle__switch"></span>
+                        <span class="tf2-toggle__label">Sync sessions to Google Calendar (yellow = reserved, blue = paid)</span>
+                    </label>
+                </div>
+
+                <div class="tf2-field" style="max-width:640px;">
+                    <?php if ( $g_connected ) : ?>
+                        <p style="margin:0 0 8px; color:#166534; font-weight:600;">
+                            &#10003; Connected as <?php echo esc_html( TwellerFlow2_Google_Contacts::get_account_email() ?: 'Google account' ); ?>
+                            <?php if ( $g_cal_ok ) : ?>
+                                <span style="font-weight:400; color:#3D3630;">(contacts + calendar)</span>
+                            <?php else : ?>
+                                <span style="font-weight:400; color:#92400E;">(contacts only — reconnect for calendar)</span>
+                            <?php endif; ?>
+                        </p>
+                        <button type="submit" name="tweller_flow_2_google_test_sync" value="1" class="tf2-btn tf2-btn--primary tf2-btn--sm">Save &amp; Test Sync Now</button>
+                        <a class="tf2-btn tf2-btn--secondary tf2-btn--sm"
+                           href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-settings&tf2_google=disconnect' ), 'tf2_google_disconnect' ) ); ?>">Disconnect</a>
+                        <div class="tf2-field__hint" style="margin-top:8px;">Test runs the contact + calendar sync for your most recent session and shows the exact result (or Google's error) above.</div>
+                    <?php elseif ( ! empty( $g_config['client_id'] ) && ! empty( $g_config['client_secret'] ) ) : ?>
+                        <a class="tf2-btn tf2-btn--primary" href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Connect Google Account</a>
+                        <div class="tf2-field__hint" style="margin-top:8px;">Save settings first if you just entered the Client ID / Secret.</div>
+                        <div class="tf2-alert" style="background:#FEF3C7; color:#92400E; margin-top:10px; max-width:640px;">
+                            <strong>Seeing "Access blocked: this app hasn't completed Google verification"?</strong>
+                            That's Google's own screen, not an error in this plugin — it appears because your Cloud project
+                            requests calendar &amp; contacts access, which Google flags as sensitive. You don't need to submit
+                            the app for verification. In <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank">Google Cloud &rarr; OAuth consent screen</a>:
+                            set <em>User type</em> to <strong>External</strong>, keep <em>Publishing status</em> on <strong>Testing</strong>,
+                            and under <em>Test users</em> add the exact Google account you're connecting
+                            (<code>stephen.twellerstudios@gmail.com</code>). Then retry &mdash; on the "unverified app" screen click
+                            <em>Advanced &rarr; Go to twellerstudios.com (unsafe)</em> to continue. Test users are allowed through without verification.
+                        </div>
+                    <?php else : ?>
+                        <div class="tf2-field__hint">
+                            <strong>One-time setup:</strong> at <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>
+                            create a project, enable the <em>People API</em> and the <em>Google Calendar API</em>, create an <em>OAuth Client ID (Web application)</em>, and add this redirect URI:<br>
+                            <code style="user-select:all;"><?php echo esc_html( TwellerFlow2_Google_Contacts::redirect_uri() ); ?></code><br>
+                            Then paste the Client ID and Secret above, save, and click Connect.<br><br>
+                            On the OAuth consent screen keep <em>Publishing status</em> on <strong>Testing</strong> and add your own
+                            Google account under <em>Test users</em> &mdash; otherwise Google blocks sign-in with
+                            "this app hasn't completed verification", since calendar &amp; contacts are sensitive scopes.
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <?php if ( ! empty( $g_log ) ) : ?>
+                    <div class="tf2-field" style="max-width:640px;">
+                        <label class="tf2-field__label">Recent sync activity</label>
+                        <table class="widefat striped" style="margin-top:4px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:140px;">Time</th>
+                                    <th style="width:70px;">Type</th>
+                                    <th style="width:60px;">Status</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $g_log as $entry ) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html( $entry['time'] ); ?></td>
+                                        <td><?php echo esc_html( ucfirst( $entry['type'] ) ); ?></td>
+                                        <td>
+                                            <?php if ( ! empty( $entry['ok'] ) ) : ?>
+                                                <span style="color:#166534; font-weight:600;">OK</span>
+                                            <?php else : ?>
+                                                <span style="color:#991B1B; font-weight:600;">Failed</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>#<?php echo esc_html( intval( $entry['session_id'] ) ); ?> — <?php echo esc_html( $entry['message'] ); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <div class="tf2-field__hint" style="margin-top:4px;">Last 10 sync attempts, newest first. Failures show Google's HTTP code and error message.</div>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
         <!-- Payments — WiPay -->
         <?php if ( class_exists( 'TwellerFlow2_WiPay' ) ) :
             $wipay     = TwellerFlow2_WiPay::get_settings();
@@ -330,150 +487,6 @@
                         <div class="tf2-field__hint">Small negative = warmer tone</div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Google Sync (Contacts + Calendar) -->
-        <div class="tf2-card tf2-mb-6">
-            <div class="tf2-settings-section">
-                <h3>Google Sync (Contacts + Calendar)</h3>
-                <p class="tf2-description">New booking clients are added to your Google Contacts (they sync straight to your phone), and every session appears on your Google Calendar — yellow while reserved, blue once fully paid.</p>
-
-                <?php
-                $g_config       = TwellerFlow2_Google_Contacts::get_config();
-                $g_connected    = TwellerFlow2_Google_Contacts::is_connected();
-                $g_cal_ok       = TwellerFlow2_Google_Contacts::is_calendar_authorized();
-                $g_cal_enabled  = ! array_key_exists( 'calendar_enabled', (array) $g_config ) || ! empty( $g_config['calendar_enabled'] );
-                $g_log          = TwellerFlow2_Google_Contacts::get_log( 10 );
-                ?>
-
-                <?php if ( isset( $_GET['google'] ) && $_GET['google'] === 'connected' ) : ?>
-                    <div class="tf2-alert tf2-alert--success">Google account connected — new bookings will sync to your contacts and calendar.</div>
-                <?php elseif ( isset( $_GET['google'] ) && $_GET['google'] === 'error' ) : ?>
-                    <div class="tf2-alert" style="background:#FEE2E2; color:#991B1B;">Google connection failed. Check the Client ID / Secret and try again.</div>
-                <?php endif; ?>
-
-                <?php if ( isset( $_GET['google_test'] ) ) : ?>
-                    <?php
-                    $test_session_id = intval( $_GET['google_test'] );
-                    $test_entries    = array();
-                    foreach ( $g_log as $entry ) {
-                        if ( intval( $entry['session_id'] ) === $test_session_id ) {
-                            $test_entries[] = $entry;
-                        }
-                        if ( count( $test_entries ) >= 2 ) break; // newest contact + calendar result
-                    }
-                    ?>
-                    <?php if ( $test_session_id && ! empty( $test_entries ) ) : ?>
-                        <div class="tf2-alert" style="background:#EFF6FF; color:#1E3A8A;">
-                            <strong>Test sync results (session #<?php echo esc_html( $test_session_id ); ?>):</strong>
-                            <?php foreach ( array_reverse( $test_entries ) as $entry ) : ?>
-                                <br><?php echo $entry['ok'] ? '&#10003;' : '&#10007;'; ?>
-                                <strong><?php echo esc_html( ucfirst( $entry['type'] ) ); ?>:</strong>
-                                <?php echo esc_html( $entry['message'] ); ?>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php elseif ( ! $test_session_id ) : ?>
-                        <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">No sessions exist yet — create a booking first, then test the sync.</div>
-                    <?php endif; ?>
-                <?php endif; ?>
-
-                <?php if ( $g_connected && ! $g_cal_ok ) : ?>
-                    <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">
-                        <strong>Reconnect Google to enable calendar sync.</strong>
-                        Your current connection was made before calendar sync existed, so Google hasn't granted calendar permission yet.
-                        Click below to reconnect (same account) — contacts keep working either way.<br>
-                        <a class="tf2-btn tf2-btn--primary tf2-btn--sm" style="margin-top:8px;"
-                           href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Reconnect Google</a>
-                    </div>
-                <?php endif; ?>
-
-                <div class="tf2-row" style="max-width:640px;">
-                    <div class="tf2-field">
-                        <label class="tf2-field__label">Google OAuth Client ID</label>
-                        <input type="text" name="google_client_id" value="<?php echo esc_attr( $g_config['client_id'] ?? '' ); ?>" placeholder="xxxx.apps.googleusercontent.com">
-                    </div>
-                    <div class="tf2-field">
-                        <label class="tf2-field__label">Client Secret</label>
-                        <input type="password" name="google_client_secret" value="<?php echo esc_attr( $g_config['client_secret'] ?? '' ); ?>">
-                    </div>
-                </div>
-
-                <div class="tf2-field" style="max-width:640px;">
-                    <label class="tf2-toggle">
-                        <input type="checkbox" name="google_sync_enabled" value="1" <?php checked( ! empty( $g_config['enabled'] ) ); ?>>
-                        <span class="tf2-toggle__switch"></span>
-                        <span class="tf2-toggle__label">Sync new bookings to Google Contacts</span>
-                    </label>
-                </div>
-
-                <div class="tf2-field" style="max-width:640px;">
-                    <label class="tf2-toggle">
-                        <input type="checkbox" name="google_calendar_enabled" value="1" <?php checked( $g_cal_enabled ); ?>>
-                        <span class="tf2-toggle__switch"></span>
-                        <span class="tf2-toggle__label">Sync sessions to Google Calendar (yellow = reserved, blue = paid)</span>
-                    </label>
-                </div>
-
-                <div class="tf2-field" style="max-width:640px;">
-                    <?php if ( $g_connected ) : ?>
-                        <p style="margin:0 0 8px; color:#166534; font-weight:600;">
-                            &#10003; Connected as <?php echo esc_html( TwellerFlow2_Google_Contacts::get_account_email() ?: 'Google account' ); ?>
-                            <?php if ( $g_cal_ok ) : ?>
-                                <span style="font-weight:400; color:#3D3630;">(contacts + calendar)</span>
-                            <?php else : ?>
-                                <span style="font-weight:400; color:#92400E;">(contacts only — reconnect for calendar)</span>
-                            <?php endif; ?>
-                        </p>
-                        <button type="submit" name="tweller_flow_2_google_test_sync" value="1" class="tf2-btn tf2-btn--primary tf2-btn--sm">Save &amp; Test Sync Now</button>
-                        <a class="tf2-btn tf2-btn--secondary tf2-btn--sm"
-                           href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-settings&tf2_google=disconnect' ), 'tf2_google_disconnect' ) ); ?>">Disconnect</a>
-                        <div class="tf2-field__hint" style="margin-top:8px;">Test runs the contact + calendar sync for your most recent session and shows the exact result (or Google's error) above.</div>
-                    <?php elseif ( ! empty( $g_config['client_id'] ) && ! empty( $g_config['client_secret'] ) ) : ?>
-                        <a class="tf2-btn tf2-btn--primary" href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Connect Google Account</a>
-                        <div class="tf2-field__hint" style="margin-top:8px;">Save settings first if you just entered the Client ID / Secret.</div>
-                    <?php else : ?>
-                        <div class="tf2-field__hint">
-                            <strong>One-time setup:</strong> at <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>
-                            create a project, enable the <em>People API</em> and the <em>Google Calendar API</em>, create an <em>OAuth Client ID (Web application)</em>, and add this redirect URI:<br>
-                            <code style="user-select:all;"><?php echo esc_html( TwellerFlow2_Google_Contacts::redirect_uri() ); ?></code><br>
-                            Then paste the Client ID and Secret above, save, and click Connect.
-                        </div>
-                    <?php endif; ?>
-                </div>
-
-                <?php if ( ! empty( $g_log ) ) : ?>
-                    <div class="tf2-field" style="max-width:640px;">
-                        <label class="tf2-field__label">Recent sync activity</label>
-                        <table class="widefat striped" style="margin-top:4px;">
-                            <thead>
-                                <tr>
-                                    <th style="width:140px;">Time</th>
-                                    <th style="width:70px;">Type</th>
-                                    <th style="width:60px;">Status</th>
-                                    <th>Details</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ( $g_log as $entry ) : ?>
-                                    <tr>
-                                        <td><?php echo esc_html( $entry['time'] ); ?></td>
-                                        <td><?php echo esc_html( ucfirst( $entry['type'] ) ); ?></td>
-                                        <td>
-                                            <?php if ( ! empty( $entry['ok'] ) ) : ?>
-                                                <span style="color:#166534; font-weight:600;">OK</span>
-                                            <?php else : ?>
-                                                <span style="color:#991B1B; font-weight:600;">Failed</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>#<?php echo esc_html( intval( $entry['session_id'] ) ); ?> — <?php echo esc_html( $entry['message'] ); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                        <div class="tf2-field__hint" style="margin-top:4px;">Last 10 sync attempts, newest first. Failures show Google's HTTP code and error message.</div>
-                    </div>
-                <?php endif; ?>
             </div>
         </div>
 

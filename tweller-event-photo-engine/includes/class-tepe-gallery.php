@@ -112,6 +112,23 @@ class TEPE_Gallery {
         return ( $post && $post->post_type === TEPE_CPT ) ? $post : null;
     }
 
+    /** Every published event whose host email matches (case-insensitive). */
+    public static function get_by_host_email( $email ) {
+        $email = sanitize_email( $email );
+        if ( ! $email || ! is_email( $email ) ) return array();
+        $ids = get_posts( array(
+            'post_type'   => TEPE_CPT,
+            'post_status' => 'publish',
+            'numberposts' => 100,
+            'meta_key'    => TEPE_CPT::META_HOST_EMAIL,
+            'meta_value'  => $email,
+            'fields'      => 'ids',
+            'orderby'     => 'date',
+            'order'       => 'DESC',
+        ) );
+        return array_map( array( __CLASS__, 'get' ), $ids );
+    }
+
     public static function get_by_session( $session_id ) {
         $q = get_posts( array(
             'post_type'   => TEPE_CPT,

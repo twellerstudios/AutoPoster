@@ -16,7 +16,7 @@ third-party e-commerce plugin, no paid SaaS.**
 
 | # | Feature | Where |
 |---|---------|-------|
-| 1 | **Event galleries** — CPT `tweller_event_gallery`, auto-created when a Tweller booking is *confirmed*, plus a public self-service creation form (email only). Per-event `is_monetized` / `pricing_tier` meta to switch on paid features later. Host-configured category buckets + guest sub-albums. | `class-tepe-cpt.php`, `class-tepe-gallery.php`, `class-tepe-categories.php`, `class-tepe-booking-hook.php` |
+| 1 | **Event galleries** — CPT `tepe_event_gallery`, auto-created when a Tweller booking is *confirmed*, plus a public self-service creation form (email only). Per-event `is_monetized` / `pricing_tier` meta to switch on paid features later. Host-configured category buckets + guest sub-albums. | `class-tepe-cpt.php`, `class-tepe-gallery.php`, `class-tepe-categories.php`, `class-tepe-booking-hook.php` |
 | 2 | **QR + zero-signup upload** — SVG/PNG QR codes to `/event/{slug}/upload/`, guest tracking via fingerprint + persistent cookie + hashed IP, mobile drag-drop / camera picker, chunked multi-file upload (JPEG/PNG/HEIC/HEIF), destination selector. | `class-tepe-qr.php`, `class-tepe-guest.php`, `class-tepe-uploads.php`, `tepe-fingerprint.js`, `tepe-app.js` |
 | 3 | **Print engine + checkout** — per-photo "Order Print" + multi-select batch, slide-out drawer with sizes (4×6, 5×7, 8×10, 11×14…) & quantities, native checkout (name + phone + delivery), payment restricted to **Bank Transfer** and **Cash on Site / event-date delivery**. Catalog & bank details bridge the existing Tweller Print Engine. | `class-tepe-prints.php`, `class-tepe-rest.php` |
 | 4 | **Free-tier promo engine** — sticky "Powered by Tweller Studios — Book a session" banner and in-grid promo cards every ~11 photos, linking to `/book-us/`. Only on galleries not created from a paid booking. | `class-tepe-frontend.php` |
@@ -58,14 +58,21 @@ tweller-event-photo-engine/
 
 | URL | View |
 |-----|------|
+| `/event-galleries/` (auto-created page) | **Client hub** — create a gallery, see the galleries made on this device, or "email me my links" | 
 | `/event/{slug}/` | Public gallery (masonry, print drawer, share) |
 | `/event/{slug}/upload/` | Guest upload page (QR target) |
 | `/event/{slug}/qr.svg` · `qr.png` | QR image of the upload URL |
-| `[tepe_create_event]` | Self-service gallery creation form (any page) |
+| `[tepe_create_event]` | The hub shortcode — drop it on any page to add creation + "my galleries" |
+
+On activation the plugin auto-creates the **Host an Event Gallery** page carrying
+`[tepe_create_event]`; its URL is shown at the top of **Event Galleries** in the
+admin, and every event row links to its gallery / upload / QR. Clients need no
+account — the hub remembers galleries made on their device (localStorage) and a
+privacy-safe "email me my links" lookup covers a new device or cleared browser.
 
 ## Data model
 
-- **CPT** `tweller_event_gallery` — one post per event; all config in post meta.
+- **CPT** `tepe_event_gallery` — one post per event; all config in post meta.
 - **`{prefix}tweller_event_uploads`** — every guest photo (category, dims, ip/fingerprint hashes, status).
 - **`{prefix}tweller_event_guests`** — device identities + counters.
 - **`{prefix}tweller_event_print_orders`** — native print orders (bank/cash).

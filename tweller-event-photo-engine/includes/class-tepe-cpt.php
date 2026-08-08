@@ -1,6 +1,10 @@
 <?php
 /**
- * The `tweller_event_gallery` custom post type + its meta schema.
+ * The `tepe_event_gallery` custom post type + its meta schema.
+ *
+ * NOTE: WordPress limits post_type names to 20 characters (wp_posts.post_type
+ * is varchar(20)); "tweller_event_gallery" is 21, which is why we use this
+ * shorter internal key. The public-facing URL is still /event/{slug}/.
  *
  * One post == one event gallery. The post's slug drives the public URLs
  * (/event/{slug}/ and /event/{slug}/upload/). All per-event configuration

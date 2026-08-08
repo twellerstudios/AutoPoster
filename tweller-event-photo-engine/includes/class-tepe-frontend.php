@@ -257,6 +257,13 @@ class TEPE_Frontend {
 
         ob_start(); ?>
         <div class="tepe tepe-create" id="tepe-app">
+
+            <!-- Events created on this device (filled from localStorage by JS) -->
+            <section class="tepe-myevents" id="tepe-myevents" hidden>
+                <h2>Your event galleries</h2>
+                <div class="tepe-myevents__list" id="tepe-myevents-list"></div>
+            </section>
+
             <div class="tepe-create__card" id="tepe-create-form">
                 <h2>Create your event gallery</h2>
                 <p class="tepe-create__sub">Collect every guest’s photos in one place. Free — just your email, no account needed.</p>
@@ -283,6 +290,17 @@ class TEPE_Frontend {
                 <h2>🎉 Your gallery is live!</h2>
                 <p>We’ve emailed the links to you as well.</p>
                 <div class="tepe-create__links" id="tepe-create-links"></div>
+                <button type="button" class="tepe-btn tepe-btn--ghost tepe-btn--full" id="tepe-create-another" style="margin-top:1rem;color:#2a2521;border-color:#e7e1d8">Create another gallery</button>
+            </div>
+
+            <!-- Find galleries by email -->
+            <div class="tepe-create__card tepe-find" id="tepe-find">
+                <h3>Already made one? Find it by email</h3>
+                <p class="tepe-create__sub">Changed device or cleared your browser? We’ll email your gallery links.</p>
+                <label class="tepe-field"><span>Your email</span>
+                    <input type="email" id="tepe-find-email" placeholder="you@email.com"></label>
+                <p class="tepe-error" id="tepe-find-msg" hidden></p>
+                <button type="button" class="tepe-btn tepe-btn--dark tepe-btn--full" id="tepe-find-go">Email me my links</button>
             </div>
         </div>
         <?php

@@ -19,7 +19,7 @@
  * gracefully when they are not — so it can be activated independently.
  *
  * It stores its data in:
- *   - CPT `tweller_event_gallery` (one event = one post)  ... event config/meta
+ *   - CPT `tepe_event_gallery` (one event = one post)      ... event config/meta
  *   - {$prefix}tweller_event_uploads      ... every guest-uploaded photo
  *   - {$prefix}tweller_event_guests       ... no-signup device tracking
  *   - {$prefix}tweller_event_print_orders ... native guest print orders
@@ -36,12 +36,16 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TEPE_VERSION', '1.0.0' );
-define( 'TEPE_DB_VERSION', '1.0.0' );
+define( 'TEPE_VERSION', '1.0.1' );
+define( 'TEPE_DB_VERSION', '1.0.1' );
 define( 'TEPE_PLUGIN_FILE', __FILE__ );
 define( 'TEPE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TEPE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'TEPE_CPT', 'tweller_event_gallery' );
+// WordPress caps post_type at 20 chars (wp_posts.post_type is varchar(20));
+// "tweller_event_gallery" is 21 and makes wp_insert_post fail with
+// "Could not insert post into the database". Use an 18-char internal name.
+// The public URL stays /event/{slug}/ regardless of this internal key.
+define( 'TEPE_CPT', 'tepe_event_gallery' );
 
 // Custom table (unprefixed) names — always resolve through TEPE_Database::table().
 define( 'TEPE_TABLE_UPLOADS', 'tweller_event_uploads' );
@@ -78,10 +82,54 @@ function tepe_activate() {
     TEPE_Database::install();
     TEPE_CPT::register();          // so rewrite slugs exist before the flush
     TEPE_Rewrite::add_rules();
+    tepe_ensure_hub_page();
     flush_rewrite_rules();
     update_option( 'tepe_db_version', TEPE_DB_VERSION );
 }
 register_activation_hook( __FILE__, 'tepe_activate' );
+
+/**
+ * Create (once) the public "Host an Event" hub page carrying the
+ * [tepe_create_event] shortcode — where clients create and find their event
+ * galleries. Mirrors the Tweller Bookings tracker/prints page pattern. The
+ * resulting URL is stored so the admin can always link to it.
+ */
+function tepe_ensure_hub_page() {
+    $existing_url = get_option( 'tepe_hub_page', '' );
+    if ( $existing_url ) {
+        $page_id = url_to_postid( $existing_url );
+        if ( $page_id && get_post_status( $page_id ) === 'publish' ) {
+            return;
+        }
+    }
+
+    $found = get_posts( array(
+        'post_type'   => 'page',
+        'post_status' => 'publish',
+        's'           => '[tepe_create_event]',
+        'numberposts' => 1,
+    ) );
+    if ( ! empty( $found ) ) {
+        update_option( 'tepe_hub_page', get_permalink( $found[0]->ID ) );
+        return;
+    }
+
+    $page_id = wp_insert_post( array(
+        'post_title'   => 'Host an Event Gallery',
+        'post_name'    => 'event-galleries',
+        'post_content' => '[tepe_create_event]',
+        'post_status'  => 'publish',
+        'post_type'    => 'page',
+    ) );
+    if ( $page_id && ! is_wp_error( $page_id ) ) {
+        update_option( 'tepe_hub_page', get_permalink( $page_id ) );
+    }
+}
+
+/** The public hub page URL, or '' if it hasn't been created yet. */
+function tepe_hub_url() {
+    return (string) get_option( 'tepe_hub_page', '' );
+}
 
 /**
  * Deactivation: just flush rewrites. Data is preserved.
@@ -99,14 +147,28 @@ function tepe_maybe_upgrade() {
     if ( get_option( 'tepe_db_version', '' ) !== TEPE_DB_VERSION ) {
         TEPE_Database::install();
         update_option( 'tepe_needs_flush', 1 );
+        update_option( 'tepe_needs_hub', 1 );
         update_option( 'tepe_db_version', TEPE_DB_VERSION );
+    }
+    // Both the hub page (needs the built-in `page` type) and the rewrite flush
+    // must run on `init` — post types and our rewrite rules aren't registered
+    // yet at plugins_loaded, so doing this earlier would 404 /event/ URLs.
+    if ( get_option( 'tepe_needs_hub' ) || get_option( 'tepe_needs_flush' ) ) {
+        add_action( 'init', 'tepe_run_deferred_upgrade', 99 );
+    }
+}
+add_action( 'plugins_loaded', 'tepe_maybe_upgrade' );
+
+function tepe_run_deferred_upgrade() {
+    if ( get_option( 'tepe_needs_hub' ) ) {
+        tepe_ensure_hub_page();
+        delete_option( 'tepe_needs_hub' );
     }
     if ( get_option( 'tepe_needs_flush' ) ) {
         flush_rewrite_rules();
         delete_option( 'tepe_needs_flush' );
     }
 }
-add_action( 'plugins_loaded', 'tepe_maybe_upgrade' );
 
 /**
  * Boot all modules on init.

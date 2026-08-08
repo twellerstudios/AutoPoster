@@ -21,3 +21,6 @@
 .tepe-admin-tile__bar .button-link { color: #fff; text-decoration: none; font-size: 1rem; }
 .tepe-admin-tile__flag { position: absolute; top: 6px; left: 6px; background: #c8a34e; color: #1a1408; font-size: .66rem; font-weight: 700; padding: .1em .4em; border-radius: 4px; }
 .tepe-admin .tepe-orders td small { color: #757575; }
+.tepe-admin .tepe-hublinks { background: #fff; border: 1px solid #dcdcde; border-left: 4px solid #c8a34e; border-radius: 4px; padding: .75rem 1rem; margin: 1rem 0; }
+.tepe-admin .tepe-hublinks a { word-break: break-all; }
+.tepe-admin .tepe-hublinks .button { margin-left: .5rem; }

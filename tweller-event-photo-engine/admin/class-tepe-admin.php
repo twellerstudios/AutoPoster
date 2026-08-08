@@ -126,10 +126,23 @@ class TEPE_Admin {
     public function page_list() {
         $events = get_posts( array( 'post_type' => TEPE_CPT, 'post_status' => 'any', 'numberposts' => 200, 'orderby' => 'date', 'order' => 'DESC' ) );
         ?>
+        <?php
+        $hub = function_exists( 'tepe_hub_url' ) ? tepe_hub_url() : '';
+        ?>
         <div class="wrap tepe-admin">
             <h1 class="wp-heading-inline">Event Galleries</h1>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=tepe-new' ) ); ?>" class="page-title-action">Add New</a>
             <?php if ( isset( $_GET['msg'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Done.</p></div><?php endif; ?>
+
+            <div class="tepe-hublinks">
+                <strong>Public client page (create &amp; find galleries):</strong>
+                <?php if ( $hub ) : ?>
+                    <a href="<?php echo esc_url( $hub ); ?>" target="_blank"><?php echo esc_html( $hub ); ?></a>
+                    <button type="button" class="button button-small tepe-copy" data-copy="<?php echo esc_attr( $hub ); ?>">Copy link</button>
+                <?php else : ?>
+                    <em>Not created yet — add the <code>[tepe_create_event]</code> shortcode to any page, or re-save permalinks to auto-create it.</em>
+                <?php endif; ?>
+            </div>
 
             <table class="wp-list-table widefat fixed striped">
                 <thead><tr>
@@ -150,7 +163,12 @@ class TEPE_Admin {
                 ?>
                     <tr>
                         <td><strong><a href="<?php echo esc_url( $detail ); ?>"><?php echo esc_html( get_the_title( $ev ) ); ?></a></strong>
-                            <div class="row-actions"><span><a href="<?php echo esc_url( get_permalink( $ev ) ); ?>" target="_blank">View gallery</a> | <a href="<?php echo esc_url( TEPE_Gallery::upload_url( $ev ) ); ?>" target="_blank">Upload page</a></span></div>
+                            <div class="row-actions"><span>
+                                <a href="<?php echo esc_url( get_permalink( $ev ) ); ?>" target="_blank">View gallery</a> |
+                                <a href="<?php echo esc_url( TEPE_Gallery::upload_url( $ev ) ); ?>" target="_blank">Upload page</a> |
+                                <a href="<?php echo esc_url( TEPE_Rewrite::qr_url( $ev, 'png' ) ); ?>" target="_blank" download>QR</a> |
+                                <a href="<?php echo esc_url( $detail ); ?>">Manage</a>
+                            </span></div>
                         </td>
                         <td><?php echo $booked ? '<span class="tepe-tag tepe-tag--gold">Booking</span>' : '<span class="tepe-tag">Free / self-serve</span>'; ?></td>
                         <td><?php echo (int) $photos; ?></td>

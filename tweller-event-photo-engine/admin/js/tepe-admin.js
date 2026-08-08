@@ -38,6 +38,16 @@
         }
     });
 
+    document.addEventListener('click', function (e) {
+        var c = e.target.closest('.tepe-copy');
+        if (!c) return;
+        e.preventDefault();
+        var text = c.getAttribute('data-copy');
+        var done = function () { var t = c.textContent; c.textContent = 'Copied!'; setTimeout(function () { c.textContent = t; }, 1400); };
+        if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done, done); }
+        else { try { var i = document.createElement('input'); i.value = text; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); done(); } catch (err) {} }
+    });
+
     document.addEventListener('change', function (e) {
         var sel = e.target.closest('.tepe-order-status');
         if (!sel) return;

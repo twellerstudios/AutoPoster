@@ -71,6 +71,15 @@ class TEPE_REST {
             'permission_callback' => array( __CLASS__, 'require_nonce' ),
         ) );
 
+        // "Email me my galleries" — privacy-safe: we email the links to the
+        // address itself rather than returning other people's events to the
+        // caller. Always responds generically.
+        register_rest_route( self::NS, '/find-events', array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'find_events' ),
+            'permission_callback' => array( __CLASS__, 'require_nonce' ),
+        ) );
+
         // ── Admin ──
         register_rest_route( self::NS, '/admin/upload/(?P<id>\d+)/(?P<action>approve|reject|delete)', array(
             'methods'  => 'POST',
@@ -353,10 +362,36 @@ class TEPE_REST {
         return rest_ensure_response( array(
             'ok'          => true,
             'event_id'    => $event_id,
+            'title'       => get_the_title( $event ),
             'gallery_url' => TEPE_Gallery::gallery_url( $event ),
             'upload_url'  => TEPE_Gallery::upload_url( $event ),
+            'qr_svg'      => TEPE_Rewrite::qr_url( $event, 'svg' ),
             'manage_hint' => 'We’ve emailed your gallery and QR links to ' . $email . '.',
         ) );
+    }
+
+    public static function find_events( $request ) {
+        if ( self::rate_limited( 'find', 8, 3600 ) ) {
+            return new WP_Error( 'rate', 'Too many requests — please try again later.', array( 'status' => 429 ) );
+        }
+        $email  = sanitize_email( (string) $request->get_param( 'email' ) );
+        $generic = 'If we have galleries for that email, we’ve just sent the links to it.';
+        if ( ! is_email( $email ) ) {
+            return new WP_Error( 'bad_email', 'Please enter a valid email address.', array( 'status' => 400 ) );
+        }
+
+        $events = TEPE_Gallery::get_by_host_email( $email );
+        if ( ! empty( $events ) ) {
+            $lines = '';
+            foreach ( $events as $ev ) {
+                if ( ! $ev ) continue;
+                $lines .= "• " . get_the_title( $ev ) . "\n"
+                    . "   Gallery: " . TEPE_Gallery::gallery_url( $ev ) . "\n"
+                    . "   Guest upload (QR target): " . TEPE_Gallery::upload_url( $ev ) . "\n\n";
+            }
+            wp_mail( $email, 'Your Tweller event galleries', "Here are your event galleries:\n\n" . $lines . "— Tweller Studios" );
+        }
+        return rest_ensure_response( array( 'ok' => true, 'message' => $generic ) );
     }
 
     private static function email_host_links( $event, $email ) {

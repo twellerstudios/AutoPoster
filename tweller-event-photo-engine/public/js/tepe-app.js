@@ -98,7 +98,8 @@
         function load() {
             loading.hidden = false; empty.hidden = true;
             var q = 'event/' + CFG.slug + '/photos?fingerprint=' + encodeURIComponent(IDENT.fingerprint) + '&guest_uid=' + encodeURIComponent(IDENT.uid);
-            if (state.category) q += '&category=' + encodeURIComponent(state.category);
+            // null = All (no filter); '' = Public Album (uncategorised) is a real filter.
+            if (state.category !== null && state.category !== undefined) q += '&category=' + encodeURIComponent(state.category);
             api(q).then(function (r) {
                 loading.hidden = true;
                 state.photos = r.photos || [];
@@ -111,10 +112,13 @@
         function renderCats() {
             var nav = $('#tepe-cats'); if (!nav) return;
             nav.innerHTML = '';
-            (CFG.categories || []).forEach(function (c) {
-                var chip = el('button', 'tepe-chip' + ((state.category || '') === c.slug ? ' tepe-chip--active' : ''), esc(c.label));
+            // "All" (null) first, then Public Album ('') and every bucket.
+            var chips = [{ slug: null, label: 'All photos' }].concat(CFG.categories || []);
+            chips.forEach(function (c) {
+                var active = (state.category === c.slug);
+                var chip = el('button', 'tepe-chip' + (active ? ' tepe-chip--active' : ''), esc(c.label));
                 chip.type = 'button';
-                chip.addEventListener('click', function () { state.category = c.slug || null; renderCats(); load(); });
+                chip.addEventListener('click', function () { state.category = c.slug; renderCats(); load(); });
                 nav.appendChild(chip);
             });
         }
@@ -526,8 +530,34 @@
        CREATE VIEW
     ======================================================================= */
     function initCreate() {
-        var go = $('#tepe-c-go'); if (!go) return;
-        go.addEventListener('click', function () {
+        renderMyEvents();
+
+        var go = $('#tepe-c-go');
+        if (go) go.addEventListener('click', submit);
+
+        var another = $('#tepe-create-another');
+        if (another) another.addEventListener('click', function () {
+            $('#tepe-create-done').hidden = true;
+            var form = $('#tepe-create-form'); form.hidden = false;
+            $('#tepe-c-title').value = ''; $('#tepe-c-welcome').value = ''; $('#tepe-c-date').value = '';
+            go.disabled = false; go.textContent = 'Create gallery';
+            window.scrollTo({ top: form.offsetTop - 20, behavior: 'smooth' });
+        });
+
+        var findGo = $('#tepe-find-go');
+        if (findGo) findGo.addEventListener('click', function () {
+            var msg = $('#tepe-find-msg'); msg.hidden = true;
+            var email = ($('#tepe-find-email').value || '').trim();
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = 'Please enter a valid email.'; msg.hidden = false; return; }
+            findGo.disabled = true; findGo.textContent = 'Sending…';
+            var fd = new FormData(); fd.append('email', email);
+            xhrPost('find-events', fd).then(function (r) {
+                msg.style.color = '#2a2521'; msg.textContent = r.message || 'Check your inbox.'; msg.hidden = false;
+            }).catch(function (e) { msg.textContent = e.message; msg.hidden = false; })
+              .then(function () { findGo.disabled = false; findGo.textContent = 'Email me my links'; });
+        });
+
+        function submit() {
             var errBox = $('#tepe-c-error'); errBox.hidden = true;
             var title = $('#tepe-c-title').value.trim();
             var email = $('#tepe-c-email').value.trim();
@@ -543,17 +573,47 @@
             fd.append('categories', $('#tepe-c-cats').value);
             fd.append('website', ($('#tepe-website') || {}).value || '');
             xhrPost('create-event', fd).then(function (r) {
+                saveMyEvent({ title: r.title, gallery_url: r.gallery_url, upload_url: r.upload_url, qr: r.qr_svg });
+                renderMyEvents();
                 $('#tepe-create-form').hidden = true;
-                var done = $('#tepe-create-done'); done.hidden = false;
+                $('#tepe-create-done').hidden = false;
                 $('#tepe-create-links').innerHTML =
                     '<a href="' + esc(r.gallery_url) + '">View gallery: ' + esc(r.gallery_url) + '</a>' +
                     '<a href="' + esc(r.upload_url) + '">Guest upload link: ' + esc(r.upload_url) + '</a>' +
-                    '<img src="' + esc(r.gallery_url).replace(/\/?$/, '/') + 'qr.svg" alt="QR" width="150" height="150" style="margin-top:1rem;border:8px solid #fff;border-radius:10px">';
+                    '<img src="' + esc(r.qr_svg) + '" alt="QR code" width="150" height="150" style="margin-top:1rem;border:8px solid #fff;border-radius:10px">';
             }).catch(function (e) { showErr(e.message); go.disabled = false; go.textContent = 'Create gallery'; });
 
             function showErr(m) { errBox.textContent = m; errBox.hidden = false; }
-        });
+        }
+
         function showErr(m) { var e = $('#tepe-c-error'); e.textContent = m; e.hidden = false; }
+    }
+
+    function loadMyEvents() { try { return JSON.parse(localStorage.getItem('tepe_my_events') || '[]'); } catch (e) { return []; } }
+    function saveMyEvent(ev) {
+        if (!ev || !ev.gallery_url) return;
+        var list = loadMyEvents().filter(function (e) { return e.gallery_url !== ev.gallery_url; });
+        list.unshift(ev);
+        try { localStorage.setItem('tepe_my_events', JSON.stringify(list.slice(0, 30))); } catch (e) {}
+    }
+    function renderMyEvents() {
+        var wrap = $('#tepe-myevents'), list = $('#tepe-myevents-list');
+        if (!wrap || !list) return;
+        var events = loadMyEvents();
+        if (!events.length) { wrap.hidden = true; return; }
+        wrap.hidden = false;
+        list.innerHTML = '';
+        events.forEach(function (ev) {
+            var card = el('div', 'tepe-myevent');
+            card.innerHTML =
+                '<div class="tepe-myevent__title">' + esc(ev.title || 'Event gallery') + '</div>' +
+                '<div class="tepe-myevent__links">' +
+                    '<a class="tepe-btn tepe-btn--gold" href="' + esc(ev.gallery_url) + '">View gallery</a>' +
+                    '<a class="tepe-btn tepe-btn--dark" href="' + esc(ev.upload_url) + '">Add photos</a>' +
+                    (ev.qr ? '<a class="tepe-btn tepe-btn--ghost" style="color:#2a2521;border-color:#e7e1d8" href="' + esc(ev.qr) + '" download>QR code</a>' : '') +
+                '</div>';
+            list.appendChild(card);
+        });
     }
 
     // ── boot ────────────────────────────────────────────────────────────────

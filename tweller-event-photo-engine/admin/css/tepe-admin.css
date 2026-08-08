@@ -1,0 +1,23 @@
+/* Event Photo Engine — admin styles */
+.tepe-admin .tepe-grid2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 2rem; align-items: start; }
+@media (max-width: 900px) { .tepe-admin .tepe-grid2 { grid-template-columns: 1fr; } }
+
+.tepe-admin .tepe-tag { display: inline-block; padding: .15em .6em; border-radius: 999px; background: #eee; font-size: .78rem; font-weight: 600; }
+.tepe-admin .tepe-tag--gold { background: #c8a34e; color: #1a1408; }
+
+.tepe-admin .tepe-toggles label { display: block; margin: .25rem 0; }
+.tepe-admin .tepe-qrbox { background: #fff; border: 1px solid #dcdcde; border-radius: 8px; padding: 1rem; text-align: center; margin-bottom: 1.5rem; }
+.tepe-admin .tepe-qrbox img { border: 6px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+.tepe-admin .tepe-qrbox .button { margin: .3rem .2rem 0; }
+
+.tepe-admin .tepe-admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .6rem; margin-top: 1rem; }
+.tepe-admin-tile { position: relative; border-radius: 8px; overflow: hidden; background: #eee; aspect-ratio: 1; border: 2px solid transparent; }
+.tepe-admin-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tepe-admin-tile.tepe-cover-selected { border-color: #c8a34e; }
+.tepe-admin-tile.tepe-status-pending { opacity: .8; }
+.tepe-admin-tile.tepe-status-rejected { opacity: .35; }
+.tepe-admin-tile__bar { position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: rgba(16,16,16,.62); padding: .2rem; opacity: 0; transition: opacity .15s; }
+.tepe-admin-tile:hover .tepe-admin-tile__bar { opacity: 1; }
+.tepe-admin-tile__bar .button-link { color: #fff; text-decoration: none; font-size: 1rem; }
+.tepe-admin-tile__flag { position: absolute; top: 6px; left: 6px; background: #c8a34e; color: #1a1408; font-size: .66rem; font-weight: 700; padding: .1em .4em; border-radius: 4px; }
+.tepe-admin .tepe-orders td small { color: #757575; }

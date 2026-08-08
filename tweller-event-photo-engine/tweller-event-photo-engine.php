@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Event Photo Engine
  * Plugin URI:  https://twellerstudios.com
  * Description: Guest-sourced event galleries with QR upload, zero-signup guest tracking, direct-to-print checkout, free-tier promo branding and a social-share reward engine. A native companion module for Tweller Bookings WP — no WooCommerce, no third-party SaaS.
- * Version:     1.0.0
+ * Version:     1.0.2
  * Author:      Tweller Studios
  * Author URI:  https://twellerstudios.com
  * License:     GPL v2 or later
@@ -36,8 +36,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TEPE_VERSION', '1.0.1' );
-define( 'TEPE_DB_VERSION', '1.0.1' );
+define( 'TEPE_VERSION', '1.0.2' );
+define( 'TEPE_DB_VERSION', '1.0.2' );
 define( 'TEPE_PLUGIN_FILE', __FILE__ );
 define( 'TEPE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TEPE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

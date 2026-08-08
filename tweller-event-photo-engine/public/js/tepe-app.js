@@ -45,6 +45,23 @@
         });
     }
 
+    /** Put a button into a busy state with an inline spinner. */
+    function btnBusy(btn, text) {
+        if (!btn) return;
+        if (btn._idleHtml == null) btn._idleHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+        btn.innerHTML = '<span class="tepe-spin" aria-hidden="true"></span>' + esc(text || 'Working…');
+    }
+    /** Return a button to an interactive state. */
+    function btnIdle(btn, text) {
+        if (!btn) return;
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        if (text != null) btn.innerHTML = esc(text);
+        else if (btn._idleHtml != null) btn.innerHTML = btn._idleHtml;
+    }
+
     function toast(msg) {
         var t = $('#tepe-toast'); if (!t) { alert(msg); return; }
         t.textContent = msg; t.hidden = false;
@@ -100,6 +117,7 @@
             var q = 'event/' + CFG.slug + '/photos?fingerprint=' + encodeURIComponent(IDENT.fingerprint) + '&guest_uid=' + encodeURIComponent(IDENT.uid);
             // null = All (no filter); '' = Public Album (uncategorised) is a real filter.
             if (state.category !== null && state.category !== undefined) q += '&category=' + encodeURIComponent(state.category);
+            q += '&_=' + Date.now(); // never serve a cached list right after an upload
             api(q).then(function (r) {
                 loading.hidden = true;
                 state.photos = r.photos || [];
@@ -209,7 +227,10 @@
         // ── Lightbox ──
         var lb = $('#tepe-lightbox');
         if (lb) {
-            lb.addEventListener('click', function (e) { if (e.target.hasAttribute('data-close')) closeLightbox(); });
+            // Close on the X, or on a tap anywhere on the backdrop itself.
+            lb.addEventListener('click', function (e) {
+                if (e.target.hasAttribute('data-close') || e.target === lb) closeLightbox();
+            });
             lb.querySelector('[data-prev]').addEventListener('click', function () { navLight(-1); });
             lb.querySelector('[data-next]').addEventListener('click', function () { navLight(1); });
             $('#tepe-lightbox-print').addEventListener('click', function () { closeLightbox(); openDrawer([state.photos[state.lightIdx]]); });
@@ -328,7 +349,7 @@
                 if (!items.length) { showErr('Add at least one print.'); return; }
                 var name = $('#tepe-o-name').value.trim(), phone = $('#tepe-o-phone').value.trim();
                 if (!name || !phone) { showErr('Please add your name and phone number.'); return; }
-                var btn = $('#tepe-o-go'); btn.disabled = true; btn.textContent = 'Placing order…';
+                var btn = $('#tepe-o-go'); btnBusy(btn, 'Placing order…');
                 var fd = new FormData();
                 identFields(fd);
                 fd.append('items', JSON.stringify(items));
@@ -348,7 +369,7 @@
                         (r.bank_instructions ? '<div class="tepe-bankbox">' + esc(r.bank_instructions) + '</div>' : '') +
                         '<button type="button" class="tepe-btn tepe-btn--dark tepe-btn--full" data-close style="margin-top:1rem">Done</button></div>';
                     state.selectMode = false; state.selected = {}; render();
-                }).catch(function (e) { showErr(e.message); btn.disabled = false; btn.textContent = 'Place order'; });
+                }).catch(function (e) { showErr(e.message); btnIdle(btn, 'Place order'); });
             }
             function showErr(m) { var e = $('#tepe-o-error'); e.textContent = m; e.hidden = false; }
         }
@@ -465,25 +486,73 @@
             queue.appendChild(q);
         }
 
+        /** Gallery URL with a cache-buster so freshly added photos always show. */
+        function galleryHref() {
+            var u = CFG.galleryUrl || '/';
+            return u + (u.indexOf('?') > -1 ? '&' : '?') + 'uploaded=' + Date.now();
+        }
+        function goToGallery() { window.location.href = galleryHref(); }
+
         function startUpload() {
-            goBtn.disabled = true;
-            var name = ($('#tepe-guest-name') || {}).value || '';
             var website = ($('#tepe-website') || {}).value || '';
             if (website) { return; } // honeypot
+            var name = ($('#tepe-guest-name') || {}).value || '';
             var pending = files.filter(function (f) { return !f.done; });
-            var i = 0;
+            if (!pending.length) { goToGallery(); return; }
+
+            var i = 0, ok = 0, failed = 0;
             (function next() {
-                if (i >= pending.length) {
-                    goBtn.textContent = 'All done ✓';
-                    toast('Thanks! Your photos were added.');
-                    setTimeout(function () { window.location = CFG.galleryUrl; }, 1400);
-                    return;
-                }
+                if (i >= pending.length) { return finish(ok, failed); }
+                btnBusy(goBtn, 'Uploading ' + (i + 1) + ' of ' + pending.length + '…');
                 var item = pending[i];
-                uploadOne(item, name).then(function () { item.done = true; item.node.classList.add('tepe-qitem--done'); })
-                    .catch(function (e) { item.err = true; item.node.classList.add('tepe-qitem--err'); toast(e.message); })
-                    .then(function () { i++; next(); });
+                // Clear any styling from a previous failed attempt.
+                item.node.classList.remove('tepe-qitem--err');
+                item.bar.style.width = '0%';
+                uploadOne(item, name).then(function () {
+                    item.done = true; ok++;
+                    item.node.classList.add('tepe-qitem--done');
+                }).catch(function (e) {
+                    item.err = true; failed++;
+                    item.node.classList.add('tepe-qitem--err');
+                    item.node.title = e.message;
+                }).then(function () { i++; next(); });
             })();
+        }
+
+        /**
+         * Always leave the guest with a visible way into the gallery — the
+         * auto-redirect is a convenience, never the only exit.
+         */
+        function finish(ok, failed) {
+            // Count every photo landed so far, not just this attempt, so a
+            // retry doesn't under-report what the guest actually uploaded.
+            var totalOk = files.filter(function (f) { return f.done; }).length;
+            if (totalOk && !failed) {
+                goBtn.hidden = true;
+                showDone(totalOk, 0);
+                setTimeout(goToGallery, 1200);
+                return;
+            }
+            if (totalOk && failed) {
+                btnIdle(goBtn, 'Retry ' + failed + ' photo' + (failed === 1 ? '' : 's'));
+                showDone(totalOk, failed);
+                return;
+            }
+            btnIdle(goBtn, 'Try again');
+            toast('Upload failed — check your connection and try again.');
+        }
+
+        function showDone(ok, failed) {
+            var panel = $('#tepe-done');
+            if (!panel) {
+                panel = el('div', 'tepe-done'); panel.id = 'tepe-done';
+                goBtn.parentNode.insertBefore(panel, goBtn);
+            }
+            panel.innerHTML =
+                '<div class="tepe-done__tick">✓</div>' +
+                '<p class="tepe-done__msg"><strong>' + ok + ' photo' + (ok === 1 ? '' : 's') + ' added</strong>' +
+                (failed ? ' · ' + failed + " didn't upload" : '') + '</p>' +
+                '<a class="tepe-btn tepe-btn--gold tepe-btn--full" href="' + esc(galleryHref()) + '">View the gallery →</a>';
         }
 
         function uploadOne(item, name) {
@@ -540,7 +609,7 @@
             $('#tepe-create-done').hidden = true;
             var form = $('#tepe-create-form'); form.hidden = false;
             $('#tepe-c-title').value = ''; $('#tepe-c-welcome').value = ''; $('#tepe-c-date').value = '';
-            go.disabled = false; go.textContent = 'Create gallery';
+            btnIdle(go, 'Create gallery');
             window.scrollTo({ top: form.offsetTop - 20, behavior: 'smooth' });
         });
 
@@ -549,12 +618,12 @@
             var msg = $('#tepe-find-msg'); msg.hidden = true;
             var email = ($('#tepe-find-email').value || '').trim();
             if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = 'Please enter a valid email.'; msg.hidden = false; return; }
-            findGo.disabled = true; findGo.textContent = 'Sending…';
+            btnBusy(findGo, 'Sending…');
             var fd = new FormData(); fd.append('email', email);
             xhrPost('find-events', fd).then(function (r) {
                 msg.style.color = '#2a2521'; msg.textContent = r.message || 'Check your inbox.'; msg.hidden = false;
             }).catch(function (e) { msg.textContent = e.message; msg.hidden = false; })
-              .then(function () { findGo.disabled = false; findGo.textContent = 'Email me my links'; });
+              .then(function () { btnIdle(findGo, 'Email me my links'); });
         });
 
         function submit() {
@@ -563,7 +632,7 @@
             var email = $('#tepe-c-email').value.trim();
             if (!title) { return showErr('Please name your event.'); }
             if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { return showErr('Please enter a valid email.'); }
-            go.disabled = true; go.textContent = 'Creating…';
+            btnBusy(go, 'Creating…');
             var fd = new FormData();
             fd.append('title', title);
             fd.append('host_email', email);
@@ -581,7 +650,7 @@
                     '<a href="' + esc(r.gallery_url) + '">View gallery: ' + esc(r.gallery_url) + '</a>' +
                     '<a href="' + esc(r.upload_url) + '">Guest upload link: ' + esc(r.upload_url) + '</a>' +
                     '<img src="' + esc(r.qr_svg) + '" alt="QR code" width="150" height="150" style="margin-top:1rem;border:8px solid #fff;border-radius:10px">';
-            }).catch(function (e) { showErr(e.message); go.disabled = false; go.textContent = 'Create gallery'; });
+            }).catch(function (e) { showErr(e.message); btnIdle(go, 'Create gallery'); });
 
             function showErr(m) { errBox.textContent = m; errBox.hidden = false; }
         }

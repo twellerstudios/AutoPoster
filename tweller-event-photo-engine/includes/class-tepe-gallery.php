@@ -307,19 +307,114 @@ class TEPE_Gallery {
 
     // ── Cover ──────────────────────────────────────────────────────────────
 
-    public static function get_cover( $event ) {
+    /** The upload row to use as the cover (chosen cover, else first photo). */
+    public static function cover_upload( $event ) {
         $cover_id = (int) get_post_meta( $event->ID, TEPE_CPT::META_COVER, true );
         $upload = $cover_id ? self::get_upload( $cover_id ) : null;
-        if ( ! $upload ) {
+        if ( ! $upload || (int) $upload->event_id !== (int) $event->ID ) {
             $rows = self::get_uploads( $event->ID, array( 'status' => 'approved', 'per_page' => 1 ) );
             $upload = ! empty( $rows ) ? $rows[0] : null;
         }
+        return $upload ?: null;
+    }
+
+    public static function get_cover( $event ) {
+        $upload = self::cover_upload( $event );
         if ( ! $upload ) return null;
         $base = self::url( $event );
         return array(
             'url'       => $base . '/' . $upload->filename,
-            'thumb_url' => $base . '/thumbs/' . $upload->filename,
+            'thumb_url' => $base . '/thumbs/' . tepe_thumb_name( $upload->filename ),
         );
+    }
+
+    /**
+     * A 1200×630 social-share (og:image) crop of the cover, centred, cached to
+     * disk. This is the thumbnail WhatsApp/Facebook/etc. show for the link.
+     * Returns [ url, width, height ] or null.
+     */
+    public static function og_image( $event ) {
+        $upload = self::cover_upload( $event );
+        if ( ! $upload ) return null;
+
+        $dir  = self::dir( $event );
+        $base = self::url( $event );
+        $out  = $dir . '/og-cover.jpg';
+
+        // Prefer the JPEG thumb as source (HEIC originals can't be read by GD).
+        $src = $dir . '/thumbs/' . tepe_thumb_name( $upload->filename );
+        if ( ! file_exists( $src ) ) $src = $dir . '/' . $upload->filename;
+        if ( ! file_exists( $src ) ) return null;
+
+        // Rebuild only when missing or older than the source.
+        if ( ! file_exists( $out ) || filemtime( $out ) < filemtime( $src ) ) {
+            $editor = wp_get_image_editor( $src );
+            if ( is_wp_error( $editor ) ) {
+                // Can't crop — fall back to the thumb as-is.
+                $turl = $base . '/thumbs/' . tepe_thumb_name( $upload->filename );
+                return array( 'url' => $turl, 'width' => (int) $upload->width, 'height' => (int) $upload->height );
+            }
+            $size = $editor->get_size();
+            $sw = (int) ( $size['width'] ?? 0 );
+            $sh = (int) ( $size['height'] ?? 0 );
+            if ( $sw > 0 && $sh > 0 ) {
+                $target = 1200 / 630;
+                $crop_w = $sw;
+                $crop_h = (int) round( $crop_w / $target );
+                if ( $crop_h > $sh ) { $crop_h = $sh; $crop_w = (int) round( $crop_h * $target ); }
+                $crop_x = (int) round( ( $sw - $crop_w ) / 2 );
+                $crop_y = (int) round( ( $sh - $crop_h ) / 2 );
+                $editor->crop( $crop_x, $crop_y, $crop_w, $crop_h, 1200, 630 );
+                $editor->set_quality( 82 );
+                $editor->save( $out, 'image/jpeg' );
+            }
+        }
+
+        if ( file_exists( $out ) ) {
+            return array( 'url' => $base . '/og-cover.jpg?v=' . filemtime( $out ), 'width' => 1200, 'height' => 630 );
+        }
+        return null;
+    }
+
+    // ── Host email (branded) ───────────────────────────────────────────────
+
+    /**
+     * Email the host their gallery + guest-upload links. Uses the Tweller
+     * Bookings branded email template (send_raw wraps it in the black/gold
+     * shell) when that plugin is present; falls back to plain text otherwise.
+     */
+    public static function email_host( $event, $email, $intro = '' ) {
+        $email = sanitize_email( $email );
+        if ( ! $email || ! is_email( $email ) ) return false;
+
+        $title   = tepe_title( $event );
+        $gallery = self::gallery_url( $event );
+        $upload  = self::upload_url( $event );
+        $subject = 'Your Tweller event gallery is ready';
+
+        if ( class_exists( 'TwellerFlow2_Notifications' ) && method_exists( 'TwellerFlow2_Notifications', 'send_raw' ) ) {
+            $N = 'TwellerFlow2_Notifications';
+            if ( $intro === '' ) {
+                $intro = 'Your shared gallery is live. Guests can scan a QR code and upload their photos straight from their phones — no app, no sign-up. Everything lands in one place for you.';
+            }
+            $body  = "<h2 style='color:#101010;font-weight:600;margin:0 0 12px;'>Your event gallery is ready 🎉</h2>";
+            $body .= "<p style='color:#3D3630;line-height:1.7;margin:0 0 6px;'><strong>" . esc_html( $title ) . "</strong></p>";
+            $body .= "<p style='color:#3D3630;line-height:1.7;'>" . esc_html( $intro ) . "</p>";
+            $body .= $N::email_card( 'Your links',
+                $N::email_detail_row( 'Gallery', esc_html( $gallery ) ) .
+                $N::email_detail_row( 'Guest upload page', esc_html( $upload ) )
+            );
+            $body .= "<div style='text-align:center;margin:22px 0 6px;'>" . $N::email_button( $gallery, 'View your gallery', true ) . "</div>";
+            $body .= "<div style='text-align:center;margin:0 0 18px;'>" . $N::email_button( $upload, 'Open the guest upload page', false ) . "</div>";
+            $body .= "<p style='color:#3D3630;line-height:1.7;'>Open the gallery to print your QR code and place it on tables or signage on the day.</p>";
+            $body .= "<p style='color:#3D3630;margin-top:20px;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>";
+            return $N::send_raw( $email, $subject, $body );
+        }
+
+        $msg = "Your event gallery is ready!\n\n" . $title . "\n\n"
+            . "Gallery: $gallery\nGuest upload link (put the QR on your tables): $upload\n\n"
+            . "Guests just scan and upload — no app, no sign-up.\n\n— Tweller Studios";
+        return wp_mail( $email, $subject, $msg );
     }
 
     // ── Cleanup ────────────────────────────────────────────────────────────

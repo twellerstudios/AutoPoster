@@ -34,6 +34,7 @@ class TEPE_CPT {
     const META_EVENT_DATE    = '_tepe_event_date';
     const META_ALLOW_PRINTS  = '_tepe_allow_prints';    // 0|1 — enable print ordering from the gallery
     const META_SHARE_REWARD  = '_tepe_share_reward';    // 0|1 — enable the social-share promo engine
+    const META_CAMERA_ONLY   = '_tepe_camera_only';     // 0|1 — force live camera (1) vs allow phone library (0)
 
     public static function init() {
         // tepe_init() already runs on `init` (priority 5), so register the CPT
@@ -89,6 +90,7 @@ class TEPE_CPT {
             self::META_EVENT_DATE   => '',
             self::META_ALLOW_PRINTS => 1,
             self::META_SHARE_REWARD => 1,
+            self::META_CAMERA_ONLY  => 0,   // default: allow choosing from the phone's photo library
         );
     }
 }

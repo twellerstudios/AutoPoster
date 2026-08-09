@@ -110,9 +110,10 @@
         renderCats();
         load();
 
-        // Share
-        var shareBtn = $('#tepe-share-btn');
-        if (shareBtn) shareBtn.addEventListener('click', doShare);
+        // Share — branded per-platform buttons in the share bar.
+        $$('[data-share]').forEach(function (btn) {
+            btn.addEventListener('click', function () { shareTo(btn.getAttribute('data-share')); });
+        });
         if (state.reward) showReward(state.reward, true);
 
         function load() {
@@ -381,22 +382,38 @@
         }
 
         // ── Share flow ──
-        function doShare() {
-            var url = CFG.galleryUrl, text = (CFG.strings && CFG.strings.shareText) || 'Event photos';
-            var platform = 'web';
-            var after = function () { if (CFG.shareReward) claimReward(platform); };
-            if (navigator.share) {
-                navigator.share({ title: CFG.eventTitle, text: text, url: url })
-                    .then(after)
-                    .catch(function () { /* user cancelled — no reward */ });
+        function shareTo(platform) {
+            var url = CFG.galleryUrl;
+            var text = (CFG.strings && CFG.strings.shareText) || 'Event photos';
+            var enc = encodeURIComponent, u = enc(url), t = enc(text + ' ');
+            var reward = function () { if (CFG.shareReward) claimReward(platform); };
+
+            if (platform === 'whatsapp') {
+                window.open('https://wa.me/?text=' + t + u, '_blank', 'noopener');
+                reward();
+            } else if (platform === 'facebook') {
+                window.open('https://www.facebook.com/sharer/sharer.php?u=' + u, '_blank', 'noopener,width=640,height=640');
+                reward();
             } else {
-                // Fallback: copy link + open a share intent, then reward.
-                var fb = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url);
-                window.open(fb, '_blank', 'noopener');
-                try { navigator.clipboard && navigator.clipboard.writeText(url); } catch (e) {}
-                platform = 'facebook';
-                after();
+                // Instagram / TikTok have no web link-share intent. Use the native
+                // share sheet where available (best on phones), otherwise copy the
+                // link and open the app so the guest can paste it.
+                if (navigator.share) {
+                    navigator.share({ title: CFG.eventTitle, text: text, url: url }).then(reward).catch(function () {});
+                } else {
+                    copyLink(url);
+                    toast('Link copied — paste it into your ' + (platform === 'tiktok' ? 'TikTok' : 'Instagram') + ' post or story.');
+                    window.open(platform === 'tiktok' ? 'https://www.tiktok.com' : 'https://www.instagram.com', '_blank', 'noopener');
+                    reward();
+                }
             }
+        }
+
+        function copyLink(url) {
+            try {
+                if (navigator.clipboard) navigator.clipboard.writeText(url);
+                else { var i = document.createElement('input'); i.value = url; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); }
+            } catch (e) {}
         }
 
         function claimReward(platform) {
@@ -653,9 +670,12 @@
                 $('#tepe-create-form').hidden = true;
                 $('#tepe-create-done').hidden = false;
                 $('#tepe-create-links').innerHTML =
-                    '<a href="' + esc(r.gallery_url) + '">View gallery: ' + esc(r.gallery_url) + '</a>' +
-                    '<a href="' + esc(r.upload_url) + '">Guest upload link: ' + esc(r.upload_url) + '</a>' +
-                    '<img src="' + esc(r.qr_svg) + '" alt="QR code" width="160" height="160" style="display:block;margin:1.25rem auto 0;border:8px solid #fff;border-radius:12px;box-shadow:0 2px 10px rgba(16,16,16,.12)">';
+                    '<div class="tepe-donebtns">' +
+                        '<a class="tepe-btn tepe-btn--gold tepe-btn--full" href="' + esc(r.gallery_url) + '">View gallery</a>' +
+                        '<a class="tepe-btn tepe-btn--dark tepe-btn--full" href="' + esc(r.upload_url) + '">Guest upload page</a>' +
+                        '<a class="tepe-btn tepe-btn--outline tepe-btn--full" href="' + esc(r.qr_svg) + '" download>Download QR code</a>' +
+                    '</div>' +
+                    '<img class="tepe-doneqr" src="' + esc(r.qr_svg) + '" alt="QR code for this gallery" width="170" height="170">';
             }).catch(function (e) { showErr(e.message); btnIdle(go, 'Create gallery'); });
 
             function showErr(m) { errBox.textContent = m; errBox.hidden = false; }

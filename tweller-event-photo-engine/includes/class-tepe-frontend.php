@@ -47,6 +47,23 @@ class TEPE_Frontend {
     public static function icon_arrow_left() {
         return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
     }
+    public static function icon_plus() {
+        return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+    }
+
+    // ── Brand social logos (true colour) ──────────────────────────────────────
+    public static function icon_whatsapp() {
+        return '<svg viewBox="0 0 24 24" width="24" height="24" fill="#ffffff" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38c1.45.79 3.08 1.21 4.79 1.21 5.46 0 9.91-4.45 9.91-9.91C21.95 6.45 17.5 2 12.04 2zm5.8 14.13c-.24.68-1.42 1.32-1.95 1.36-.5.05-.5.42-3.16-.66-2.66-1.08-4.31-3.85-4.44-4.03-.13-.18-1.06-1.41-1.06-2.69 0-1.28.67-1.91.91-2.17.24-.26.53-.32.7-.32.18 0 .35.002.5.01.16.007.38-.06.59.45.24.58.79 2 .86 2.14.07.14.12.31.02.5-.09.18-.14.29-.28.45-.14.16-.29.35-.42.47-.14.13-.28.28-.12.55.16.27.72 1.19 1.55 1.93 1.06.95 1.96 1.24 2.23 1.38.27.14.43.12.59-.07.16-.19.68-.79.86-1.06.18-.27.36-.23.61-.14.25.09 1.58.75 1.85.88.27.14.45.2.52.31.06.12.06.66-.18 1.34z"/></svg>';
+    }
+    public static function icon_facebook() {
+        return '<svg viewBox="0 0 24 24" width="24" height="24" fill="#ffffff" aria-hidden="true"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>';
+    }
+    public static function icon_instagram() {
+        return '<svg viewBox="0 0 24 24" width="24" height="24" fill="#ffffff" aria-hidden="true"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41-.56-.22-.96-.48-1.38-.9-.42-.42-.68-.82-.9-1.38-.16-.42-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zm0 3.68A6.16 6.16 0 1018.16 12 6.16 6.16 0 0012 5.84zm0 10.16A4 4 0 1116 12a4 4 0 01-4 4zm6.41-10.4a1.44 1.44 0 11-1.44-1.44 1.44 1.44 0 011.44 1.44z"/></svg>';
+    }
+    public static function icon_tiktok() {
+        return '<svg viewBox="0 0 24 24" width="22" height="22" fill="#ffffff" aria-hidden="true"><path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>';
+    }
 
     /** Enqueue + localise once, when we know which view we're on. */
     private static function enqueue( $event, $view ) {
@@ -153,11 +170,20 @@ class TEPE_Frontend {
                     <?php if ( $welcome !== '' ) : ?><p class="tepe-hero__welcome"><?php echo esc_html( $welcome ); ?></p><?php endif; ?>
                     <p class="tepe-hero__meta"><span id="tepe-count"><?php echo (int) $count; ?></span> photos shared</p>
                     <div class="tepe-hero__actions">
-                        <a class="tepe-btn tepe-btn--gold" href="<?php echo esc_url( $upload ); ?>">＋ Add your photos</a>
-                        <button class="tepe-btn tepe-btn--ghost" type="button" id="tepe-share-btn">Share to socials</button>
+                        <a class="tepe-btn tepe-btn--gold tepe-btn--icon" href="<?php echo esc_url( $upload ); ?>"><?php echo self::icon_plus(); ?> Add photos</a>
                     </div>
                 </div>
             </header>
+
+            <section class="tepe-sharebar" aria-label="Share this gallery">
+                <span class="tepe-sharebar__label">Share this gallery</span>
+                <div class="tepe-sharebar__icons">
+                    <button type="button" class="tepe-social tepe-social--whatsapp" data-share="whatsapp" aria-label="Share on WhatsApp"><?php echo self::icon_whatsapp(); ?></button>
+                    <button type="button" class="tepe-social tepe-social--facebook" data-share="facebook" aria-label="Share on Facebook"><?php echo self::icon_facebook(); ?></button>
+                    <button type="button" class="tepe-social tepe-social--instagram" data-share="instagram" aria-label="Share on Instagram"><?php echo self::icon_instagram(); ?></button>
+                    <button type="button" class="tepe-social tepe-social--tiktok" data-share="tiktok" aria-label="Share on TikTok"><?php echo self::icon_tiktok(); ?></button>
+                </div>
+            </section>
 
             <?php if ( trim( wp_strip_all_tags( $content ) ) !== '' ) : ?>
                 <div class="tepe-intro"><?php echo wp_kses_post( $content ); ?></div>
@@ -170,7 +196,7 @@ class TEPE_Frontend {
             <div class="tepe-masonry" id="tepe-masonry" aria-live="polite"></div>
             <div class="tepe-empty" id="tepe-empty" hidden>
                 <p>No photos yet — be the first to add one!</p>
-                <a class="tepe-btn tepe-btn--gold" href="<?php echo esc_url( $upload ); ?>">Add photos</a>
+                <a class="tepe-btn tepe-btn--gold tepe-btn--icon" href="<?php echo esc_url( $upload ); ?>"><?php echo self::icon_plus(); ?> Add photos</a>
             </div>
             <div class="tepe-loading" id="tepe-loading">Loading gallery…</div>
 
@@ -234,11 +260,14 @@ class TEPE_Frontend {
                     <button type="button" class="tepe-linkbtn" id="tepe-new-album" hidden>＋ New album</button>
                 </div>
 
+                <?php $camera_only = (bool) get_post_meta( $event->ID, TEPE_CPT::META_CAMERA_ONLY, true ); ?>
                 <div class="tepe-dropzone" id="tepe-dropzone" role="button" tabindex="0" aria-label="Add photos">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    <p class="tepe-dropzone__title">Tap to choose photos</p>
-                    <p class="tepe-dropzone__note">or drag &amp; drop · JPEG, PNG, HEIC · up to <?php echo (int) TEPE_Uploads::MAX_FILES_PER_REQUEST; ?> at a time</p>
-                    <input type="file" id="tepe-file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" multiple capture="environment" hidden>
+                    <p class="tepe-dropzone__title"><?php echo $camera_only ? 'Tap to take a photo' : 'Tap to add photos'; ?></p>
+                    <p class="tepe-dropzone__note"><?php echo $camera_only ? 'Camera' : 'Camera or photo library'; ?> · JPEG, PNG, HEIC · up to <?php echo (int) TEPE_Uploads::MAX_FILES_PER_REQUEST; ?> at a time</p>
+                    <?php // Omitting `capture` lets the OS picker offer BOTH the camera and the
+                          // saved photo library; setting it forces the live camera. ?>
+                    <input type="file" id="tepe-file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" multiple<?php echo $camera_only ? ' capture="environment"' : ''; ?> hidden>
                 </div>
                 <!-- honeypot -->
                 <input type="text" id="tepe-website" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
@@ -349,18 +378,29 @@ class TEPE_Frontend {
         $event = get_post();
         if ( ! $event ) return;
 
-        $cover = TEPE_Gallery::get_cover( $event );
+        $og    = TEPE_Gallery::og_image( $event );
         $title = tepe_title( $event );
         $url   = TEPE_Gallery::gallery_url( $event );
-        $desc  = sprintf( 'See and share photos from %s.', $title );
+        $desc  = sprintf( 'See and share the photos from %s.', $title );
         ?>
         <meta property="og:type" content="website">
+        <meta property="og:site_name" content="Tweller Studios">
         <meta property="og:title" content="<?php echo esc_attr( $title ); ?>">
         <meta property="og:description" content="<?php echo esc_attr( $desc ); ?>">
         <meta property="og:url" content="<?php echo esc_url( $url ); ?>">
-        <?php if ( $cover ) : ?>
-        <meta property="og:image" content="<?php echo esc_url( $cover['url'] ); ?>">
+        <meta name="twitter:title" content="<?php echo esc_attr( $title ); ?>">
+        <meta name="twitter:description" content="<?php echo esc_attr( $desc ); ?>">
+        <?php if ( $og ) : ?>
+        <meta property="og:image" content="<?php echo esc_url( $og['url'] ); ?>">
+        <meta property="og:image:secure_url" content="<?php echo esc_url( $og['url'] ); ?>">
+        <meta property="og:image:type" content="image/jpeg">
+        <meta property="og:image:width" content="<?php echo (int) $og['width']; ?>">
+        <meta property="og:image:height" content="<?php echo (int) $og['height']; ?>">
+        <meta property="og:image:alt" content="<?php echo esc_attr( $title ); ?>">
         <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:image" content="<?php echo esc_url( $og['url'] ); ?>">
+        <?php else : ?>
+        <meta name="twitter:card" content="summary">
         <?php endif; ?>
         <?php
     }

@@ -395,13 +395,7 @@ class TEPE_REST {
     }
 
     private static function email_host_links( $event, $email ) {
-        $upload  = TEPE_Gallery::upload_url( $event );
-        $gallery = TEPE_Gallery::gallery_url( $event );
-        $body = "Your event gallery is ready!\n\n"
-            . "Gallery: $gallery\n"
-            . "Guest upload link (put the QR on your tables): {$upload}\n\n"
-            . "Guests just scan and upload — no app, no sign-up.\n\n— Tweller Studios";
-        wp_mail( $email, 'Your Tweller event gallery is ready', $body );
+        TEPE_Gallery::email_host( $event, $email );
     }
 
     // ── Admin actions ────────────────────────────────────────────────────────

@@ -34,6 +34,37 @@
 .tepe-btn--dark { background: var(--tepe-black); color: #fff; }
 .tepe-btn--full { width: 100%; }
 .tepe-btn[disabled] { opacity: .75; cursor: progress; }
+/* Some themes underline anchors aggressively — never on our buttons. */
+.tepe-btn, .tepe-btn:hover, .tepe-btn:focus, .tepe-btn:active { text-decoration: none; }
+.tepe-btn--icon svg { flex: 0 0 auto; }
+.tepe-btn--outline { background: #fff; color: var(--tepe-ink); border-color: var(--tepe-line); }
+.tepe-btn--outline:hover { border-color: var(--tepe-gold); color: var(--tepe-gold-dk); }
+
+/* ── Share bar (below hero) ── */
+.tepe-sharebar {
+    max-width: 720px; margin: 1rem auto 0; padding: .9rem 1.25rem;
+    display: flex; align-items: center; justify-content: center; gap: .9rem; flex-wrap: wrap;
+    background: var(--tepe-card); border: 1px solid var(--tepe-line); border-radius: 999px;
+    box-shadow: var(--tepe-shadow); width: calc(100% - 2rem);
+}
+.tepe-sharebar__label { font-weight: 700; font-size: .92rem; color: var(--tepe-ink); letter-spacing: .01em; }
+.tepe-sharebar__icons { display: flex; gap: .6rem; }
+.tepe-social {
+    width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: transform .12s ease, box-shadow .12s ease; box-shadow: 0 2px 8px rgba(16,16,16,.15);
+}
+.tepe-social:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16,16,16,.25); }
+.tepe-social:active { transform: translateY(0); }
+.tepe-social svg { display: block; }
+.tepe-social--whatsapp { background: #25D366; }
+.tepe-social--facebook { background: #1877F2; }
+.tepe-social--instagram { background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%); }
+.tepe-social--tiktok { background: #010101; }
+@media (max-width: 480px) {
+    .tepe-sharebar { border-radius: 18px; }
+    .tepe-social { width: 46px; height: 46px; }
+}
 
 /* Inline button spinner */
 .tepe-spin {
@@ -260,7 +291,9 @@
 .tepe-gallery { padding-bottom: 3.5rem; }
 
 .tepe-create__sub { color: var(--tepe-muted); margin-top: -.3rem; }
-.tepe-create__links a { display: block; margin: .4rem 0; color: var(--tepe-gold-dk); word-break: break-all; }
+.tepe-create__done { text-align: center; }
+.tepe-donebtns { display: flex; flex-direction: column; gap: .6rem; max-width: 340px; margin: 1.25rem auto 0; }
+.tepe-doneqr { display: block; margin: 1.5rem auto 0; border: 8px solid #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(16,16,16,.12); }
 
 /* Hub: "your events on this device" + find-by-email */
 .tepe-myevents { margin-bottom: 1.5rem; }

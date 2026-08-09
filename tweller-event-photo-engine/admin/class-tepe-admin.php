@@ -99,6 +99,7 @@ class TEPE_Admin {
             update_post_meta( $id, TEPE_CPT::META_MODERATE, empty( $_POST['moderate'] ) ? 0 : 1 );
             update_post_meta( $id, TEPE_CPT::META_ALLOW_PRINTS, empty( $_POST['allow_prints'] ) ? 0 : 1 );
             update_post_meta( $id, TEPE_CPT::META_SHARE_REWARD, empty( $_POST['share_reward'] ) ? 0 : 1 );
+            update_post_meta( $id, TEPE_CPT::META_CAMERA_ONLY, empty( $_POST['camera_only'] ) ? 0 : 1 );
 
             TEPE_Categories::set( $id, array_filter( array_map( 'trim', explode( ',', $_POST['categories'] ?? '' ) ) ) );
 
@@ -263,6 +264,7 @@ class TEPE_Admin {
                                 <label><input type="checkbox" name="moderate" value="1" <?php checked( $m( TEPE_CPT::META_MODERATE ), 1 ); ?>> Hold uploads for approval</label>
                                 <label><input type="checkbox" name="allow_prints" value="1" <?php checked( $m( TEPE_CPT::META_ALLOW_PRINTS ), 1 ); ?>> Allow print orders</label>
                                 <label><input type="checkbox" name="share_reward" value="1" <?php checked( $m( TEPE_CPT::META_SHARE_REWARD ), 1 ); ?>> Share reward (free 4×6)</label>
+                                <label><input type="checkbox" name="camera_only" value="1" <?php checked( $m( TEPE_CPT::META_CAMERA_ONLY ), 1 ); ?>> Camera only (off = guests can also pick saved photos)</label>
                             </td></tr>
                         </table>
                         <?php submit_button( 'Save settings' ); ?>

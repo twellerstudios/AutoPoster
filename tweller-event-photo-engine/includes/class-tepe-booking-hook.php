@@ -104,24 +104,15 @@ class TEPE_Booking_Hook {
 
     private static function notify_host( $event_id, $session ) {
         if ( empty( $session->client_email ) || ! is_email( $session->client_email ) ) return;
-        if ( ! class_exists( 'TwellerFlow2_Notifications' ) ) return;
 
-        $event      = TEPE_Gallery::get( $event_id );
-        $upload_url = TEPE_Gallery::upload_url( $event );
-        $gallery    = TEPE_Gallery::gallery_url( $event );
-        $first      = trim( explode( ' ', trim( $session->client_name ) )[0] );
+        $event = TEPE_Gallery::get( $event_id );
+        if ( ! $event ) return;
 
-        $body = "
-            <h2 style='color:#101010;font-weight:600;'>Your event photo gallery is ready</h2>
-            <p style='color:#3D3630;'>Hi {$first},</p>
-            <p style='color:#3D3630;line-height:1.7;'>We've set up a shared gallery for your event. Your guests can scan a QR code and upload their photos straight from their phones — no app, no sign-up. Everything lands in one place for you.</p>
-            <p style='color:#3D3630;line-height:1.7;'><strong>Guest upload link:</strong><br><a href='" . esc_url( $upload_url ) . "'>" . esc_html( $upload_url ) . "</a></p>
-            <p style='color:#3D3630;line-height:1.7;'><strong>Your gallery:</strong><br><a href='" . esc_url( $gallery ) . "'>" . esc_html( $gallery ) . "</a></p>
-            <p style='color:#3D3630;'>Print your QR code from the link above and place it on tables or signage on the day.</p>
-            <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>";
+        $first = trim( explode( ' ', trim( (string) $session->client_name ) )[0] );
+        $intro = ( $first !== '' ? "Hi {$first}, we've set up a shared gallery for your event. " : '' )
+            . 'Your guests can scan a QR code and upload their photos straight from their phones — no app, no sign-up. Everything lands in one place for you.';
 
-        if ( method_exists( 'TwellerFlow2_Notifications', 'send_email' ) ) {
-            TwellerFlow2_Notifications::send_email( $session, 'Your event photo gallery is ready', $body );
-        }
+        // Same branded black/gold template as the self-service path.
+        TEPE_Gallery::email_host( $event, $session->client_email, $intro );
     }
 }

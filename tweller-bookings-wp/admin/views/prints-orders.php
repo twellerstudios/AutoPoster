@@ -180,6 +180,11 @@
                             <?php if ( $order->session_code ) : ?>
                                 <br><span style="color:#9CA3AF; font-size:11px;"><?php echo esc_html( $order->session_code ); ?></span>
                             <?php endif; ?>
+                        <?php elseif ( $order->source === 'event' ) : ?>
+                            <span class="tf2-badge tf2-badge--delivered">Event</span>
+                            <?php if ( $order->session_code ) : ?>
+                                <br><span style="color:#9CA3AF; font-size:11px;"><?php echo esc_html( $order->session_code ); ?></span>
+                            <?php endif; ?>
                         <?php else : ?>
                             <span class="tf2-badge tf2-badge--booked">Public</span>
                         <?php endif; ?>

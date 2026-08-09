@@ -210,6 +210,7 @@ class TEPE_Uploads {
             'category'         => $category,
             'filename'         => $filename,
             'original_name'    => sanitize_file_name( $orig_name ),
+            'uploader_name'    => $guest ? (string) $guest->display_name : '',
             'mime'             => $is_heic ? 'image/heic' : $mime,
             'width'            => $width,
             'height'           => $height,

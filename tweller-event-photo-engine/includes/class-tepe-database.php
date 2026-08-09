@@ -37,6 +37,7 @@ class TEPE_Database {
             category varchar(120) NOT NULL DEFAULT '',
             filename varchar(255) NOT NULL,
             original_name varchar(255) NOT NULL DEFAULT '',
+            uploader_name varchar(190) NOT NULL DEFAULT '',
             mime varchar(60) NOT NULL DEFAULT '',
             width int DEFAULT 0,
             height int DEFAULT 0,
@@ -128,6 +129,39 @@ class TEPE_Database {
             UNIQUE KEY code (code),
             KEY event_id (event_id),
             KEY guest_id (guest_id),
+            KEY status (status)
+        ) $charset_collate;" );
+
+        // ── Photo likes (one per device per photo) ────────────────────────
+        $likes = self::table( 'tweller_event_likes' );
+        dbDelta( "CREATE TABLE $likes (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            event_id bigint(20) unsigned NOT NULL,
+            upload_id bigint(20) unsigned NOT NULL,
+            guest_id bigint(20) unsigned DEFAULT NULL,
+            fingerprint_hash char(64) NOT NULL DEFAULT '',
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY liker (upload_id, fingerprint_hash),
+            KEY event_id (event_id),
+            KEY upload_id (upload_id)
+        ) $charset_collate;" );
+
+        // ── Photo notes (the digital guestbook) ───────────────────────────
+        // A heartfelt note a guest attaches to ONE of their own photos.
+        $notes = self::table( 'tweller_event_notes' );
+        dbDelta( "CREATE TABLE $notes (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            event_id bigint(20) unsigned NOT NULL,
+            upload_id bigint(20) unsigned NOT NULL,
+            guest_id bigint(20) unsigned DEFAULT NULL,
+            author_name varchar(190) NOT NULL DEFAULT '',
+            message text,
+            status varchar(20) NOT NULL DEFAULT 'approved',
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY one_per_photo (upload_id),
+            KEY event_id (event_id),
             KEY status (status)
         ) $charset_collate;" );
 

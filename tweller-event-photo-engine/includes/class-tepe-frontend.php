@@ -50,6 +50,9 @@ class TEPE_Frontend {
     public static function icon_plus() {
         return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
     }
+    public static function icon_heart() {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/></svg>';
+    }
 
     // ── Brand social logos (true colour) ──────────────────────────────────────
     public static function icon_whatsapp() {
@@ -161,14 +164,18 @@ class TEPE_Frontend {
         $upload  = TEPE_Gallery::upload_url( $event );
         $welcome = (string) get_post_meta( $event->ID, TEPE_CPT::META_WELCOME, true );
 
+        // Count one gallery view per device per 12h.
+        TEPE_Gallery::maybe_count_view( $event );
+
         ob_start(); ?>
         <div class="tepe tepe-gallery" id="tepe-app">
             <header class="tepe-hero<?php echo $cover ? ' tepe-hero--img' : ''; ?>"
                 <?php if ( $cover ) : ?>style="background-image:linear-gradient(rgba(16,16,16,.35),rgba(16,16,16,.7)),url('<?php echo esc_url( $cover['url'] ); ?>');"<?php endif; ?>>
                 <div class="tepe-hero__inner">
                     <h1 class="tepe-hero__title"><?php echo esc_html( tepe_title( $event ) ); ?></h1>
+                    <p class="tepe-hero__brand">Tweller Studios</p>
                     <?php if ( $welcome !== '' ) : ?><p class="tepe-hero__welcome"><?php echo esc_html( $welcome ); ?></p><?php endif; ?>
-                    <p class="tepe-hero__meta"><span id="tepe-count"><?php echo (int) $count; ?></span> photos shared</p>
+                    <p class="tepe-hero__meta"><span id="tepe-count"><?php echo (int) $count; ?></span> photos · <span id="tepe-views"><?php echo (int) TEPE_Gallery::get_views( $event->ID ); ?></span> views</p>
                     <div class="tepe-hero__actions">
                         <a class="tepe-btn tepe-btn--gold tepe-btn--icon" href="<?php echo esc_url( $upload ); ?>"><?php echo self::icon_plus(); ?> Add photos</a>
                     </div>
@@ -189,11 +196,31 @@ class TEPE_Frontend {
                 <div class="tepe-intro"><?php echo wp_kses_post( $content ); ?></div>
             <?php endif; ?>
 
-            <nav class="tepe-cats" id="tepe-cats" aria-label="Albums"></nav>
-
             <div class="tepe-share-reward" id="tepe-reward" hidden></div>
 
+            <!-- Top liked -->
+            <section class="tepe-top" id="tepe-top" hidden>
+                <div class="tepe-section-head"><span class="tepe-section-head__icon">♥</span><h2>Most loved</h2></div>
+                <div class="tepe-top__strip" id="tepe-top-strip"></div>
+            </section>
+
+            <!-- Guestbook / Photo Notes -->
+            <section class="tepe-guestbook" id="tepe-guestbook" hidden>
+                <div class="tepe-section-head"><span class="tepe-section-head__icon">✎</span><h2>Photo Notes</h2></div>
+                <p class="tepe-guestbook__sub">A little guestbook — heartfelt notes left with a photo.</p>
+                <div class="tepe-guestbook__feed" id="tepe-guestbook-feed"></div>
+            </section>
+
+            <div class="tepe-toolbar">
+                <nav class="tepe-cats" id="tepe-cats" aria-label="Albums"></nav>
+                <div class="tepe-viewtoggle" id="tepe-viewtoggle" role="tablist" aria-label="Gallery view">
+                    <button type="button" class="tepe-viewtoggle__btn tepe-viewtoggle__btn--on" data-mode="recent">Recent</button>
+                    <button type="button" class="tepe-viewtoggle__btn" data-mode="people">By person</button>
+                </div>
+            </div>
+
             <div class="tepe-masonry" id="tepe-masonry" aria-live="polite"></div>
+            <div class="tepe-groups" id="tepe-groups" hidden></div>
             <div class="tepe-empty" id="tepe-empty" hidden>
                 <p>No photos yet — be the first to add one!</p>
                 <a class="tepe-btn tepe-btn--gold tepe-btn--icon" href="<?php echo esc_url( $upload ); ?>"><?php echo self::icon_plus(); ?> Add photos</a>
@@ -218,11 +245,31 @@ class TEPE_Frontend {
                 <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__prev" data-prev aria-label="Previous photo"><?php echo self::icon_chevron( 'left' ); ?></button>
                 <figure class="tepe-lightbox__stage">
                     <img class="tepe-lightbox__img" id="tepe-lightbox-img" alt="">
+                    <figcaption class="tepe-lightbox__cap" id="tepe-lightbox-cap"></figcaption>
                 </figure>
                 <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__next" data-next aria-label="Next photo"><?php echo self::icon_chevron( 'right' ); ?></button>
                 <div class="tepe-lightbox__bar">
+                    <button class="tepe-heartbtn" id="tepe-lightbox-like" type="button" aria-label="Like this photo"><?php echo self::icon_heart(); ?><span id="tepe-lightbox-likes">0</span></button>
+                    <button class="tepe-btn tepe-btn--ghost" id="tepe-lightbox-note" type="button" hidden>Leave a note</button>
                     <button class="tepe-btn tepe-btn--gold" id="tepe-lightbox-print" type="button">Order a print</button>
                     <a class="tepe-btn tepe-btn--ghost" id="tepe-lightbox-dl" download>Download</a>
+                </div>
+            </div>
+
+            <!-- Photo-note editor -->
+            <div class="tepe-notemodal" id="tepe-notemodal" hidden>
+                <div class="tepe-notemodal__scrim" data-noteclose></div>
+                <div class="tepe-notemodal__card" role="dialog" aria-modal="true" aria-label="Leave a photo note">
+                    <div class="tepe-notemodal__head">
+                        <h2>Leave a photo note</h2>
+                        <button type="button" class="tepe-iconbtn" data-noteclose aria-label="Close"><?php echo self::icon_x(); ?></button>
+                    </div>
+                    <img class="tepe-notemodal__thumb" id="tepe-note-thumb" alt="">
+                    <label class="tepe-field"><span>Your name</span><input type="text" id="tepe-note-author" autocomplete="name" placeholder="Your name"></label>
+                    <label class="tepe-field"><span>Your note</span><textarea id="tepe-note-msg" rows="4" maxlength="600" placeholder="Share a wish, a memory, a thank-you…"></textarea></label>
+                    <input type="text" id="tepe-note-website" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+                    <p class="tepe-error" id="tepe-note-error" hidden></p>
+                    <button type="button" class="tepe-btn tepe-btn--gold tepe-btn--full" id="tepe-note-save">Add to the guestbook</button>
                 </div>
             </div>
 

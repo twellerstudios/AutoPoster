@@ -2490,7 +2490,7 @@ class TwellerFlow2_Prints {
         if ( $order->customer_phone ) {
             $meta .= TwellerFlow2_Notifications::email_detail_row( 'Phone', esc_html( $order->customer_phone ) );
         }
-        $sources = array( 'gallery' => 'Client gallery', 'public' => 'Public upload', 'studio' => 'Studio (sent to print lab)' );
+        $sources = array( 'gallery' => 'Client gallery', 'public' => 'Public upload', 'studio' => 'Studio (sent to print lab)', 'event' => 'Event gallery' );
         $meta .= TwellerFlow2_Notifications::email_detail_row( 'Source', isset( $sources[ $order->source ] ) ? $sources[ $order->source ] : esc_html( (string) $order->source ) );
 
         $fulfilment = self::get_order_fulfilment( $order );

@@ -24,3 +24,12 @@
 .tepe-admin .tepe-hublinks { background: #fff; border: 1px solid #dcdcde; border-left: 4px solid #c8a34e; border-radius: 4px; padding: .75rem 1rem; margin: 1rem 0; }
 .tepe-admin .tepe-hublinks a { word-break: break-all; }
 .tepe-admin .tepe-hublinks .button { margin-left: .5rem; }
+/* 1.1.0 engagement + notes moderation */
+.tepe-admin .tepe-stats { display: flex; gap: 1.5rem; margin: .5rem 0 1rem; }
+.tepe-admin .tepe-stat { color: #50575e; }
+.tepe-admin .tepe-stat strong { font-size: 1.4rem; color: #1d2327; display: inline-block; margin-right: .25rem; }
+.tepe-admin .tepe-notes-admin { display: grid; grid-template-columns: 1fr; gap: .6rem; }
+.tepe-admin .tepe-noteadmin { display: flex; gap: .75rem; background: #fff; border: 1px solid #dcdcde; border-radius: 8px; padding: .6rem; }
+.tepe-admin .tepe-noteadmin img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; flex: 0 0 auto; }
+.tepe-admin .tepe-noteadmin__msg { margin: 0 0 .2rem; font-style: italic; }
+.tepe-admin .tepe-noteadmin__by { margin: 0 0 .4rem; color: #a9873a; font-weight: 600; font-size: .85rem; }

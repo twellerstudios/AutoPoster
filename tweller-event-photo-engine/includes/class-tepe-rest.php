@@ -59,6 +59,18 @@ class TEPE_REST {
             'permission_callback' => array( __CLASS__, 'require_nonce' ),
         ) );
 
+        register_rest_route( self::NS, "/event/$slug/like/(?P<id>\d+)", array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'toggle_like' ),
+            'permission_callback' => array( __CLASS__, 'require_nonce' ),
+        ) );
+
+        register_rest_route( self::NS, "/event/$slug/note", array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'add_note' ),
+            'permission_callback' => array( __CLASS__, 'require_nonce' ),
+        ) );
+
         register_rest_route( self::NS, '/print-catalog', array(
             'methods'  => 'GET',
             'callback' => array( __CLASS__, 'print_catalog' ),
@@ -89,6 +101,11 @@ class TEPE_REST {
         register_rest_route( self::NS, '/admin/order/(?P<id>\d+)/status', array(
             'methods'  => 'POST',
             'callback' => array( __CLASS__, 'admin_order_status' ),
+            'permission_callback' => array( __CLASS__, 'require_admin' ),
+        ) );
+        register_rest_route( self::NS, '/admin/note/(?P<id>\d+)/(?P<action>approve|delete)', array(
+            'methods'  => 'POST',
+            'callback' => array( __CLASS__, 'admin_note_action' ),
             'permission_callback' => array( __CLASS__, 'require_admin' ),
         ) );
     }
@@ -158,10 +175,16 @@ class TEPE_REST {
         }
 
         $rows   = TEPE_Gallery::get_uploads( $event->ID, array( 'status' => 'approved', 'category' => $category ) );
+        $liked  = TEPE_Gallery::liked_ids( $event->ID, $guest );
+        $ids    = wp_list_pluck( $rows, 'id' );
+        $notes  = TEPE_Gallery::notes_map( $event->ID, $ids );
+
         $photos = array();
         foreach ( $rows as $row ) {
             $p = TEPE_Gallery::upload_payload( $event, $row );
             if ( $guest && (int) $row->guest_id === (int) $guest->id ) $p['mine'] = true;
+            $p['liked'] = in_array( (int) $row->id, $liked, true );
+            if ( isset( $notes[ (int) $row->id ] ) ) $p['note'] = $notes[ (int) $row->id ];
             $photos[] = $p;
         }
 
@@ -170,6 +193,8 @@ class TEPE_REST {
             'event'      => tepe_title( $event ),
             'categories' => TEPE_Categories::get( $event->ID ),
             'photos'     => $photos,
+            'notes'      => TEPE_Gallery::notes_for_event( $event ),
+            'views'      => TEPE_Gallery::get_views( $event->ID ),
             'count'      => count( $photos ),
         ) );
     }
@@ -312,6 +337,61 @@ class TEPE_REST {
         return rest_ensure_response( $result );
     }
 
+    // ── Likes ────────────────────────────────────────────────────────────────
+
+    public static function toggle_like( $request ) {
+        $event = self::resolve_event( $request );
+        if ( is_wp_error( $event ) ) return $event;
+        if ( self::rate_limited( 'like', 300 ) ) {
+            return new WP_Error( 'rate', 'Slow down a moment.', array( 'status' => 429 ) );
+        }
+        $upload = TEPE_Gallery::get_upload( (int) $request['id'] );
+        if ( ! $upload || (int) $upload->event_id !== (int) $event->ID ) {
+            return new WP_Error( 'no_photo', 'Photo not found.', array( 'status' => 404 ) );
+        }
+        $guest  = TEPE_Guest::identify( $event->ID, self::guest_ctx( $request ) );
+        $result = TEPE_Gallery::toggle_like( $event, $upload, $guest );
+        return rest_ensure_response( array_merge( array( 'ok' => true, 'id' => (int) $upload->id ), $result ) );
+    }
+
+    // ── Photo notes (guestbook) ──────────────────────────────────────────────
+
+    public static function add_note( $request ) {
+        $event = self::resolve_event( $request );
+        if ( is_wp_error( $event ) ) return $event;
+        if ( self::honeypot_tripped( $request ) ) {
+            return new WP_Error( 'invalid', 'Invalid submission.', array( 'status' => 400 ) );
+        }
+        if ( self::rate_limited( 'note', 30 ) ) {
+            return new WP_Error( 'rate', 'Too many notes — please try again later.', array( 'status' => 429 ) );
+        }
+
+        $upload = TEPE_Gallery::get_upload( (int) $request->get_param( 'upload_id' ) );
+        if ( ! $upload || (int) $upload->event_id !== (int) $event->ID ) {
+            return new WP_Error( 'no_photo', 'Photo not found.', array( 'status' => 404 ) );
+        }
+
+        $guest = TEPE_Guest::identify( $event->ID, self::guest_ctx( $request ) );
+
+        // A guest may only leave a note on their OWN photo.
+        $mine = $guest && (int) $upload->guest_id === (int) $guest->id;
+        if ( ! $mine ) {
+            return new WP_Error( 'not_yours', 'You can only add a note to a photo you uploaded.', array( 'status' => 403 ) );
+        }
+
+        $author = (string) $request->get_param( 'author_name' );
+        if ( trim( $author ) === '' ) $author = (string) $guest->display_name;
+
+        $note_id = TEPE_Gallery::set_note( $event, $upload, $guest, $request->get_param( 'message' ), $author );
+        if ( is_wp_error( $note_id ) ) return $note_id;
+
+        return rest_ensure_response( array(
+            'ok'    => true,
+            'notes' => TEPE_Gallery::notes_for_event( $event ),
+            'moderated' => (bool) get_post_meta( $event->ID, TEPE_CPT::META_MODERATE, true ),
+        ) );
+    }
+
     public static function print_catalog( $request ) {
         return rest_ensure_response( array(
             'ok'               => true,
@@ -417,6 +497,18 @@ class TEPE_REST {
             array( 'id' => $id )
         );
         return rest_ensure_response( array( 'ok' => true, 'status' => $action ) );
+    }
+
+    public static function admin_note_action( $request ) {
+        global $wpdb;
+        $table = TEPE_Database::table( TEPE_TABLE_NOTES );
+        $id = (int) $request['id'];
+        if ( $request['action'] === 'delete' ) {
+            $wpdb->delete( $table, array( 'id' => $id ) );
+            return rest_ensure_response( array( 'ok' => true, 'deleted' => true ) );
+        }
+        $wpdb->update( $table, array( 'status' => 'approved' ), array( 'id' => $id ) );
+        return rest_ensure_response( array( 'ok' => true, 'status' => 'approved' ) );
     }
 
     public static function admin_order_status( $request ) {

@@ -147,7 +147,7 @@ class TEPE_Admin {
 
             <table class="wp-list-table widefat fixed striped">
                 <thead><tr>
-                    <th>Event</th><th>Source</th><th>Photos</th><th>Guests</th><th>Orders</th><th>Status</th><th></th>
+                    <th>Event</th><th>Source</th><th>Photos</th><th>Guests</th><th>Views</th><th>Orders</th><th>Status</th><th></th>
                 </tr></thead>
                 <tbody>
                 <?php if ( empty( $events ) ) : ?>
@@ -174,6 +174,7 @@ class TEPE_Admin {
                         <td><?php echo $booked ? '<span class="tepe-tag tepe-tag--gold">Booking</span>' : '<span class="tepe-tag">Free / self-serve</span>'; ?></td>
                         <td><?php echo (int) $photos; ?></td>
                         <td><?php echo (int) $guests; ?></td>
+                        <td><?php echo (int) TEPE_Gallery::get_views( $ev->ID ); ?></td>
                         <td><?php echo (int) $orders; ?></td>
                         <td><?php echo $locked ? '🔒 Locked' : '✅ Open'; ?><?php echo $feat ? ' · ⭐' : ''; ?></td>
                         <td><a class="button button-small" href="<?php echo esc_url( $detail ); ?>">Manage</a></td>
@@ -220,6 +221,7 @@ class TEPE_Admin {
         $uploads = TEPE_Gallery::get_uploads( $id, array() ); // all statuses
         $guests  = TEPE_Guest::list_for_event( $id );
         $orders  = TEPE_Prints::list_orders( $id );
+        $notes   = TEPE_Gallery::notes_for_event( $event, null ); // all statuses for moderation
         $cats    = TEPE_Categories::get_buckets( $id );
         $qr_svg  = TEPE_Rewrite::qr_url( $event, 'svg' );
         $qr_png  = TEPE_Rewrite::qr_url( $event, 'png' );
@@ -288,6 +290,9 @@ class TEPE_Admin {
                     </div>
 
                     <h2>Print orders (<?php echo count( $orders ); ?>)</h2>
+                    <?php if ( TEPE_Prints::bridge_available() ) : ?>
+                        <p class="description">These orders also appear in <a href="<?php echo esc_url( admin_url( 'admin.php?page=tweller-flow-2-prints' ) ); ?>">Tweller Bookings → Print Orders</a> (tagged <strong>Event</strong>), alongside every website order — manage fulfilment there.</p>
+                    <?php endif; ?>
                     <?php if ( empty( $orders ) ) : ?><p class="description">No orders yet.</p><?php else : ?>
                     <table class="widefat striped tepe-orders">
                         <thead><tr><th>Ref</th><th>Customer</th><th>Total</th><th>Pay</th><th>Status</th></tr></thead>
@@ -326,6 +331,34 @@ class TEPE_Admin {
                         <?php endforeach; ?>
                         </tbody>
                     </table>
+                    <?php endif; ?>
+
+                    <h2>Engagement</h2>
+                    <p class="tepe-stats">
+                        <span class="tepe-stat"><strong><?php echo (int) TEPE_Gallery::get_views( $id ); ?></strong> views</span>
+                        <span class="tepe-stat"><strong><?php echo (int) TEPE_Gallery::count_uploads( $id, 'approved' ); ?></strong> photos</span>
+                        <span class="tepe-stat"><strong><?php echo (int) count( $notes ); ?></strong> notes</span>
+                    </p>
+
+                    <h2>Photo Notes / Guestbook (<?php echo count( $notes ); ?>)</h2>
+                    <?php if ( empty( $notes ) ) : ?><p class="description">No notes yet.</p><?php else : ?>
+                    <div class="tepe-notes-admin">
+                        <?php foreach ( $notes as $n ) : ?>
+                            <div class="tepe-noteadmin" data-id="<?php echo (int) $n['id']; ?>">
+                                <img src="<?php echo esc_url( $n['thumb_url'] ); ?>" alt="" loading="lazy">
+                                <div>
+                                    <p class="tepe-noteadmin__msg"><?php echo esc_html( $n['message'] ); ?></p>
+                                    <p class="tepe-noteadmin__by">— <?php echo esc_html( $n['author'] ?: 'A guest' ); ?>
+                                        <?php if ( $n['status'] === 'pending' ) : ?><span class="tepe-tag tepe-tag--gold">Pending</span><?php endif; ?>
+                                    </p>
+                                    <p>
+                                        <?php if ( $n['status'] === 'pending' ) : ?><button class="button button-small tepe-note-approve" data-id="<?php echo (int) $n['id']; ?>">Approve</button><?php endif; ?>
+                                        <button class="button button-small tepe-note-delete" data-id="<?php echo (int) $n['id']; ?>">Delete</button>
+                                    </p>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                     <?php endif; ?>
                 </div>
             </div>

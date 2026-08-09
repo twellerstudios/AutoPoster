@@ -13,6 +13,9 @@
 
     // Crisp, symmetric check icon reused for selection + done states.
     var SVG_CHECK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+    // Heart used on tiles, top-liked and the lightbox. fill:currentColor so the
+    // "liked" state can flip it to gold/red purely via CSS.
+    var HEART_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 21C6.7 16.3 3 13 3 8.9 3 6.1 5.1 4 7.8 4c1.6 0 3.1.8 4.2 2 1.1-1.2 2.6-2 4.2-2C18.9 4 21 6.1 21 8.9c0 4.1-3.7 7.4-9 12.1z"/></svg>';
 
     // ── tiny helpers ────────────────────────────────────────────────────────
     var $ = function (sel, root) { return (root || document).querySelector(sel); };
@@ -101,9 +104,10 @@
        GALLERY VIEW
     ======================================================================= */
     function initGallery() {
-        var state = { category: null, photos: [], selectMode: false, selected: {}, lightIdx: 0, reward: loadReward() };
+        var state = { category: null, mode: 'recent', photos: [], notes: [], selectMode: false, selected: {}, lightIdx: 0, reward: loadReward() };
 
         var masonry = $('#tepe-masonry');
+        var groupsEl = $('#tepe-groups');
         var loading = $('#tepe-loading');
         var empty = $('#tepe-empty');
 
@@ -116,6 +120,18 @@
         });
         if (state.reward) showReward(state.reward, true);
 
+        // View toggle (Recent / By person)
+        $$('#tepe-viewtoggle .tepe-viewtoggle__btn').forEach(function (b) {
+            b.addEventListener('click', function () {
+                state.mode = b.getAttribute('data-mode');
+                $$('#tepe-viewtoggle .tepe-viewtoggle__btn').forEach(function (x) { x.classList.toggle('tepe-viewtoggle__btn--on', x === b); });
+                render();
+            });
+        });
+
+        // Note modal wiring
+        wireNoteModal();
+
         function load() {
             loading.hidden = false; empty.hidden = true;
             var q = 'event/' + CFG.slug + '/photos?fingerprint=' + encodeURIComponent(IDENT.fingerprint) + '&guest_uid=' + encodeURIComponent(IDENT.uid);
@@ -125,9 +141,13 @@
             api(q).then(function (r) {
                 loading.hidden = true;
                 state.photos = r.photos || [];
+                state.notes = r.notes || [];
                 if (r.categories) { CFG.categories = r.categories; renderCats(); }
                 var cnt = $('#tepe-count'); if (cnt) cnt.textContent = r.count;
+                var vw = $('#tepe-views'); if (vw && typeof r.views !== 'undefined') vw.textContent = r.views;
                 render();
+                renderTop();
+                renderGuestbook();
             }).catch(function (e) { loading.textContent = e.message; });
         }
 
@@ -146,18 +166,52 @@
         }
 
         function render() {
-            masonry.innerHTML = '';
-            if (!state.photos.length) { empty.hidden = false; return; }
+            masonry.innerHTML = ''; groupsEl.innerHTML = '';
+            if (!state.photos.length) { empty.hidden = false; masonry.hidden = true; groupsEl.hidden = true; return; }
             empty.hidden = true;
-            var promoAt = CFG.promoEveryN || 11, pi = 0;
-            state.photos.forEach(function (p, i) {
-                masonry.appendChild(tile(p, i));
-                if (CFG.freeTier && CFG.promoCards && CFG.promoCards.length && (i + 1) % promoAt === 0) {
-                    masonry.appendChild(promoCard(CFG.promoCards[pi % CFG.promoCards.length])); pi++;
-                }
-            });
+
+            if (state.mode === 'people') {
+                masonry.hidden = true; groupsEl.hidden = false;
+                renderPeople();
+            } else {
+                groupsEl.hidden = true; masonry.hidden = false;
+                var promoAt = CFG.promoEveryN || 11, pi = 0;
+                state.photos.forEach(function (p, i) {
+                    masonry.appendChild(tile(p, i));
+                    if (CFG.freeTier && CFG.promoCards && CFG.promoCards.length && (i + 1) % promoAt === 0) {
+                        masonry.appendChild(promoCard(CFG.promoCards[pi % CFG.promoCards.length])); pi++;
+                    }
+                });
+            }
             document.body.classList.toggle('tepe-selectmode', state.selectMode);
             renderSelBar();
+        }
+
+        // Group photos by the name of who uploaded them.
+        function renderPeople() {
+            var groups = {}, order = [];
+            state.photos.forEach(function (p) {
+                var key = (p.uploader && p.uploader.trim()) ? p.uploader.trim() : ' '; // unnamed sinks last
+                if (!groups[key]) { groups[key] = []; order.push(key); }
+                groups[key].push(p);
+            });
+            order.sort(function (a, b) {
+                if (a === ' ') return 1; if (b === ' ') return -1;
+                return a.localeCompare(b);
+            });
+            order.forEach(function (key) {
+                var named = key !== ' ';
+                var wrap = el('div', 'tepe-group');
+                var head = el('div', 'tepe-group__head');
+                head.innerHTML = '<span class="tepe-group__avatar">' + esc(named ? key.charAt(0).toUpperCase() : '★') + '</span>' +
+                    '<span class="tepe-group__name">' + esc(named ? key : 'Other guests') + '</span>' +
+                    '<span class="tepe-group__count">' + groups[key].length + '</span>';
+                wrap.appendChild(head);
+                var grid = el('div', 'tepe-group__grid');
+                groups[key].forEach(function (p) { grid.appendChild(tile(p, state.photos.indexOf(p))); });
+                wrap.appendChild(grid);
+                groupsEl.appendChild(wrap);
+            });
         }
 
         function tile(p, i) {
@@ -175,19 +229,104 @@
                 img.onerror = function () { img.onerror = null; img.src = p.url; };
                 t.appendChild(img);
             }
-            if (p.mine) t.appendChild(el('span', 'tepe-tile__badge', 'Yours'));
+            // Uploader name badge (bottom-left)
+            if (p.uploader && p.uploader.trim()) {
+                t.appendChild(el('span', 'tepe-tile__by', esc(p.uploader.trim())));
+            }
+            if (p.note) t.appendChild(el('span', 'tepe-tile__noteflag', '✎'));
             var chk = el('span', 'tepe-tile__check', SVG_CHECK); t.appendChild(chk);
+
+            // Heart (top-right)
+            var heart = el('button', 'tepe-heart' + (p.liked ? ' tepe-heart--on' : ''));
+            heart.type = 'button';
+            heart.innerHTML = HEART_SVG + '<span>' + (p.likes || 0) + '</span>';
+            heart.addEventListener('click', function (ev) { ev.stopPropagation(); like(p); });
+            t.appendChild(heart);
+
             if (CFG.allowPrints) {
                 var pb = el('button', 'tepe-tile__print', 'Order print'); pb.type = 'button';
                 pb.addEventListener('click', function (ev) { ev.stopPropagation(); openDrawer([p]); });
                 t.appendChild(pb);
             }
+
+            // Tap = open; double-tap = like; long-press/right-click = select.
+            var lastTap = 0;
             t.addEventListener('click', function () {
-                if (state.selectMode) { toggleSel(p); }
-                else { state.lightIdx = i; openLightbox(); }
+                if (state.selectMode) { toggleSel(p); return; }
+                var now = Date.now();
+                if (now - lastTap < 300) { lastTap = 0; like(p, true); return; }
+                lastTap = now;
+                setTimeout(function () {
+                    if (lastTap && Date.now() - lastTap >= 280) { state.lightIdx = state.photos.indexOf(p); openLightbox(); lastTap = 0; }
+                }, 300);
             });
             t.addEventListener('contextmenu', function (ev) { ev.preventDefault(); state.selectMode = true; toggleSel(p); render(); });
             return t;
+        }
+
+        // ── Likes ──
+        function like(p, forceOn) {
+            // Optimistic toggle (double-tap only ever turns it ON).
+            var turningOn = forceOn ? true : !p.liked;
+            if (forceOn && p.liked) { heartBurst(p); return; }
+            p.liked = turningOn;
+            p.likes = Math.max(0, (p.likes || 0) + (turningOn ? 1 : -1));
+            syncHearts(p); if (turningOn) heartBurst(p);
+            var fd = new FormData(); identFields(fd);
+            xhrPost('event/' + CFG.slug + '/like/' + p.id, fd).then(function (r) {
+                p.likes = r.likes; p.liked = r.liked; syncHearts(p); renderTop();
+            }).catch(function () { /* keep optimistic state */ });
+        }
+        function syncHearts(p) {
+            $$('.tepe-tile[data-id="' + p.id + '"] .tepe-heart').forEach(function (h) {
+                h.classList.toggle('tepe-heart--on', !!p.liked);
+                var s = h.querySelector('span'); if (s) s.textContent = p.likes;
+            });
+            if (!lb.hidden && state.photos[state.lightIdx] && state.photos[state.lightIdx].id === p.id) {
+                $('#tepe-lightbox-like').classList.toggle('tepe-heartbtn--on', !!p.liked);
+                $('#tepe-lightbox-likes').textContent = p.likes;
+            }
+        }
+        function heartBurst(p) {
+            var host = $$('.tepe-tile[data-id="' + p.id + '"]')[0]; if (!host) return;
+            var b = el('span', 'tepe-heartburst', HEART_SVG); host.appendChild(b);
+            setTimeout(function () { b.remove(); }, 700);
+        }
+
+        // ── Top liked ──
+        function renderTop() {
+            var sec = $('#tepe-top'), strip = $('#tepe-top-strip'); if (!sec) return;
+            var top = state.photos.filter(function (p) { return (p.likes || 0) > 0; })
+                .sort(function (a, b) { return b.likes - a.likes; }).slice(0, 10);
+            if (!top.length) { sec.hidden = true; return; }
+            sec.hidden = false; strip.innerHTML = '';
+            top.forEach(function (p) {
+                var c = el('button', 'tepe-topcard'); c.type = 'button';
+                c.innerHTML = '<img loading="lazy" src="' + esc(p.thumb_url) + '" alt=""><span class="tepe-topcard__likes">' + HEART_SVG + (p.likes) + '</span>';
+                c.addEventListener('click', function () { state.lightIdx = state.photos.indexOf(p); openLightbox(); });
+                strip.appendChild(c);
+            });
+        }
+
+        // ── Guestbook ──
+        function renderGuestbook() {
+            var sec = $('#tepe-guestbook'), feed = $('#tepe-guestbook-feed'); if (!sec) return;
+            if (!state.notes.length) { sec.hidden = true; return; }
+            sec.hidden = false; feed.innerHTML = '';
+            state.notes.forEach(function (n) {
+                var card = el('figure', 'tepe-note');
+                card.innerHTML =
+                    '<img class="tepe-note__photo" loading="lazy" src="' + esc(n.thumb_url) + '" alt="">' +
+                    '<figcaption class="tepe-note__body">' +
+                        '<p class="tepe-note__msg">' + esc(n.message) + '</p>' +
+                        '<p class="tepe-note__by">— ' + esc(n.author || 'A guest') + '</p>' +
+                    '</figcaption>';
+                card.addEventListener('click', function () {
+                    var idx = state.photos.map(function (p) { return p.id; }).indexOf(n.upload_id);
+                    if (idx > -1) { state.lightIdx = idx; openLightbox(); }
+                });
+                feed.appendChild(card);
+            });
         }
 
         function promoCard(c) {
@@ -241,6 +380,8 @@
             lb.querySelector('[data-prev]').addEventListener('click', function () { navLight(-1); });
             lb.querySelector('[data-next]').addEventListener('click', function () { navLight(1); });
             $('#tepe-lightbox-print').addEventListener('click', function () { closeLightbox(); openDrawer([state.photos[state.lightIdx]]); });
+            $('#tepe-lightbox-like').addEventListener('click', function () { like(state.photos[state.lightIdx]); });
+            $('#tepe-lightbox-note').addEventListener('click', function () { openNoteModal(state.photos[state.lightIdx]); });
             document.addEventListener('keydown', function (e) {
                 if (lb.hidden) return;
                 if (e.key === 'Escape') closeLightbox();
@@ -253,15 +394,75 @@
             $('#tepe-lightbox-img').src = p.url;
             var dl = $('#tepe-lightbox-dl'); dl.href = p.url;
             $('#tepe-lightbox-print').style.display = CFG.allowPrints ? '' : 'none';
+            // Caption line: uploader name + any note.
+            var cap = $('#tepe-lightbox-cap'), bits = '';
+            if (p.uploader && p.uploader.trim()) bits += '<span class="tepe-lightbox__by">' + esc(p.uploader.trim()) + '</span>';
+            if (p.note) bits += '<span class="tepe-lightbox__note">“' + esc(p.note) + '”</span>';
+            cap.innerHTML = bits; cap.style.display = bits ? '' : 'none';
+            // Heart state
+            $('#tepe-lightbox-like').classList.toggle('tepe-heartbtn--on', !!p.liked);
+            $('#tepe-lightbox-likes').textContent = p.likes || 0;
+            // "Leave a note" only on the guest's own photos.
+            $('#tepe-lightbox-note').hidden = !p.mine;
             lb.hidden = false;
         }
         function navLight(d) { state.lightIdx = (state.lightIdx + d + state.photos.length) % state.photos.length; openLightbox(); }
         function closeLightbox() { lb.hidden = true; }
 
+        // ── Photo-note modal ──
+        function wireNoteModal() {
+            var m = $('#tepe-notemodal'); if (!m) return;
+            m.addEventListener('click', function (e) { if (e.target.hasAttribute('data-noteclose')) closeNoteModal(); });
+            $('#tepe-note-save').addEventListener('click', saveNote);
+        }
+        function openNoteModal(p) {
+            if (!p || !p.mine) { toast('You can add a note to your own photos.'); return; }
+            var m = $('#tepe-notemodal');
+            m.dataset.id = p.id;
+            $('#tepe-note-thumb').src = p.thumb_url;
+            $('#tepe-note-msg').value = p.note || '';
+            var a = $('#tepe-note-author'); if (!a.value) a.value = (loadMyName() || '');
+            $('#tepe-note-error').hidden = true;
+            m.hidden = false;
+        }
+        function closeNoteModal() { $('#tepe-notemodal').hidden = true; }
+        function saveNote() {
+            var m = $('#tepe-notemodal'), id = m.dataset.id;
+            var msg = $('#tepe-note-msg').value.trim(), author = $('#tepe-note-author').value.trim();
+            var err = $('#tepe-note-error');
+            if (($('#tepe-note-website') || {}).value) return; // honeypot
+            if (!msg) { err.textContent = 'Please write a short note first.'; err.hidden = false; return; }
+            var btn = $('#tepe-note-save'); btnBusy(btn, 'Saving…');
+            var fd = new FormData(); identFields(fd);
+            fd.append('upload_id', id); fd.append('message', msg); fd.append('author_name', author); fd.append('website', '');
+            xhrPost('event/' + CFG.slug + '/note', fd).then(function (r) {
+                if (author) saveMyName(author);
+                var p = state.photos.filter(function (x) { return String(x.id) === String(id); })[0];
+                if (p) p.note = msg;
+                state.notes = r.notes || state.notes;
+                renderGuestbook(); render();
+                closeNoteModal(); btnIdle(btn, 'Add to the guestbook');
+                toast(r.moderated ? 'Thanks! Your note will appear once approved.' : 'Added to the guestbook 💛');
+            }).catch(function (e) { err.textContent = e.message; err.hidden = false; btnIdle(btn, 'Add to the guestbook'); });
+        }
+
         // ── Print drawer ──
         function openDrawer(photos) {
             photos = (photos || []).filter(Boolean);
             if (!photos.length) { toast('Select at least one photo.'); return; }
+
+            // Print sizes must be loaded, or the drawer would show empty rows.
+            if (!CFG.catalog || !CFG.catalog.length) {
+                api('print-catalog').then(function (r) {
+                    CFG.catalog = (r && r.products) || [];
+                    if (typeof r.delivery_fee !== 'undefined') CFG.deliveryFee = r.delivery_fee;
+                    if (r.bank_instructions) CFG.bankInstructions = r.bank_instructions;
+                    if (CFG.catalog.length) openDrawer(photos);
+                    else toast('Print sizes are being set up — please try again shortly.');
+                }).catch(function () { toast('Could not load print sizes. Please try again.'); });
+                return;
+            }
+
             var drawer = $('#tepe-drawer'); var body = $('#tepe-drawer-body');
             body.innerHTML = '';
 
@@ -269,7 +470,17 @@
             var cart = {}; // key photoId::productId -> qty
             photos.forEach(function (p) {
                 var line = el('div', 'tepe-pline');
-                line.appendChild((function () { var i = el('img'); i.src = p.thumb_url; i.onerror = function () { i.src = p.url; }; return i; })());
+                line.appendChild((function () {
+                    var i = el('img'); i.alt = '';
+                    i.src = p.thumb_url;
+                    // thumb -> full -> neutral placeholder, so it never shows a broken box.
+                    i.onerror = function () {
+                        if (i.src !== p.url && !/heic|heif/i.test(p.url)) { i.src = p.url; return; }
+                        i.onerror = null; i.classList.add('tepe-pline__ph');
+                        i.removeAttribute('src');
+                    };
+                    return i;
+                })());
                 var sizes = el('div'); sizes.style.flex = '1';
                 CFG.catalog.forEach(function (prod) {
                     var row = el('div', 'tepe-psize');
@@ -436,6 +647,8 @@
         }
     }
 
+    function loadMyName() { try { return localStorage.getItem('tepe_name') || ''; } catch (e) { return ''; } }
+    function saveMyName(n) { try { if (n) localStorage.setItem('tepe_name', n); } catch (e) {} }
     function loadReward() { try { return JSON.parse(localStorage.getItem('tepe_reward_' + CFG.slug) || 'null'); } catch (e) { return null; } }
     function saveReward(r) { try { localStorage.setItem('tepe_reward_' + CFG.slug, JSON.stringify(r)); } catch (e) {} }
     function clearReward() { try { localStorage.removeItem('tepe_reward_' + CFG.slug); } catch (e) {} }
@@ -449,6 +662,9 @@
         if (!dropzone) return; // locked
         var category = '';
         var files = [];
+
+        var nameInput = $('#tepe-guest-name');
+        if (nameInput && !nameInput.value) nameInput.value = loadMyName();
 
         renderDest();
 
@@ -520,6 +736,7 @@
             var website = ($('#tepe-website') || {}).value || '';
             if (website) { return; } // honeypot
             var name = ($('#tepe-guest-name') || {}).value || '';
+            saveMyName(name.trim());
             var pending = files.filter(function (f) { return !f.done; });
             if (!pending.length) { goToGallery(); return; }
 

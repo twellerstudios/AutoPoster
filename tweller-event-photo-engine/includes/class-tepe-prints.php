@@ -220,6 +220,23 @@ class TEPE_Prints {
         if ( $promo ) TEPE_Promo::redeem( $promo->id, $order_id );
         if ( ! empty( $args['guest'] ) && is_object( $args['guest'] ) ) TEPE_Guest::bump_orders( $args['guest']->id, 1 );
 
+        // Link into the Tweller Bookings print-order system so every print
+        // order — event or website — lands in the one backend list, tagged
+        // by source. Best-effort; the event's own record above is unaffected.
+        self::mirror_to_bookings( $event, array(
+            'order_ref'      => $order_ref,
+            'name'           => $name,
+            'email'          => ( $email && is_email( $email ) ) ? $email : '',
+            'phone'          => $phone,
+            'items'          => $items,
+            'discount'       => $discount,
+            'total'          => $total,
+            'payment_method' => $payment_method,
+            'delivery'       => $delivery_option,
+            'promo_code'     => $promo ? $promo->code : '',
+            'notes'          => sanitize_textarea_field( $args['notes'] ?? '' ),
+        ) );
+
         $order = self::get_order( $order_id );
         self::notify( $order, $event );
 
@@ -246,6 +263,79 @@ class TEPE_Prints {
 
     public static function generate_ref() {
         return 'EVP-' . strtoupper( base_convert( time(), 10, 36 ) ) . '-' . strtoupper( wp_generate_password( 4, false, false ) );
+    }
+
+    /**
+     * Mirror an event print order into the Tweller Bookings print-orders table
+     * (source = 'event') so it shows up in the studio's single Print Orders
+     * screen alongside website/gallery/studio orders, with the event title as
+     * its reference. No-op when Bookings isn't installed.
+     */
+    private static function mirror_to_bookings( $event, $d ) {
+        if ( ! self::bridge_available() ) return;
+        global $wpdb;
+        $table = $wpdb->prefix . 'tweller_print_orders';
+        // Only if the Bookings orders table actually exists.
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) return;
+
+        $base  = TEPE_Gallery::url( $event );
+        $items = array();
+        foreach ( $d['items'] as $it ) {
+            if ( ( $it['product_id'] ?? '' ) === 'delivery_fee' ) {
+                $items[] = array(
+                    'product_id' => 'delivery_fee', 'product_name' => 'Delivery', 'category' => 'service',
+                    'price' => (float) $it['unit'], 'qty' => 1, 'filename' => '', 'photo_url' => '', 'thumb_url' => '', 'crop' => null,
+                );
+                continue;
+            }
+            $fn = (string) ( $it['filename'] ?? '' );
+            $items[] = array(
+                'product_id'   => (string) $it['product_id'],
+                'product_name' => (string) $it['name'] . ( ! empty( $it['size'] ) ? ' (' . $it['size'] . ')' : '' ),
+                'category'     => 'print',
+                'price'        => (float) $it['unit'],
+                'qty'          => (int) $it['qty'],
+                'filename'     => $fn,
+                'photo_url'    => $fn ? $base . '/' . $fn : '',
+                'thumb_url'    => $fn ? $base . '/thumbs/' . tepe_thumb_name( $fn ) : '',
+                'crop'         => null,
+            );
+        }
+        // Fulfilment marker line (so the lab sees how it's handed over).
+        $ful_label = $d['delivery'] === 'delivery' ? 'Delivery' : ( $d['delivery'] === 'meetup' ? 'Meet-up' : 'Hand over on event date' );
+        $items[] = array(
+            'product_id' => 'fulfilment', 'product_name' => 'Fulfilment: ' . $ful_label, 'category' => 'service',
+            'price' => 0.0, 'qty' => 1, 'filename' => '', 'photo_url' => '', 'thumb_url' => '', 'crop' => null,
+        );
+        // Promo discount as a negative line so the item breakdown matches total.
+        if ( (float) $d['discount'] > 0 ) {
+            $items[] = array(
+                'product_id' => 'promo_discount', 'product_name' => 'Promo' . ( $d['promo_code'] ? ' — ' . $d['promo_code'] : '' ),
+                'category' => 'service', 'price' => -1 * round( (float) $d['discount'], 2 ), 'qty' => 1,
+                'filename' => '', 'photo_url' => '', 'thumb_url' => '', 'crop' => null,
+            );
+        }
+
+        $notes = 'Event gallery order — ' . tepe_title( $event ) . ' (' . $event->post_name . ")\n"
+            . 'Payment: ' . strtoupper( $d['payment_method'] ) . ' · Fulfilment: ' . $ful_label;
+        if ( trim( (string) $d['notes'] ) !== '' ) $notes .= "\n" . $d['notes'];
+
+        $now = current_time( 'mysql' );
+        $wpdb->insert( $table, array(
+            'order_ref'      => $d['order_ref'],
+            'session_id'     => null,
+            'session_code'   => mb_substr( tepe_title( $event ), 0, 120 ),
+            'customer_name'  => $d['name'],
+            'customer_email' => $d['email'],
+            'customer_phone' => $d['phone'],
+            'items'          => wp_json_encode( $items ),
+            'subtotal'       => round( (float) $d['total'], 2 ),
+            'status'         => 'new',
+            'source'         => 'event',
+            'notes'          => $notes,
+            'created_at'     => $now,
+            'updated_at'     => $now,
+        ) );
     }
 
     // ── Queries ─────────────────────────────────────────────────────────────

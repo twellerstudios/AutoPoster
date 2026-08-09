@@ -208,6 +208,7 @@ class TEPE_Gallery {
             'category'         => isset( $data['category'] ) ? sanitize_key( $data['category'] ) : '',
             'filename'         => $data['filename'],
             'original_name'    => isset( $data['original_name'] ) ? $data['original_name'] : '',
+            'uploader_name'    => isset( $data['uploader_name'] ) ? sanitize_text_field( $data['uploader_name'] ) : '',
             'mime'             => isset( $data['mime'] ) ? $data['mime'] : '',
             'width'            => isset( $data['width'] ) ? (int) $data['width'] : 0,
             'height'           => isset( $data['height'] ) ? (int) $data['height'] : 0,
@@ -301,8 +302,167 @@ class TEPE_Gallery {
             'height'    => (int) $upload->height,
             'caption'   => $upload->caption,
             'likes'     => (int) $upload->likes,
+            'liked'     => false,
+            'uploader'  => isset( $upload->uploader_name ) ? (string) $upload->uploader_name : '',
+            'note'      => '',
             'mine'      => false,
         );
+    }
+
+    // ── Likes ───────────────────────────────────────────────────────────────
+
+    /**
+     * Toggle a like for a photo from a device. One like per (photo, device).
+     * Returns [ likes:int, liked:bool ].
+     */
+    public static function toggle_like( $event, $upload, $guest ) {
+        global $wpdb;
+        $likes = TEPE_Database::table( TEPE_TABLE_LIKES );
+        $uploads = TEPE_Database::table( TEPE_TABLE_UPLOADS );
+        $fp = $guest ? ( $guest->fingerprint_hash ?: ( 'uid:' . $guest->guest_uid ) ) : '';
+        if ( $fp === '' ) $fp = TEPE_Guest::hash( TEPE_Guest::client_ip() );
+
+        $existing = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM $likes WHERE upload_id = %d AND fingerprint_hash = %s", (int) $upload->id, $fp
+        ) );
+
+        if ( $existing ) {
+            $wpdb->delete( $likes, array( 'id' => (int) $existing ) );
+            $liked = false;
+        } else {
+            // INSERT IGNORE-style: the UNIQUE key protects against races.
+            $wpdb->query( $wpdb->prepare(
+                "INSERT IGNORE INTO $likes (event_id, upload_id, guest_id, fingerprint_hash, created_at) VALUES (%d, %d, %d, %s, %s)",
+                (int) $event->ID, (int) $upload->id, $guest ? (int) $guest->id : 0, $fp, current_time( 'mysql' )
+            ) );
+            $liked = true;
+        }
+
+        // Recompute from the source of truth so the counter can't drift.
+        $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $likes WHERE upload_id = %d", (int) $upload->id ) );
+        $wpdb->update( $uploads, array( 'likes' => $count ), array( 'id' => (int) $upload->id ) );
+
+        return array( 'likes' => $count, 'liked' => $liked );
+    }
+
+    /** Set of upload ids this device has liked, for the current photo set. */
+    public static function liked_ids( $event_id, $guest ) {
+        if ( ! $guest ) return array();
+        global $wpdb;
+        $likes = TEPE_Database::table( TEPE_TABLE_LIKES );
+        $fp = $guest->fingerprint_hash ?: ( 'uid:' . $guest->guest_uid );
+        $rows = $wpdb->get_col( $wpdb->prepare(
+            "SELECT upload_id FROM $likes WHERE event_id = %d AND fingerprint_hash = %s", (int) $event_id, $fp
+        ) );
+        return array_map( 'intval', $rows );
+    }
+
+    // ── Photo notes (guestbook) ───────────────────────────────────────────
+
+    /** Add or replace the note on one of the guest's own photos. */
+    public static function set_note( $event, $upload, $guest, $message, $author ) {
+        global $wpdb;
+        $notes = TEPE_Database::table( TEPE_TABLE_NOTES );
+
+        $message = trim( wp_strip_all_tags( (string) $message ) );
+        if ( $message === '' ) return new WP_Error( 'empty_note', 'Please write a short note first.', array( 'status' => 400 ) );
+        if ( mb_strlen( $message ) > 600 ) $message = mb_substr( $message, 0, 600 );
+
+        $data = array(
+            'event_id'    => (int) $event->ID,
+            'upload_id'   => (int) $upload->id,
+            'guest_id'    => $guest ? (int) $guest->id : null,
+            'author_name' => sanitize_text_field( $author ),
+            'message'     => $message,
+            'status'      => get_post_meta( $event->ID, TEPE_CPT::META_MODERATE, true ) ? 'pending' : 'approved',
+            'created_at'  => current_time( 'mysql' ),
+        );
+
+        $existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $notes WHERE upload_id = %d", (int) $upload->id ) );
+        if ( $existing ) {
+            unset( $data['created_at'] );
+            $wpdb->update( $notes, $data, array( 'id' => (int) $existing ) );
+            $id = (int) $existing;
+        } else {
+            $wpdb->insert( $notes, $data );
+            $id = (int) $wpdb->insert_id;
+        }
+        return $id;
+    }
+
+    /** All notes for an event (approved), newest first, joined to their photo. */
+    public static function notes_for_event( $event, $only_status = 'approved' ) {
+        global $wpdb;
+        $notes   = TEPE_Database::table( TEPE_TABLE_NOTES );
+        $uploads = TEPE_Database::table( TEPE_TABLE_UPLOADS );
+        $base    = self::url( $event );
+
+        $where = 'n.event_id = %d';
+        $vals  = array( (int) $event->ID );
+        if ( $only_status !== null ) { $where .= ' AND n.status = %s'; $vals[] = $only_status; }
+
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT n.*, u.filename FROM $notes n JOIN $uploads u ON u.id = n.upload_id WHERE $where ORDER BY n.created_at DESC",
+            $vals
+        ) );
+
+        $out = array();
+        foreach ( $rows as $r ) {
+            $out[] = array(
+                'id'        => (int) $r->id,
+                'upload_id' => (int) $r->upload_id,
+                'author'    => $r->author_name,
+                'message'   => $r->message,
+                'thumb_url' => $base . '/thumbs/' . tepe_thumb_name( $r->filename ),
+                'status'    => $r->status,
+                'created'   => $r->created_at,
+            );
+        }
+        return $out;
+    }
+
+    /** The note on a single photo (or null). */
+    public static function note_for_upload( $upload_id ) {
+        global $wpdb;
+        $notes = TEPE_Database::table( TEPE_TABLE_NOTES );
+        $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $notes WHERE upload_id = %d", (int) $upload_id ) );
+        return $row ?: null;
+    }
+
+    /** upload_id => message map for a set of ids (approved only). */
+    public static function notes_map( $event_id, $ids ) {
+        if ( empty( $ids ) ) return array();
+        global $wpdb;
+        $notes = TEPE_Database::table( TEPE_TABLE_NOTES );
+        $ids = array_map( 'intval', $ids );
+        $in = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT upload_id, message FROM $notes WHERE status = 'approved' AND upload_id IN ($in)", $ids
+        ) );
+        $map = array();
+        foreach ( $rows as $r ) $map[ (int) $r->upload_id ] = $r->message;
+        return $map;
+    }
+
+    // ── Views ─────────────────────────────────────────────────────────────
+
+    public static function get_views( $event_id ) {
+        return (int) get_post_meta( $event_id, '_tepe_views', true );
+    }
+
+    /**
+     * Count one gallery view per device per 12h (cookie-deduped) so the number
+     * reflects unique-ish visits rather than every REST poll.
+     */
+    public static function maybe_count_view( $event ) {
+        $cookie = 'tepe_v_' . $event->ID;
+        if ( ! empty( $_COOKIE[ $cookie ] ) ) return;
+        $n = self::get_views( $event->ID ) + 1;
+        update_post_meta( $event->ID, '_tepe_views', $n );
+        if ( ! headers_sent() ) {
+            setcookie( $cookie, '1', array( 'expires' => time() + 12 * 3600, 'path' => '/', 'samesite' => 'Lax' ) );
+            $_COOKIE[ $cookie ] = '1';
+        }
     }
 
     // ── Cover ──────────────────────────────────────────────────────────────

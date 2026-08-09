@@ -98,6 +98,7 @@
 .tepe-hero--img { min-height: 42vh; display: flex; align-items: flex-end; }
 .tepe-hero__inner { width: 100%; max-width: 720px; margin: 0 auto; }
 .tepe-hero__title { font-size: clamp(1.6rem, 6vw, 2.6rem); margin: 0 0 .4rem; color: #fff; line-height: 1.1; }
+.tepe-hero__brand { margin: .1rem 0 .4rem; font-size: .72rem; letter-spacing: .28em; text-transform: uppercase; color: var(--tepe-gold); font-weight: 700; }
 .tepe-hero__welcome { opacity: .92; margin: .2rem 0 .6rem; }
 .tepe-hero__meta { font-size: .9rem; opacity: .8; margin: .3rem 0 1.1rem; letter-spacing: .02em; }
 .tepe-hero__actions { display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; }
@@ -304,3 +305,93 @@
 .tepe-myevent__links .tepe-btn { font-size: .85rem; padding: .55em 1em; }
 .tepe-find { margin-top: 1.5rem; }
 .tepe-find h3 { margin: 0 0 .25rem; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1.1.0 — social gallery: badges, hearts, top-liked, grouping, guestbook
+   ═══════════════════════════════════════════════════════════════════════ */
+.tepe { --tepe-hand: 'Segoe Script','Snell Roundhand','Bradley Hand','Brush Script MT','Comic Sans MS',cursive; --tepe-like: #e0245e; }
+
+/* Section headers */
+.tepe-section-head { display: flex; align-items: center; gap: .5rem; max-width: 1240px; margin: 1.5rem auto .25rem; padding: 0 1.25rem; }
+.tepe-section-head h2 { margin: 0; font-size: 1.15rem; color: var(--tepe-ink); }
+.tepe-section-head__icon { width: 26px; height: 26px; border-radius: 999px; background: var(--tepe-gold); color: #1a1408; display: inline-flex; align-items: center; justify-content: center; font-size: .9rem; }
+
+/* Top liked strip */
+.tepe-top__strip { display: flex; gap: .7rem; overflow-x: auto; padding: .5rem 1.25rem 1rem; -webkit-overflow-scrolling: touch; }
+.tepe-top__strip::-webkit-scrollbar { display: none; }
+.tepe-topcard { flex: 0 0 auto; width: 128px; height: 128px; border-radius: 14px; overflow: hidden; position: relative; border: 0; padding: 0; cursor: pointer; box-shadow: var(--tepe-shadow); }
+.tepe-topcard img { width: 100%; height: 100%; object-fit: cover; }
+.tepe-topcard__likes { position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: .2em; background: rgba(16,16,16,.6); color: #fff; padding: .2em .5em; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.tepe-topcard__likes svg { fill: var(--tepe-like); }
+
+/* Toolbar: albums + view toggle */
+.tepe-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; max-width: 1240px; margin: 0 auto; flex-wrap: wrap; }
+.tepe-toolbar .tepe-cats { flex: 1 1 auto; }
+.tepe-viewtoggle { flex: 0 0 auto; display: inline-flex; background: var(--tepe-card); border: 1px solid var(--tepe-line); border-radius: 999px; padding: 3px; margin-right: 1.25rem; }
+.tepe-viewtoggle__btn { border: 0; background: none; padding: .4em .9em; border-radius: 999px; font-weight: 600; font-size: .85rem; color: var(--tepe-muted); cursor: pointer; }
+.tepe-viewtoggle__btn--on { background: var(--tepe-black); color: #fff; }
+
+/* Uploader badge + note flag on tiles */
+.tepe-tile__by { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); background: rgba(16,16,16,.62); color: #fff; font-size: .72rem; font-weight: 600; padding: .22em .6em; border-radius: 999px; backdrop-filter: blur(3px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tepe-tile__noteflag { position: absolute; left: 8px; top: 8px; width: 22px; height: 22px; border-radius: 999px; background: var(--tepe-gold); color: #1a1408; display: flex; align-items: center; justify-content: center; font-size: .75rem; }
+
+/* Heart on tiles */
+.tepe-heart { position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: .18em; border: 0; cursor: pointer; background: rgba(16,16,16,.55); color: #fff; padding: .24em .55em .24em .5em; border-radius: 999px; font-size: .76rem; font-weight: 700; backdrop-filter: blur(3px); transition: transform .12s; }
+.tepe-heart svg { fill: rgba(255,255,255,.55); transition: fill .15s, transform .15s; }
+.tepe-heart--on svg { fill: var(--tepe-like); }
+.tepe-heart:active { transform: scale(.9); }
+.tepe-heartburst { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.tepe-heartburst svg { width: 84px; height: 84px; fill: var(--tepe-like); filter: drop-shadow(0 4px 10px rgba(0,0,0,.35)); animation: tepe-burst .7s ease forwards; }
+@keyframes tepe-burst { 0% { transform: scale(0); opacity: 0; } 25% { transform: scale(1.15); opacity: .95; } 60% { transform: scale(1); opacity: .9; } 100% { transform: scale(1.25); opacity: 0; } }
+
+/* Grouped-by-person view */
+.tepe-groups { max-width: 1240px; margin: 0 auto; padding: .5rem 1rem 5rem; }
+.tepe-group { margin-bottom: 1.75rem; }
+.tepe-group__head { display: flex; align-items: center; gap: .6rem; padding: .25rem .25rem .75rem; }
+.tepe-group__avatar { width: 34px; height: 34px; border-radius: 999px; background: linear-gradient(135deg, var(--tepe-gold), var(--tepe-gold-dk)); color: #1a1408; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.tepe-group__name { font-weight: 700; color: var(--tepe-ink); }
+.tepe-group__count { margin-left: auto; font-size: .82rem; color: var(--tepe-muted); background: var(--tepe-card); border: 1px solid var(--tepe-line); border-radius: 999px; padding: .1em .6em; }
+.tepe-group__grid { columns: 2; column-gap: 12px; }
+@media (min-width: 640px) { .tepe-group__grid { columns: 3; column-gap: 14px; } }
+@media (min-width: 980px) { .tepe-group__grid { columns: 4; column-gap: 16px; } }
+
+/* Guestbook / Photo Notes */
+.tepe-guestbook { max-width: 1240px; margin: 0 auto; }
+.tepe-guestbook__sub { max-width: 1240px; margin: 0 auto; padding: 0 1.25rem; color: var(--tepe-muted); font-size: .9rem; }
+.tepe-guestbook__feed { display: grid; grid-template-columns: 1fr; gap: 1rem; padding: 1rem 1.25rem 0; }
+@media (min-width: 720px) { .tepe-guestbook__feed { grid-template-columns: 1fr 1fr; } }
+.tepe-note { margin: 0; display: flex; gap: 1rem; background: var(--tepe-card); border: 1px solid var(--tepe-line); border-radius: var(--tepe-radius); padding: 1rem; box-shadow: var(--tepe-shadow); cursor: pointer; position: relative; overflow: hidden; }
+.tepe-note::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--tepe-gold); }
+.tepe-note__photo { width: 84px; height: 84px; object-fit: cover; border-radius: 10px; flex: 0 0 auto; }
+.tepe-note__body { margin: 0; }
+.tepe-note__msg { font-family: var(--tepe-hand); font-size: 1.32rem; line-height: 1.35; color: var(--tepe-ink); margin: 0 0 .35rem; }
+.tepe-note__by { font-weight: 700; color: var(--tepe-gold-dk); font-size: .85rem; margin: 0; }
+
+/* Lightbox caption + heart + note button */
+.tepe-lightbox__cap { position: absolute; bottom: 4.6rem; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center; color: #fff; display: flex; flex-direction: column; gap: .25rem; }
+.tepe-lightbox__by { font-weight: 700; font-size: .9rem; }
+.tepe-lightbox__note { font-family: var(--tepe-hand); font-size: 1.4rem; opacity: .95; }
+.tepe-heartbtn { display: inline-flex; align-items: center; gap: .3em; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.4); color: #fff; padding: .55em 1em; border-radius: 999px; font-weight: 700; cursor: pointer; }
+.tepe-heartbtn svg { fill: rgba(255,255,255,.6); transition: fill .15s; }
+.tepe-heartbtn--on svg { fill: var(--tepe-like); }
+
+/* Photo-note modal */
+.tepe-notemodal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.tepe-notemodal[hidden] { display: none !important; }
+.tepe-notemodal__scrim { position: absolute; inset: 0; background: rgba(16,16,16,.6); }
+.tepe-notemodal__card { position: relative; background: var(--tepe-bg); border-radius: var(--tepe-radius); padding: 1.25rem; width: min(460px, 100%); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,.4); animation: tepe-pop .2s ease; }
+.tepe-notemodal__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+.tepe-notemodal__head h2 { margin: 0; font-size: 1.2rem; }
+.tepe-notemodal__thumb { width: 100%; height: 160px; object-fit: cover; border-radius: 10px; margin-bottom: 1rem; }
+.tepe-notemodal__card textarea { font-family: var(--tepe-hand); font-size: 1.25rem; line-height: 1.4; }
+/* Reduce tile clutter while multi-selecting for print */
+.tepe-selectmode .tepe-tile__noteflag, .tepe-selectmode .tepe-heart { display: none; }
+
+/* Print drawer hardening: placeholder thumbs + clearer counters */
+.tepe-pline__ph { background: repeating-linear-gradient(45deg,#efe9df,#efe9df 8px,#e7e1d8 8px,#e7e1d8 16px); }
+.tepe-pline img { background: #efe9df; }
+.tepe-qty button { font-size: 1.15rem; font-weight: 700; color: var(--tepe-ink); line-height: 1; }
+.tepe-qty button:hover { background: var(--tepe-gold); color: #1a1408; }
+.tepe-qty input { font-weight: 700; color: var(--tepe-ink); font-size: .95rem; }
+.tepe-psize { border-bottom: 1px dashed var(--tepe-line); }
+.tepe-psize:last-child { border-bottom: 0; }

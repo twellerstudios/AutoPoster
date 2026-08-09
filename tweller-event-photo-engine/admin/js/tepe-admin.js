@@ -48,6 +48,23 @@
         else { try { var i = document.createElement('input'); i.value = text; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); done(); } catch (err) {} }
     });
 
+    document.addEventListener('click', function (e) {
+        var t = e.target.closest('.tepe-note-approve, .tepe-note-delete');
+        if (!t) return;
+        e.preventDefault();
+        var id = t.getAttribute('data-id');
+        var card = t.closest('.tepe-noteadmin');
+        if (t.classList.contains('tepe-note-approve')) {
+            api('admin/note/' + id + '/approve').then(function () {
+                var flag = card && card.querySelector('.tepe-tag'); if (flag) flag.remove();
+                t.remove();
+            });
+        } else {
+            if (!confirm('Delete this note?')) return;
+            api('admin/note/' + id + '/delete').then(function () { if (card) card.remove(); });
+        }
+    });
+
     document.addEventListener('change', function (e) {
         var sel = e.target.closest('.tepe-order-status');
         if (!sel) return;

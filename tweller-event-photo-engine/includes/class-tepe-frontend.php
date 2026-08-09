@@ -32,6 +32,22 @@ class TEPE_Frontend {
         return is_singular( TEPE_CPT );
     }
 
+    // ── Inline SVG icons (crisp, symmetric, theme-inheriting) ─────────────────
+
+    public static function icon_x() {
+        return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+    }
+    public static function icon_chevron( $dir = 'right' ) {
+        $pts = ( $dir === 'left' ) ? '15 18 9 12 15 6' : '9 18 15 12 9 6';
+        return '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="' . $pts . '"/></svg>';
+    }
+    public static function icon_check() {
+        return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+    }
+    public static function icon_arrow_left() {
+        return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
+    }
+
     /** Enqueue + localise once, when we know which view we're on. */
     private static function enqueue( $event, $view ) {
         wp_enqueue_style( 'tepe' );
@@ -48,7 +64,7 @@ class TEPE_Frontend {
             'nonce'         => wp_create_nonce( 'wp_rest' ),
             'slug'          => $event->post_name,
             'eventId'       => (int) $event->ID,
-            'eventTitle'    => get_the_title( $event ),
+            'eventTitle'    => tepe_title( $event ),
             'uploadUrl'     => TEPE_Gallery::upload_url( $event ),
             'galleryUrl'    => TEPE_Gallery::gallery_url( $event ),
             'qrSvg'         => TEPE_Rewrite::qr_url( $event, 'svg' ),
@@ -71,7 +87,7 @@ class TEPE_Frontend {
             'printEngineUrl'   => TEPE_Prints::print_engine_url(),
             'welcome'       => (string) get_post_meta( $event->ID, TEPE_CPT::META_WELCOME, true ),
             'strings'       => array(
-                'shareText' => sprintf( 'Photos from %s 📸', get_the_title( $event ) ),
+                'shareText' => sprintf( 'Photos from %s 📸', tepe_title( $event ) ),
             ),
         );
     }
@@ -133,7 +149,7 @@ class TEPE_Frontend {
             <header class="tepe-hero<?php echo $cover ? ' tepe-hero--img' : ''; ?>"
                 <?php if ( $cover ) : ?>style="background-image:linear-gradient(rgba(16,16,16,.35),rgba(16,16,16,.7)),url('<?php echo esc_url( $cover['url'] ); ?>');"<?php endif; ?>>
                 <div class="tepe-hero__inner">
-                    <h1 class="tepe-hero__title"><?php echo esc_html( get_the_title( $event ) ); ?></h1>
+                    <h1 class="tepe-hero__title"><?php echo esc_html( tepe_title( $event ) ); ?></h1>
                     <?php if ( $welcome !== '' ) : ?><p class="tepe-hero__welcome"><?php echo esc_html( $welcome ); ?></p><?php endif; ?>
                     <p class="tepe-hero__meta"><span id="tepe-count"><?php echo (int) $count; ?></span> photos shared</p>
                     <div class="tepe-hero__actions">
@@ -164,7 +180,7 @@ class TEPE_Frontend {
                 <aside class="tepe-drawer__panel" role="dialog" aria-modal="true" aria-label="Order prints">
                     <div class="tepe-drawer__head">
                         <h2>Order prints</h2>
-                        <button type="button" class="tepe-drawer__x" data-close aria-label="Close">✕</button>
+                        <button type="button" class="tepe-iconbtn tepe-drawer__x" data-close aria-label="Close"><?php echo self::icon_x(); ?></button>
                     </div>
                     <div class="tepe-drawer__body" id="tepe-drawer-body"></div>
                 </aside>
@@ -172,10 +188,12 @@ class TEPE_Frontend {
 
             <!-- Lightbox -->
             <div class="tepe-lightbox" id="tepe-lightbox" hidden>
-                <button class="tepe-lightbox__x" data-close aria-label="Close">✕</button>
-                <button class="tepe-lightbox__nav tepe-lightbox__prev" data-prev aria-label="Previous">‹</button>
-                <img class="tepe-lightbox__img" id="tepe-lightbox-img" alt="">
-                <button class="tepe-lightbox__nav tepe-lightbox__next" data-next aria-label="Next">›</button>
+                <button class="tepe-iconbtn tepe-lightbox__x" data-close aria-label="Close"><?php echo self::icon_x(); ?></button>
+                <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__prev" data-prev aria-label="Previous photo"><?php echo self::icon_chevron( 'left' ); ?></button>
+                <figure class="tepe-lightbox__stage">
+                    <img class="tepe-lightbox__img" id="tepe-lightbox-img" alt="">
+                </figure>
+                <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__next" data-next aria-label="Next photo"><?php echo self::icon_chevron( 'right' ); ?></button>
                 <div class="tepe-lightbox__bar">
                     <button class="tepe-btn tepe-btn--gold" id="tepe-lightbox-print" type="button">Order a print</button>
                     <a class="tepe-btn tepe-btn--ghost" id="tepe-lightbox-dl" download>Download</a>
@@ -195,8 +213,8 @@ class TEPE_Frontend {
         ob_start(); ?>
         <div class="tepe tepe-upload" id="tepe-app">
             <header class="tepe-uphead">
-                <a class="tepe-back" href="<?php echo esc_url( TEPE_Gallery::gallery_url( $event ) ); ?>">‹ Back to gallery</a>
-                <h1><?php echo esc_html( get_the_title( $event ) ); ?></h1>
+                <a class="tepe-back" href="<?php echo esc_url( TEPE_Gallery::gallery_url( $event ) ); ?>"><?php echo self::icon_arrow_left(); ?> Back to gallery</a>
+                <h1><?php echo esc_html( tepe_title( $event ) ); ?></h1>
                 <p class="tepe-uphead__sub">Add your photos — no app, no sign-up.</p>
             </header>
 
@@ -332,7 +350,7 @@ class TEPE_Frontend {
         if ( ! $event ) return;
 
         $cover = TEPE_Gallery::get_cover( $event );
-        $title = get_the_title( $event );
+        $title = tepe_title( $event );
         $url   = TEPE_Gallery::gallery_url( $event );
         $desc  = sprintf( 'See and share photos from %s.', $title );
         ?>

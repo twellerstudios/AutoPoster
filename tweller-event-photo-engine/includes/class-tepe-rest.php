@@ -167,7 +167,7 @@ class TEPE_REST {
 
         return rest_ensure_response( array(
             'ok'         => true,
-            'event'      => get_the_title( $event ),
+            'event'      => tepe_title( $event ),
             'categories' => TEPE_Categories::get( $event->ID ),
             'photos'     => $photos,
             'count'      => count( $photos ),
@@ -362,7 +362,7 @@ class TEPE_REST {
         return rest_ensure_response( array(
             'ok'          => true,
             'event_id'    => $event_id,
-            'title'       => get_the_title( $event ),
+            'title'       => tepe_title( $event ),
             'gallery_url' => TEPE_Gallery::gallery_url( $event ),
             'upload_url'  => TEPE_Gallery::upload_url( $event ),
             'qr_svg'      => TEPE_Rewrite::qr_url( $event, 'svg' ),

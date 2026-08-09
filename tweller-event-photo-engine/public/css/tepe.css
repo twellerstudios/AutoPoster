@@ -54,6 +54,8 @@
 }
 @keyframes tepe-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .tepe-done__msg { margin: 0 0 .9rem; color: var(--tepe-ink); }
+.tepe-done__tick svg { width: 28px; height: 28px; }
+.tepe-tile__check svg { width: 15px; height: 15px; }
 .tepe-linkbtn { background: none; border: 0; color: var(--tepe-gold-dk); font-weight: 600; cursor: pointer; padding: .3em 0; }
 
 /* ── Hero ── */
@@ -80,16 +82,27 @@
 .tepe-chip--active { background: var(--tepe-black); color: #fff; border-color: var(--tepe-black); }
 
 /* ── Masonry ── */
-.tepe-masonry { columns: 2; column-gap: 8px; padding: 0 1rem 5rem; }
-@media (min-width: 640px) { .tepe-masonry { columns: 3; } }
-@media (min-width: 980px) { .tepe-masonry { columns: 4; max-width: 1200px; margin: 0 auto; } }
-.tepe-tile { break-inside: avoid; margin-bottom: 8px; position: relative; border-radius: 10px; overflow: hidden; background: #efe9df; cursor: pointer; }
-.tepe-tile img { width: 100%; height: auto; display: block; transition: transform .25s ease; }
-.tepe-tile:hover img { transform: scale(1.03); }
-.tepe-tile__check { position: absolute; top: 8px; left: 8px; width: 26px; height: 26px; border-radius: 999px; background: rgba(16,16,16,.5); border: 2px solid #fff; display: none; align-items: center; justify-content: center; color: #fff; }
-.tepe-tile--sel .tepe-tile__check { background: var(--tepe-gold); border-color: var(--tepe-gold); }
-.tepe-tile__print { position: absolute; bottom: 8px; right: 8px; background: rgba(16,16,16,.62); color: #fff; border: 0; border-radius: 999px; padding: .35em .7em; font-size: .78rem; font-weight: 600; cursor: pointer; opacity: 0; transition: opacity .15s; }
-.tepe-tile:hover .tepe-tile__print, .tepe-selectmode .tepe-tile__check { opacity: 1; display: flex; }
+.tepe-masonry { columns: 2; column-gap: 12px; padding: .5rem 1rem 5rem; }
+@media (min-width: 640px) { .tepe-masonry { columns: 3; column-gap: 14px; } }
+@media (min-width: 980px) { .tepe-masonry { columns: 4; column-gap: 16px; max-width: 1240px; margin: 0 auto; } }
+.tepe-tile {
+    break-inside: avoid; margin-bottom: 12px; position: relative; border-radius: 14px; overflow: hidden;
+    background: #efe9df; cursor: pointer; box-shadow: 0 2px 10px rgba(16,16,16,.09);
+    transition: box-shadow .2s ease, transform .2s ease; -webkit-transform: translateZ(0);
+}
+.tepe-tile:hover { box-shadow: 0 10px 26px rgba(16,16,16,.18); transform: translateY(-2px); }
+.tepe-tile img { width: 100%; height: auto; display: block; transition: transform .35s ease; }
+.tepe-tile:hover img { transform: scale(1.04); }
+.tepe-tile--sel { outline: 3px solid var(--tepe-gold); outline-offset: -3px; }
+.tepe-tile__check { position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 999px; background: rgba(16,16,16,.5); border: 2px solid #fff; display: none; align-items: center; justify-content: center; color: #fff; backdrop-filter: blur(2px); }
+.tepe-tile--sel .tepe-tile__check { background: var(--tepe-gold); border-color: #fff; color: #1a1408; }
+.tepe-tile__print {
+    position: absolute; bottom: 10px; right: 10px; background: rgba(16,16,16,.66); color: #fff; border: 0;
+    border-radius: 999px; padding: .4em .85em; font-size: .78rem; font-weight: 600; cursor: pointer;
+    opacity: 0; transform: translateY(4px); transition: opacity .18s, transform .18s; backdrop-filter: blur(3px);
+}
+.tepe-tile:hover .tepe-tile__print { opacity: 1; transform: translateY(0); }
+.tepe-selectmode .tepe-tile__check { display: flex; }
 .tepe-tile--heic { display: flex; align-items: center; justify-content: center; min-height: 130px; color: var(--tepe-muted); font-size: .8rem; text-align: center; padding: 1rem; }
 .tepe-tile__badge { position: absolute; top: 8px; right: 8px; background: var(--tepe-gold); color: #1a1408; font-size: .68rem; font-weight: 700; padding: .2em .5em; border-radius: 6px; }
 
@@ -117,7 +130,8 @@
 .tepe-uphead { text-align: center; margin-bottom: 1.25rem; }
 .tepe-uphead h1 { font-size: 1.5rem; margin: .3rem 0 .2rem; }
 .tepe-uphead__sub { color: var(--tepe-muted); margin: 0; }
-.tepe-back { color: var(--tepe-gold-dk); text-decoration: none; font-weight: 600; font-size: .9rem; }
+.tepe-back { display: inline-flex; align-items: center; gap: .35em; color: var(--tepe-gold-dk); text-decoration: none; font-weight: 600; font-size: .9rem; margin-bottom: .4rem; }
+.tepe-back svg { flex: 0 0 auto; }
 .tepe-upcard, .tepe-create__card, .tepe-create__done { background: var(--tepe-card); border: 1px solid var(--tepe-line); border-radius: var(--tepe-radius); padding: 1.25rem; box-shadow: var(--tepe-shadow); }
 .tepe-field { display: block; margin-bottom: 1rem; }
 .tepe-field > span { display: block; font-weight: 600; font-size: .9rem; margin-bottom: .35rem; }
@@ -136,16 +150,39 @@
 .tepe-dropzone__note { font-size: .82rem; margin: 0; }
 .tepe-dest { display: flex; flex-wrap: wrap; gap: .4rem; }
 
-.tepe-queue { margin-top: 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: .5rem; }
-.tepe-qitem { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 1; background: #efe9df; }
+.tepe-queue { margin-top: 1.25rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: .6rem; }
+.tepe-queue:not(:empty) { margin-bottom: 1.5rem; } /* breathing room before the Upload button */
+.tepe-qitem { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 1; background: #efe9df; box-shadow: 0 1px 4px rgba(16,16,16,.08); }
 .tepe-qitem img { width: 100%; height: 100%; object-fit: cover; }
-.tepe-qitem__bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--tepe-gold); width: 0; transition: width .2s; }
-.tepe-qitem--done::after { content: "✓"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(16,16,16,.45); color: #fff; font-size: 1.3rem; }
-.tepe-qitem--err { outline: 2px solid #c0392b; }
+.tepe-qitem__bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--tepe-gold); width: 0; transition: width .2s; box-shadow: 0 0 8px rgba(200,163,78,.8); }
+/* Modern "done" state: soft gold veil + crisp white check badge */
+.tepe-qitem--done::after {
+    content: ""; position: absolute; inset: 0;
+    background: rgba(200,163,78,.82) center/30px 30px no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+    animation: tepe-pop .25s ease;
+}
+.tepe-qitem--err { outline: 2px solid #c0392b; outline-offset: -2px; }
+.tepe-qitem--err::after { content: "!"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(192,57,43,.55); color: #fff; font-weight: 800; font-size: 1.4rem; }
 
-.tepe-qrhint { text-align: center; margin: 1.5rem auto; color: var(--tepe-muted); }
-.tepe-qrhint img { margin: 0 auto .5rem; border: 8px solid #fff; border-radius: 10px; box-shadow: var(--tepe-shadow); }
+.tepe-btn--full#tepe-upload-go { margin-top: .25rem; }
+
+.tepe-qrhint {
+    text-align: center; margin: 1.75rem auto 0; padding: 1.25rem; color: var(--tepe-muted);
+    background: var(--tepe-card); border: 1px solid var(--tepe-line); border-radius: var(--tepe-radius);
+    box-shadow: var(--tepe-shadow); max-width: 320px;
+}
+.tepe-qrhint img { display: block; margin: 0 auto .6rem; border: 8px solid #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(16,16,16,.12); }
+.tepe-qrhint p { margin: 0; font-size: .85rem; }
 .tepe-locked { text-align: center; padding: 2rem; background: var(--tepe-card); border-radius: var(--tepe-radius); color: var(--tepe-muted); }
+
+/* ── Icon buttons (shared) ── */
+.tepe-iconbtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: none; border: 0; padding: 0; cursor: pointer; color: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+.tepe-iconbtn svg { display: block; }
 
 /* ── Drawer ── */
 .tepe-drawer { position: fixed; inset: 0; z-index: 60; }
@@ -157,7 +194,8 @@
 @keyframes tepe-slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .tepe-drawer__head { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid var(--tepe-line); }
 .tepe-drawer__head h2 { margin: 0; font-size: 1.2rem; }
-.tepe-drawer__x { background: none; border: 0; font-size: 1.2rem; cursor: pointer; color: var(--tepe-ink); }
+.tepe-drawer__x { width: 38px; height: 38px; border-radius: 999px; color: var(--tepe-ink); transition: background .15s; }
+.tepe-drawer__x:hover { background: rgba(16,16,16,.06); }
 .tepe-drawer__body { padding: 1.25rem; overflow-y: auto; flex: 1; }
 .tepe-pline { display: flex; gap: .75rem; padding: .75rem 0; border-bottom: 1px solid var(--tepe-line); }
 .tepe-pline img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }
@@ -183,12 +221,25 @@
 .tepe-share-reward code { background: var(--tepe-gold); color: #1a1408; padding: .15em .5em; border-radius: 6px; font-weight: 700; letter-spacing: .04em; }
 
 /* ── Lightbox ── */
-.tepe-lightbox { position: fixed; inset: 0; z-index: 70; background: rgba(10,10,10,.94); display: flex; align-items: center; justify-content: center; }
-.tepe-lightbox__img { max-width: 92vw; max-height: 78vh; object-fit: contain; border-radius: 6px; }
-.tepe-lightbox__x { position: absolute; top: 1rem; right: 1rem; background: none; border: 0; color: #fff; font-size: 1.6rem; cursor: pointer; }
-.tepe-lightbox__nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,.12); border: 0; color: #fff; font-size: 2rem; width: 48px; height: 48px; border-radius: 999px; cursor: pointer; }
-.tepe-lightbox__prev { left: .5rem; } .tepe-lightbox__next { right: .5rem; }
-.tepe-lightbox__bar { position: absolute; bottom: 1.2rem; display: flex; gap: .6rem; }
+/* CRITICAL: these overlays set display:flex, which beats the UA [hidden]
+   rule — so hidden state must be re-asserted or the overlay never closes. */
+.tepe-lightbox[hidden], .tepe-drawer[hidden] { display: none !important; }
+
+.tepe-lightbox { position: fixed; inset: 0; z-index: 70; background: rgba(8,8,8,.96); display: flex; align-items: center; justify-content: center; animation: tepe-fade .18s ease; }
+@keyframes tepe-fade { from { opacity: 0; } to { opacity: 1; } }
+.tepe-lightbox__stage { margin: 0; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 4.5rem 4.75rem 5.5rem; }
+.tepe-lightbox__img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.tepe-lightbox__x { position: absolute; top: 1rem; right: 1rem; width: 44px; height: 44px; border-radius: 999px; color: #fff; background: rgba(255,255,255,.1); transition: background .15s; }
+.tepe-lightbox__x:hover { background: rgba(255,255,255,.22); }
+.tepe-lightbox__nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; border-radius: 999px; color: #fff; background: rgba(255,255,255,.1); transition: background .15s; }
+.tepe-lightbox__nav:hover { background: rgba(255,255,255,.22); }
+.tepe-lightbox__prev { left: 1rem; } .tepe-lightbox__next { right: 1rem; }
+.tepe-lightbox__bar { position: absolute; bottom: 1.25rem; left: 50%; transform: translateX(-50%); display: flex; gap: .6rem; }
+@media (max-width: 560px) {
+    .tepe-lightbox__stage { padding: 4rem .75rem 5.25rem; }
+    .tepe-lightbox__nav { width: 42px; height: 42px; background: rgba(255,255,255,.16); }
+    .tepe-lightbox__prev { left: .4rem; } .tepe-lightbox__next { right: .4rem; }
+}
 
 /* ── Toast, errors, banner ── */
 .tepe-toast { position: fixed; left: 50%; bottom: 5.5rem; transform: translateX(-50%); background: var(--tepe-black); color: #fff; padding: .7rem 1.1rem; border-radius: 999px; font-size: .9rem; z-index: 90; box-shadow: var(--tepe-shadow); max-width: calc(100% - 2rem); text-align: center; }

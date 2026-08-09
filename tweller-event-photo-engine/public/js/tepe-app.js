@@ -11,6 +11,9 @@
     var CHUNK_SIZE = 1024 * 1024 * 1.5;   // 1.5 MB chunks
     var CHUNK_THRESHOLD = 1024 * 1024 * 4; // files above this stream in chunks
 
+    // Crisp, symmetric check icon reused for selection + done states.
+    var SVG_CHECK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+
     // ── tiny helpers ────────────────────────────────────────────────────────
     var $ = function (sel, root) { return (root || document).querySelector(sel); };
     var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
@@ -172,7 +175,7 @@
                 t.appendChild(img);
             }
             if (p.mine) t.appendChild(el('span', 'tepe-tile__badge', 'Yours'));
-            var chk = el('span', 'tepe-tile__check', '✓'); t.appendChild(chk);
+            var chk = el('span', 'tepe-tile__check', SVG_CHECK); t.appendChild(chk);
             if (CFG.allowPrints) {
                 var pb = el('button', 'tepe-tile__print', 'Order print'); pb.type = 'button';
                 pb.addEventListener('click', function (ev) { ev.stopPropagation(); openDrawer([p]); });
@@ -227,9 +230,12 @@
         // ── Lightbox ──
         var lb = $('#tepe-lightbox');
         if (lb) {
-            // Close on the X, or on a tap anywhere on the backdrop itself.
+            // Tapping the photo keeps it open; the nav/action buttons do their
+            // own thing; a tap anywhere else (backdrop, padding, X) closes.
             lb.addEventListener('click', function (e) {
-                if (e.target.hasAttribute('data-close') || e.target === lb) closeLightbox();
+                if (e.target.closest('[data-prev],[data-next],.tepe-lightbox__bar')) return;
+                if (e.target.id === 'tepe-lightbox-img') return;
+                closeLightbox();
             });
             lb.querySelector('[data-prev]').addEventListener('click', function () { navLight(-1); });
             lb.querySelector('[data-next]').addEventListener('click', function () { navLight(1); });
@@ -549,7 +555,7 @@
                 goBtn.parentNode.insertBefore(panel, goBtn);
             }
             panel.innerHTML =
-                '<div class="tepe-done__tick">✓</div>' +
+                '<div class="tepe-done__tick">' + SVG_CHECK + '</div>' +
                 '<p class="tepe-done__msg"><strong>' + ok + ' photo' + (ok === 1 ? '' : 's') + ' added</strong>' +
                 (failed ? ' · ' + failed + " didn't upload" : '') + '</p>' +
                 '<a class="tepe-btn tepe-btn--gold tepe-btn--full" href="' + esc(galleryHref()) + '">View the gallery →</a>';
@@ -649,7 +655,7 @@
                 $('#tepe-create-links').innerHTML =
                     '<a href="' + esc(r.gallery_url) + '">View gallery: ' + esc(r.gallery_url) + '</a>' +
                     '<a href="' + esc(r.upload_url) + '">Guest upload link: ' + esc(r.upload_url) + '</a>' +
-                    '<img src="' + esc(r.qr_svg) + '" alt="QR code" width="150" height="150" style="margin-top:1rem;border:8px solid #fff;border-radius:10px">';
+                    '<img src="' + esc(r.qr_svg) + '" alt="QR code" width="160" height="160" style="display:block;margin:1.25rem auto 0;border:8px solid #fff;border-radius:12px;box-shadow:0 2px 10px rgba(16,16,16,.12)">';
             }).catch(function (e) { showErr(e.message); btnIdle(go, 'Create gallery'); });
 
             function showErr(m) { errBox.textContent = m; errBox.hidden = false; }

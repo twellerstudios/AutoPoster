@@ -360,3 +360,19 @@ if ( ! function_exists( 'tepe_thumb_name' ) ) {
         return $filename;
     }
 }
+
+/**
+ * Plain-text event title.
+ *
+ * get_the_title() runs wptexturize/convert_chars, which turn "&" into the
+ * numeric entity "&#038;" and straight quotes into curly entities. When that
+ * output is escaped a second time — by esc_html() for HTML, or by the JS esc()
+ * helper after JSON transport — the entity shows up literally on screen
+ * ("Sam &#038; Dave"). Decoding here yields clean UTF-8 that each consumer can
+ * escape exactly once.
+ */
+if ( ! function_exists( 'tepe_title' ) ) {
+    function tepe_title( $post ) {
+        return html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' );
+    }
+}

@@ -53,6 +53,12 @@ class TEPE_Frontend {
     public static function icon_heart() {
         return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/></svg>';
     }
+    public static function icon_play() {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72a1 1 0 001.54.84l10.5-6.86a1 1 0 000-1.68L9.54 4.3A1 1 0 008 5.14z"/></svg>';
+    }
+    public static function icon_pause() {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+    }
 
     // ── Brand social logos (true colour) ──────────────────────────────────────
     public static function icon_whatsapp() {
@@ -239,20 +245,26 @@ class TEPE_Frontend {
                 </aside>
             </div>
 
-            <!-- Lightbox -->
+            <!-- Lightbox (immersive, fading chrome, persistent caption) -->
             <div class="tepe-lightbox" id="tepe-lightbox" hidden>
-                <button class="tepe-iconbtn tepe-lightbox__x" data-close aria-label="Close"><?php echo self::icon_x(); ?></button>
-                <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__prev" data-prev aria-label="Previous photo"><?php echo self::icon_chevron( 'left' ); ?></button>
+                <div class="tepe-lightbox__chrome">
+                    <button class="tepe-heartbtn tepe-lightbox__like" id="tepe-lightbox-like" type="button" aria-label="Like this photo"><?php echo self::icon_heart(); ?><span id="tepe-lightbox-likes">0</span></button>
+                    <button class="tepe-iconbtn tepe-lightbox__play" id="tepe-lightbox-play" type="button" aria-label="Play slideshow" aria-pressed="false"><span class="tepe-play-i"><?php echo self::icon_play(); ?></span><span class="tepe-pause-i"><?php echo self::icon_pause(); ?></span></button>
+                    <button class="tepe-iconbtn tepe-lightbox__x" data-close aria-label="Close"><?php echo self::icon_x(); ?></button>
+                    <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__prev" data-prev aria-label="Previous photo"><?php echo self::icon_chevron( 'left' ); ?></button>
+                    <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__next" data-next aria-label="Next photo"><?php echo self::icon_chevron( 'right' ); ?></button>
+                </div>
                 <figure class="tepe-lightbox__stage">
                     <img class="tepe-lightbox__img" id="tepe-lightbox-img" alt="">
-                    <figcaption class="tepe-lightbox__cap" id="tepe-lightbox-cap"></figcaption>
                 </figure>
-                <button class="tepe-iconbtn tepe-lightbox__nav tepe-lightbox__next" data-next aria-label="Next photo"><?php echo self::icon_chevron( 'right' ); ?></button>
+                <figcaption class="tepe-lightbox__caption" id="tepe-lightbox-cap" hidden>
+                    <p class="tepe-lightbox__note" id="tepe-lightbox-note-text"></p>
+                    <p class="tepe-lightbox__by" id="tepe-lightbox-by"></p>
+                </figcaption>
                 <div class="tepe-lightbox__bar">
-                    <button class="tepe-heartbtn" id="tepe-lightbox-like" type="button" aria-label="Like this photo"><?php echo self::icon_heart(); ?><span id="tepe-lightbox-likes">0</span></button>
-                    <button class="tepe-btn tepe-btn--ghost" id="tepe-lightbox-note" type="button" hidden>Leave a note</button>
-                    <button class="tepe-btn tepe-btn--gold" id="tepe-lightbox-print" type="button">Order a print</button>
-                    <a class="tepe-btn tepe-btn--ghost" id="tepe-lightbox-dl" download>Download</a>
+                    <button class="tepe-lbtn" id="tepe-lightbox-note" type="button" hidden>Leave note</button>
+                    <button class="tepe-lbtn tepe-lbtn--gold" id="tepe-lightbox-print" type="button">Order print</button>
+                    <a class="tepe-lbtn" id="tepe-lightbox-dl" download>Download</a>
                 </div>
             </div>
 

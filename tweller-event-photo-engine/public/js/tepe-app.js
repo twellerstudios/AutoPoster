@@ -369,45 +369,87 @@
 
         // ── Lightbox ──
         var lb = $('#tepe-lightbox');
+        var fadeTimer = null, slideTimer = null;
         if (lb) {
-            // Tapping the photo keeps it open; the nav/action buttons do their
-            // own thing; a tap anywhere else (backdrop, padding, X) closes.
+            // Tap the image → toggle the chrome; tap the bare backdrop → close.
             lb.addEventListener('click', function (e) {
-                if (e.target.closest('[data-prev],[data-next],.tepe-lightbox__bar')) return;
-                if (e.target.id === 'tepe-lightbox-img') return;
+                if (e.target.closest('.tepe-lightbox__chrome, .tepe-lightbox__bar, .tepe-lightbox__caption')) return;
+                if (e.target.id === 'tepe-lightbox-img') { toggleChrome(); return; }
                 closeLightbox();
             });
-            lb.querySelector('[data-prev]').addEventListener('click', function () { navLight(-1); });
-            lb.querySelector('[data-next]').addEventListener('click', function () { navLight(1); });
+            lb.querySelector('[data-prev]').addEventListener('click', function () { navLight(-1); armFade(); });
+            lb.querySelector('[data-next]').addEventListener('click', function () { navLight(1); armFade(); });
+            lb.querySelector('[data-close]').addEventListener('click', closeLightbox);
             $('#tepe-lightbox-print').addEventListener('click', function () { closeLightbox(); openDrawer([state.photos[state.lightIdx]]); });
-            $('#tepe-lightbox-like').addEventListener('click', function () { like(state.photos[state.lightIdx]); });
+            $('#tepe-lightbox-like').addEventListener('click', function () { like(state.photos[state.lightIdx]); armFade(); });
             $('#tepe-lightbox-note').addEventListener('click', function () { openNoteModal(state.photos[state.lightIdx]); });
+            // Wake the chrome on any interaction.
+            ['mousemove', 'touchstart', 'keydown'].forEach(function (ev) { lb.addEventListener(ev, armFade, { passive: true }); });
             document.addEventListener('keydown', function (e) {
                 if (lb.hidden) return;
                 if (e.key === 'Escape') closeLightbox();
-                if (e.key === 'ArrowLeft') navLight(-1);
-                if (e.key === 'ArrowRight') navLight(1);
+                if (e.key === 'ArrowLeft') { navLight(-1); }
+                if (e.key === 'ArrowRight') { navLight(1); }
+                if (e.key === ' ') { e.preventDefault(); toggleSlideshow(); }
             });
         }
+
         function openLightbox() {
             var p = state.photos[state.lightIdx]; if (!p) return;
             $('#tepe-lightbox-img').src = p.url;
             var dl = $('#tepe-lightbox-dl'); dl.href = p.url;
             $('#tepe-lightbox-print').style.display = CFG.allowPrints ? '' : 'none';
-            // Caption line: uploader name + any note.
-            var cap = $('#tepe-lightbox-cap'), bits = '';
-            if (p.uploader && p.uploader.trim()) bits += '<span class="tepe-lightbox__by">' + esc(p.uploader.trim()) + '</span>';
-            if (p.note) bits += '<span class="tepe-lightbox__note">“' + esc(p.note) + '”</span>';
-            cap.innerHTML = bits; cap.style.display = bits ? '' : 'none';
-            // Heart state
+
+            // Caption: note text on top, author underneath. Falls back to a
+            // simple "Shared by …" line for photos without a note.
+            var noteEl = $('#tepe-lightbox-note-text'), byEl = $('#tepe-lightbox-by'), cap = $('#tepe-lightbox-cap');
+            var uploader = (p.uploader && p.uploader.trim()) ? p.uploader.trim() : '';
+            if (p.note) {
+                noteEl.textContent = '“' + p.note + '”'; noteEl.style.display = '';
+                byEl.textContent = uploader ? ('— ' + uploader) : ''; byEl.style.display = uploader ? '' : 'none';
+                cap.hidden = false;
+            } else if (uploader) {
+                noteEl.textContent = ''; noteEl.style.display = 'none';
+                byEl.textContent = 'Shared by ' + uploader; byEl.style.display = '';
+                cap.hidden = false;
+            } else {
+                cap.hidden = true;
+            }
+
             $('#tepe-lightbox-like').classList.toggle('tepe-heartbtn--on', !!p.liked);
             $('#tepe-lightbox-likes').textContent = p.likes || 0;
-            // "Leave a note" only on the guest's own photos.
-            $('#tepe-lightbox-note').hidden = !p.mine;
+            $('#tepe-lightbox-note').hidden = !p.mine; // "Leave note" only on own photos
             lb.hidden = false;
+            document.documentElement.style.overflow = 'hidden'; // lock background scroll
+            armFade();
         }
         function navLight(d) { state.lightIdx = (state.lightIdx + d + state.photos.length) % state.photos.length; openLightbox(); }
-        function closeLightbox() { lb.hidden = true; }
+        function closeLightbox() { lb.hidden = true; stopSlideshow(); clearTimeout(fadeTimer); lb.classList.remove('tepe-lightbox--idle'); document.documentElement.style.overflow = ''; }
+
+        // Auto-hide the chrome after a few seconds of stillness.
+        function armFade() {
+            lb.classList.remove('tepe-lightbox--idle');
+            clearTimeout(fadeTimer);
+            fadeTimer = setTimeout(function () { if (!lb.hidden) lb.classList.add('tepe-lightbox--idle'); }, 3000);
+        }
+        function toggleChrome() { if (lb.classList.contains('tepe-lightbox--idle')) armFade(); else lb.classList.add('tepe-lightbox--idle'); }
+
+        // Classic slideshow (auto-advance), like the Bookings galleries.
+        function toggleSlideshow() { slideTimer ? stopSlideshow() : startSlideshow(); }
+        function startSlideshow() {
+            if (state.photos.length < 2) return;
+            lb.classList.add('tepe-lightbox--playing');
+            $('#tepe-lightbox-play').setAttribute('aria-pressed', 'true');
+            slideTimer = setInterval(function () { navLight(1); }, 3500);
+            armFade();
+        }
+        function stopSlideshow() {
+            clearInterval(slideTimer); slideTimer = null;
+            lb.classList.remove('tepe-lightbox--playing');
+            var pb = $('#tepe-lightbox-play'); if (pb) pb.setAttribute('aria-pressed', 'false');
+        }
+        var playBtn = $('#tepe-lightbox-play');
+        if (playBtn) playBtn.addEventListener('click', function () { toggleSlideshow(); armFade(); });
 
         // ── Photo-note modal ──
         function wireNoteModal() {

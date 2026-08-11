@@ -667,9 +667,20 @@ body.page .page-hero {
 
 /* ── Photo Grid (masonry-like via columns) ──────── */
 
+/*
+ * A fixed, uniform grid — NOT CSS-column masonry. Masonry reserved no
+ * height per tile, so the browser stacked every image at zero height and
+ * then re-balanced all four columns as each lazy image loaded: the gallery
+ * appeared to fill "from the bottom" and jump around. Here each cell's size
+ * is known up front from aspect-ratio, so the whole grid is laid out the
+ * instant it renders — it's simply "there," fills top-to-bottom left-to-
+ * right, and never reflows. Individual photos still fade in as they load
+ * (see .loading below), which is the lazy-in effect on scroll.
+ */
 .tf2-gallery__grid {
-    column-count: 4;
-    column-gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
     width: 100vw;
     margin-left: calc(-50vw + 50%);
     padding: 0 4px;
@@ -677,25 +688,25 @@ body.page .page-hero {
 }
 
 @media (max-width: 1100px) {
-    .tf2-gallery__grid { column-count: 3; }
+    .tf2-gallery__grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 700px) {
-    .tf2-gallery__grid { column-count: 2; column-gap: 4px; }
+    .tf2-gallery__grid { grid-template-columns: repeat(2, 1fr); gap: 4px; }
 }
 
 .tf2-gallery__item {
     position: relative;
-    break-inside: avoid;
-    margin-bottom: 6px;
+    aspect-ratio: 1 / 1;   /* reserved space → no reflow, no bottom-fill */
     overflow: hidden;
     cursor: pointer;
     background: var(--tf-gray-100);
     line-height: 0;
 }
 
-@media (max-width: 700px) {
-    .tf2-gallery__item { margin-bottom: 4px; }
+/* Browsers without aspect-ratio support: fall back to a padding-box ratio. */
+@supports not (aspect-ratio: 1 / 1) {
+    .tf2-gallery__item { height: 0; padding-bottom: 100%; }
 }
 
 .tf2-gallery__item::after {
@@ -711,18 +722,26 @@ body.page .page-hero {
 }
 
 .tf2-gallery__item img {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;   /* fill the cell cleanly; full frame opens in the lightbox */
     display: block;
-    transition: opacity 0.4s, transform 0.3s;
+    opacity: 1;
+    transition: opacity 0.5s ease, transform 0.3s ease;
 }
 
 .tf2-gallery__item:hover img {
-    transform: scale(1.02);
+    transform: scale(1.03);
 }
 
+/* Each photo fades + settles as it loads. With loading="lazy" that happens
+   as the tile scrolls into view — the lazy-in effect, now smooth because the
+   layout underneath never moves. */
 .tf2-gallery__item img.loading {
     opacity: 0;
+    transform: scale(1.04);
 }
 
 /* ── Lightbox ──────────────────────────────────────── */
@@ -1759,7 +1778,9 @@ body.page .page-hero {
 @media (hover: none) {
     .tf2-like { opacity: 1; transform: scale(1); }
 }
-.tf2-gallery__item--liked { box-shadow: inset 0 0 0 3px var(--tf-gold); }
+/* Liked ring on ::after, which paints above the (absolutely-positioned)
+   image — an inset shadow on the tile itself would sit behind it. */
+.tf2-gallery__item--liked::after { box-shadow: inset 0 0 0 3px var(--tf-gold); }
 
 .tf2-gallery__liked-empty {
     text-align: center;

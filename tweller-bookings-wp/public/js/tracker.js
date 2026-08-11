@@ -450,6 +450,7 @@
     var visitorToken = '';
     try { visitorToken = localStorage.getItem(VISITOR_KEY) || ''; } catch (e) {}
     var visitorReady = false;      // resolved (resumed or signed in) this session
+    var visitorResolvePromise = null; // shared in-flight token resume (warmed on load)
     var likedIds = {};             // photo_id -> true
     var viewMode = 'all';          // 'all' | 'liked'
     var pendingReveal = false;     // reveal once the visitor is resolved
@@ -460,6 +461,10 @@
     var galleryError = false;
 
     prefetchGallery();
+
+    // Warm up a returning visitor's identity in parallel with the page load,
+    // so it isn't a fresh network wait the moment they click VIEW GALLERY.
+    if (visitorToken) resolveVisitor(function() {});
 
     function galleryEndpoint() {
         return galleryUrl + code + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
@@ -669,14 +674,25 @@
 
     // ── Visitor sign-in (name + email, remembered) ─────
 
-    // Resume a saved visitor from their token; cb(true) if recognised.
+    // Resume a saved visitor from their token; cb(true) if recognised. The
+    // network round-trip is shared and started early (see the warm-up on
+    // load), so by the time a returning visitor clicks VIEW GALLERY their
+    // identity is usually already resolved and the reveal is instant — no
+    // waiting on a request at click time. (visitorResolvePromise is declared
+    // with the other visitor state above, so the warm-up isn't wiped by a
+    // later re-initialisation.)
     function resolveVisitor(cb) {
         if (visitorReady) { cb(true); return; }
         if (!visitorToken) { cb(false); return; }
-        postVisitor({ token: visitorToken }, function(data) {
-            if (data && data.ok) { adoptVisitor(data); cb(true); }
-            else { clearVisitor(); cb(false); }
-        }, function() { cb(false); });
+        if (!visitorResolvePromise) {
+            visitorResolvePromise = new Promise(function(resolve) {
+                postVisitor({ token: visitorToken }, function(data) {
+                    if (data && data.ok) { adoptVisitor(data); resolve(true); }
+                    else { clearVisitor(); resolve(false); }
+                }, function() { resolve(false); });
+            });
+        }
+        visitorResolvePromise.then(cb);
     }
 
     function adoptVisitor(data) {

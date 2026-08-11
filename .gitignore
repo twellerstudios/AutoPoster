@@ -14,3 +14,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 tweller-flow.backup/
+
+# Plugin build output — rebuild with `npm run build:plugin`, never commit
+# a zip. A hand-committed one (tweller-flow.zip) used to sit in the repo
+# root, went stale, and kept colliding with `git pull`.
+/dist/
+*.zip

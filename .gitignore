@@ -15,8 +15,15 @@ Thumbs.db
 npm-debug.log*
 tweller-flow.backup/
 
-# Plugin build output — rebuild with `npm run build:plugin`, never commit
-# a zip. A hand-committed one (tweller-flow.zip) used to sit in the repo
-# root, went stale, and kept colliding with `git pull`.
+# Scratch build output. Never commit a *mutable* zip — a hand-made one
+# (tweller-flow.zip) used to sit in the repo root, went stale, and kept
+# colliding with `git pull` because git can't merge a binary that keeps
+# changing under the same name.
 /dist/
 *.zip
+
+# releases/ is the exception, and the reason the rule above is safe: each
+# file there is named for its plugin version, written once, and never
+# modified again — so it can never conflict. Built automatically by the
+# pre-commit hook when the version is bumped.
+!releases/*.zip

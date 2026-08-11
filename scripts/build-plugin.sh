@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
 #
-# Build a fresh, installable zip of the Tweller Bookings WP plugin from its
-# real source (tweller-bookings-wp/) — the folder that actually gets edited.
-# Nothing else in this repo produces a plugin zip; a stale hand-made one
-# (tweller-flow.zip) used to sit in the repo root and rot. This replaces it.
+# Build an installable zip of the Tweller Bookings WP plugin from its real
+# source (tweller-bookings-wp/) — the folder that actually gets edited.
 #
-# Output goes to dist/, which is gitignored, so the zip never gets committed
-# and never collides with `git pull` again — rebuild it any time you need a
-# fresh copy to upload to WordPress.
+# The zip is named for the version in the plugin header, so every release
+# lands as its own file (tweller-bookings-wp-3.34.0.zip) in releases/. Those
+# are kept in git on purpose: each one is written once and never touched
+# again, so unlike the old single mutable tweller-flow.zip they can't cause
+# a merge conflict — and you get a rollback-ready copy of every version.
 #
-# Usage: ./scripts/build-plugin.sh [output-name]
+# Normally you never run this by hand: the pre-commit hook in .githooks/
+# calls it automatically whenever the plugin version changes.
+#
+# Usage:
+#   ./scripts/build-plugin.sh           # build current version if missing
+#   ./scripts/build-plugin.sh --force   # rebuild even if that version exists
+#   OUT_DIR=/tmp ./scripts/build-plugin.sh
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGIN_DIR="$ROOT_DIR/tweller-bookings-wp"
-DIST_DIR="$ROOT_DIR/dist"
+OUT_DIR="${OUT_DIR:-$ROOT_DIR/releases}"
+FORCE=0
+[ "${1:-}" = "--force" ] && FORCE=1
 
 if [ ! -d "$PLUGIN_DIR" ]; then
     echo "Error: $PLUGIN_DIR not found." >&2
@@ -27,9 +35,16 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-OUTPUT_NAME="${1:-tweller-bookings-wp-${VERSION}.zip}"
-mkdir -p "$DIST_DIR"
-OUTPUT_PATH="$DIST_DIR/$OUTPUT_NAME"
+mkdir -p "$OUT_DIR"
+OUTPUT_PATH="$OUT_DIR/tweller-bookings-wp-${VERSION}.zip"
+
+# A released version is immutable: once 3.34.0 is built, that file is what
+# 3.34.0 means. Rebuilding it silently would let the archive drift from the
+# tag it claims, so we refuse unless --force is explicit.
+if [ -f "$OUTPUT_PATH" ] && [ "$FORCE" -eq 0 ]; then
+    echo "v$VERSION already archived at $OUTPUT_PATH (use --force to rebuild)"
+    exit 0
+fi
 
 # Build in a temp dir so the zip contains a clean top-level
 # "tweller-bookings-wp/" folder — exactly what WordPress expects when you

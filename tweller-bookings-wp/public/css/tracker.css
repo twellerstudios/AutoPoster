@@ -1639,6 +1639,23 @@ body.page .page-hero {
 .tf2-signin__btn:hover { background: var(--tf-gray-900); }
 .tf2-signin__btn:active { transform: translateY(1px); }
 .tf2-signin__btn:disabled { opacity: 0.6; cursor: default; }
+/* Never let the label wrap or clip on a narrow phone. */
+.tf2-signin__btn {
+    white-space: nowrap;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+/* A little more presence on a desktop viewport, where 420px can read small. */
+@media (min-width: 700px) {
+    .tf2-gallery__signin { min-height: 68vh; }
+    .tf2-signin__card {
+        max-width: 460px;
+        padding: 48px 44px 34px;
+    }
+    .tf2-signin__title { font-size: 25px; }
+    .tf2-signin__sub { font-size: 15px; }
+}
 .tf2-signin__error {
     color: #B4322A;
     font-size: 13px;

@@ -461,20 +461,34 @@
 
     prefetchGallery();
 
-    function prefetchGallery() {
-        var url = galleryUrl + code;
-        if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
+    function galleryEndpoint() {
+        return galleryUrl + code + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
+    }
 
+    // One in-flight gallery request, shared by the prefetch on load and the
+    // VIEW GALLERY button. Before this, clicking the button while the prefetch
+    // was still running fired a SECOND identical fetch and gave no feedback —
+    // so on a big gallery or a slow connection the button felt dead for
+    // seconds. Now the click reuses whatever is already loading.
+    var galleryPromise = null;
+    function loadGalleryData(force) {
+        if (force) galleryPromise = null;
+        if (!galleryPromise) {
+            galleryPromise = fetch(galleryEndpoint(), { headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce } })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+            // Clear the cache on failure so a later click retries cleanly.
+            galleryPromise.catch(function() { galleryPromise = null; });
+        }
+        return galleryPromise;
+    }
+
+    function prefetchGallery() {
         if (heroCover) {
             heroCover.style.display = '';
             heroCover.classList.add('tf2-hero-cover--loading');
         }
 
-        fetch(url, { headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce } })
-        .then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
+        loadGalleryData()
         .then(function(data) {
             if (heroCover) heroCover.classList.remove('tf2-hero-cover--loading');
 
@@ -515,6 +529,24 @@
         });
     }
 
+    // Instant feedback so the button never looks unresponsive while data loads.
+    function setViewBtnBusy(on) {
+        if (!viewBtn) return;
+        if (on) {
+            if (viewBtn.getAttribute('data-label') === null) {
+                viewBtn.setAttribute('data-label', viewBtn.textContent);
+            }
+            viewBtn.textContent = 'Loading…';
+            viewBtn.setAttribute('aria-busy', 'true');
+            viewBtn.style.opacity = '0.75';
+        } else {
+            var lbl = viewBtn.getAttribute('data-label');
+            if (lbl !== null) viewBtn.textContent = lbl;
+            viewBtn.removeAttribute('aria-busy');
+            viewBtn.style.opacity = '';
+        }
+    }
+
     // Apply the admin-chosen cover photo and focal position to the hero.
     function applyCover(cover, photoList) {
         if (!heroCoverBg) return;
@@ -548,24 +580,23 @@
                 return;
             }
 
+            // Data already in — reveal instantly.
             if (photos.length) {
                 revealGallery();
-            } else {
-                loadGalleryAndReveal();
+                return;
             }
+
+            // Not in yet — reuse the in-flight prefetch and show the button
+            // working, so it never appears frozen while the fetch completes.
+            setViewBtnBusy(true);
+            loadGalleryAndReveal(false);
         });
     }
 
-    function loadGalleryAndReveal() {
-        var url = galleryUrl + code;
-        if (galleryToken) url += '?token=' + encodeURIComponent(galleryToken);
-
-        fetch(url, { headers: { 'X-WP-Nonce': twellerFlow2Tracker.nonce } })
-        .then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
+    function loadGalleryAndReveal(force) {
+        loadGalleryData(force)
         .then(function(data) {
+            setViewBtnBusy(false);
             if (!data.ok || !data.ready) {
                 showGalleryMessage('Gallery is not ready yet. Please check back soon.');
                 return;
@@ -587,6 +618,7 @@
             }
         })
         .catch(function(err) {
+            setViewBtnBusy(false);
             showGalleryMessage('Unable to load gallery. Please try refreshing the page.');
             console.error('[Tweller Gallery]', err.message || err);
         });
@@ -680,7 +712,10 @@
         var msgEl = document.getElementById('tf2-gallery-message');
         if (msgEl) msgEl.style.display = 'none';
         if (signinSection) {
-            signinSection.style.display = 'block';
+            // 'flex', not 'block' — the CSS centres the card with flexbox, and
+            // an inline display:block would silently override that and shove
+            // the card to the left on desktop.
+            signinSection.style.display = 'flex';
             signinSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
@@ -702,7 +737,7 @@
             if (signinBtn) { signinBtn.disabled = true; signinBtn.textContent = 'One moment…'; }
 
             postVisitor({ name: name, email: email }, function(data) {
-                if (signinBtn) { signinBtn.disabled = false; signinBtn.textContent = 'View the gallery'; }
+                if (signinBtn) { signinBtn.disabled = false; signinBtn.textContent = 'View Gallery'; }
                 if (data && data.ok) {
                     adoptVisitor(data);
                     hideSignin();
@@ -711,7 +746,7 @@
                     if (signinError) { signinError.textContent = 'Please enter your name and a valid email.'; signinError.style.display = 'block'; }
                 }
             }, function() {
-                if (signinBtn) { signinBtn.disabled = false; signinBtn.textContent = 'View the gallery'; }
+                if (signinBtn) { signinBtn.disabled = false; signinBtn.textContent = 'View Gallery'; }
                 if (signinError) { signinError.textContent = 'Something went wrong. Please try again.'; signinError.style.display = 'block'; }
             });
         });
@@ -879,7 +914,9 @@
                     sessionStorage.setItem('tf_gallery_token_' + code, data.token);
                     pwSection.style.display = 'none';
                     needsPassword = false;
-                    loadGalleryAndReveal();
+                    // Force a fresh fetch: the unlock token changed, so the
+                    // cached (locked) prefetch must not be reused.
+                    loadGalleryAndReveal(true);
                 }
             })
             .catch(function() {

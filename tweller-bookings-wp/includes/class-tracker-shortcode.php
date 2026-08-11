@@ -370,7 +370,7 @@ class TwellerFlow2_Tracker_Shortcode {
                             <form class="tf2-signin__form" id="tf2-gallery-signin-form">
                                 <input type="text" id="tf2-signin-name" class="tf2-signin__input" placeholder="Your name" autocomplete="name" required>
                                 <input type="email" id="tf2-signin-email" class="tf2-signin__input" placeholder="Your email" autocomplete="email" required>
-                                <button type="submit" class="tf2-signin__btn" id="tf2-signin-btn">View the gallery</button>
+                                <button type="submit" class="tf2-signin__btn" id="tf2-signin-btn">View Gallery</button>
                             </form>
                             <p class="tf2-signin__error" id="tf2-signin-error" style="display:none;">Please enter your name and a valid email.</p>
                             <p class="tf2-signin__fine">We only use this to recognise you on your next visit — never shared.</p>

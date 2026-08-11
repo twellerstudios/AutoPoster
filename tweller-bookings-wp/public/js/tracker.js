@@ -585,17 +585,41 @@
                 return;
             }
 
-            // Data already in — reveal instantly.
-            if (photos.length) {
-                revealGallery();
-                return;
-            }
+            openGallery();
+        });
+    }
 
-            // Not in yet — reuse the in-flight prefetch and show the button
-            // working, so it never appears frozen while the fetch completes.
+    // Single entry point for opening the gallery, so EVERY click gives
+    // instant feedback and never silently waits. The earlier bug: a
+    // returning visitor's identity resume could still be in flight, and the
+    // reveal path blocked on it quietly — the button looked dead until the
+    // network round-trip finished. Now we resolve identity first, showing a
+    // busy state while we do, and only then reveal or ask them to sign in.
+    function openGallery() {
+        if (visitorReady) { revealOrLoad(); return; }
+
+        // No saved identity → straight to the name/email gate.
+        if (!visitorToken) { showSignin(); return; }
+
+        // Saved token, not resolved yet — show the button working while the
+        // resume (usually already warmed on load) settles.
+        setViewBtnBusy(true);
+        resolveVisitor(function(ok) {
+            setViewBtnBusy(false);
+            if (ok) revealOrLoad();
+            else showSignin();
+        });
+    }
+
+    function revealOrLoad() {
+        if (photos.length) {
+            revealGallery();
+        } else {
+            // Gallery data not in yet — reuse the in-flight prefetch and show
+            // the button busy so it never appears frozen while it completes.
             setViewBtnBusy(true);
             loadGalleryAndReveal(false);
-        });
+        }
     }
 
     function loadGalleryAndReveal(force) {

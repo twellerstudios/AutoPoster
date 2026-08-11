@@ -359,11 +359,44 @@ class TwellerFlow2_Tracker_Shortcode {
                         <p class="tf2-gallery__pw-error" id="tf2-gallery-pw-error" style="display:none;">Incorrect password. Please try again.</p>
                     </div>
 
+                    <!-- Sign-in gate: name + email once, then remembered -->
+                    <div class="tf2-gallery__signin" id="tf2-gallery-signin" style="display:none;">
+                        <div class="tf2-signin__card">
+                            <div class="tf2-signin__mark">
+                                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                            </div>
+                            <h2 class="tf2-signin__title">Welcome to the gallery</h2>
+                            <p class="tf2-signin__sub">Add your name and email to view the photos, save your favourites, and come back to them anytime.</p>
+                            <form class="tf2-signin__form" id="tf2-gallery-signin-form">
+                                <input type="text" id="tf2-signin-name" class="tf2-signin__input" placeholder="Your name" autocomplete="name" required>
+                                <input type="email" id="tf2-signin-email" class="tf2-signin__input" placeholder="Your email" autocomplete="email" required>
+                                <button type="submit" class="tf2-signin__btn" id="tf2-signin-btn">View the gallery</button>
+                            </form>
+                            <p class="tf2-signin__error" id="tf2-signin-error" style="display:none;">Please enter your name and a valid email.</p>
+                            <p class="tf2-signin__fine">We only use this to recognise you on your next visit — never shared.</p>
+                        </div>
+                    </div>
+
                     <!-- Gallery toolbar (client name + gallery actions) -->
                     <div class="tf2-gallery__toolbar" id="tf2-gallery-toolbar" style="display:none;">
                         <div class="tf2-gallery__toolbar-inner">
                             <span class="tf2-gallery__toolbar-name" id="tf2-gallery-toolbar-name"><?php echo esc_html( strtoupper( $session->client_name ) ); ?></span>
+
+                            <!-- All / Liked view tabs -->
+                            <div class="tf2-gallery__tabs" id="tf2-gallery-tabs" role="tablist">
+                                <button type="button" class="tf2-gtab tf2-gtab--active" id="tf2-tab-all" data-view="all" role="tab" aria-selected="true">All Photos</button>
+                                <button type="button" class="tf2-gtab" id="tf2-tab-liked" data-view="liked" role="tab" aria-selected="false">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                                    <span>Liked</span>
+                                    <span class="tf2-gtab__count" id="tf2-liked-count">0</span>
+                                </button>
+                            </div>
+
                             <div class="tf2-gallery__actions" id="tf2-gallery-actions">
+                                <a id="tf2-gallery-download-liked" class="tf2-gbtn tf2-gbtn--like" href="#" title="Download your favourites" style="display:none;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    <span class="tf2-gbtn__label">Download Favourites</span>
+                                </a>
                                 <button id="tf2-prints-open" class="tf2-gbtn tf2-gbtn--primary" type="button" title="Order Prints" style="display:none;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                                     <span class="tf2-gbtn__label">Order Prints</span>
@@ -433,6 +466,10 @@ class TwellerFlow2_Tracker_Shortcode {
                         </button>
                         <div class="tf2-lightbox__bar">
                             <span class="tf2-lightbox__counter" id="tf2-lightbox-counter"></span>
+                            <button class="tf2-lightbox__like" id="tf2-lightbox-like" type="button" title="Like this photo" aria-pressed="false">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                                <span class="tf2-lightbox__like-label">Like</span>
+                            </button>
                             <a class="tf2-lightbox__download" id="tf2-lightbox-download" href="#" role="button">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 Download

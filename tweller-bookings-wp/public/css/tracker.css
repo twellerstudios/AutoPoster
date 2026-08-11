@@ -1552,3 +1552,222 @@ body.page .page-hero {
     font-size: 11px;
     opacity: 0.7;
 }
+
+/* ══════════════════════════════════════════════════════════
+   Gallery visitor sign-in + favourites (CloudSpot-style)
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Sign-in gate ── */
+.tf2-gallery__signin {
+    min-height: 62vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    background: var(--tf-gray-100);
+}
+.tf2-signin__card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--tf-white);
+    border: 1px solid var(--tf-gray-200);
+    border-radius: 16px;
+    padding: 40px 32px 30px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(10, 10, 10, 0.08);
+}
+.tf2-signin__mark {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--tf-gold-dark);
+    background: rgba(201, 168, 76, 0.12);
+}
+.tf2-signin__title {
+    font-family: var(--tf-font);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--tf-black);
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+}
+.tf2-signin__sub {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--tf-gray-500);
+    margin: 0 0 22px;
+}
+.tf2-signin__form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.tf2-signin__input {
+    height: 48px;
+    padding: 0 16px;
+    border: 1px solid var(--tf-gray-300);
+    border-radius: 10px;
+    font-family: var(--tf-font);
+    font-size: 15px;
+    color: var(--tf-black);
+    background: var(--tf-white);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.tf2-signin__input:focus {
+    outline: none;
+    border-color: var(--tf-gold);
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.18);
+}
+.tf2-signin__btn {
+    height: 50px;
+    margin-top: 4px;
+    border: none;
+    border-radius: 10px;
+    background: var(--tf-black);
+    color: var(--tf-white);
+    font-family: var(--tf-font);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+}
+.tf2-signin__btn:hover { background: var(--tf-gray-900); }
+.tf2-signin__btn:active { transform: translateY(1px); }
+.tf2-signin__btn:disabled { opacity: 0.6; cursor: default; }
+.tf2-signin__error {
+    color: #B4322A;
+    font-size: 13px;
+    margin: 12px 0 0;
+}
+.tf2-signin__fine {
+    color: var(--tf-gray-400);
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 16px 0 0;
+}
+
+/* ── All / Liked tabs ── */
+.tf2-gallery__tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--tf-gray-100);
+    border-radius: 10px;
+    align-self: flex-start;
+}
+.tf2-gtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--tf-gray-500);
+    font-family: var(--tf-font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.tf2-gtab svg { width: 15px; height: 15px; }
+.tf2-gtab--active {
+    background: var(--tf-white);
+    color: var(--tf-black);
+    box-shadow: 0 1px 3px rgba(10, 10, 10, 0.08);
+}
+.tf2-gtab--has svg { color: var(--tf-gold-dark); fill: var(--tf-gold); stroke: var(--tf-gold-dark); }
+.tf2-gtab__count {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 100px;
+    background: var(--tf-gray-200);
+    color: var(--tf-gray-700);
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.tf2-gtab--active .tf2-gtab__count { background: var(--tf-gold); color: var(--tf-white); }
+
+/* Download-favourites button picks up the gold accent */
+.tf2-gbtn--like { border-color: rgba(201, 168, 76, 0.5); color: var(--tf-gold-dark); }
+.tf2-gbtn--like:hover { background: rgba(201, 168, 76, 0.08); }
+
+/* ── Tile heart ── */
+.tf2-like {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(10, 10, 10, 0.42);
+    color: #fff;
+    cursor: pointer;
+    line-height: 0;
+    padding: 0;
+    opacity: 0;
+    transform: scale(0.9);
+    transition: opacity 0.15s ease, transform 0.12s ease, background 0.15s ease;
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+}
+.tf2-like svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+.tf2-gallery__item:hover .tf2-like { opacity: 1; transform: scale(1); }
+.tf2-like:hover { background: rgba(10, 10, 10, 0.6); }
+/* Liked: filled gold, always shown */
+.tf2-like[aria-pressed="true"] {
+    opacity: 1;
+    transform: scale(1);
+    background: var(--tf-gold);
+    color: #fff;
+}
+.tf2-like[aria-pressed="true"] svg { fill: #fff; stroke: #fff; }
+.tf2-like[aria-pressed="true"]:active { transform: scale(0.86); }
+/* Touch devices have no hover — keep the heart discoverable */
+@media (hover: none) {
+    .tf2-like { opacity: 1; transform: scale(1); }
+}
+.tf2-gallery__item--liked { box-shadow: inset 0 0 0 3px var(--tf-gold); }
+
+.tf2-gallery__liked-empty {
+    text-align: center;
+    color: var(--tf-gray-500);
+    font-size: 15px;
+    padding: 60px 20px;
+}
+
+/* ── Lightbox like ── */
+.tf2-lightbox__like {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-family: var(--tf-font);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 10px;
+    opacity: 0.85;
+    transition: opacity 0.15s ease, color 0.15s ease;
+}
+.tf2-lightbox__like svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+.tf2-lightbox__like:hover { opacity: 1; }
+.tf2-lightbox__like--on { color: var(--tf-gold-light); opacity: 1; }
+.tf2-lightbox__like--on svg { fill: var(--tf-gold); stroke: var(--tf-gold-light); }

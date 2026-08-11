@@ -430,6 +430,29 @@
     var lbNext      = document.getElementById('tf2-lightbox-next');
     var lbCounter   = document.getElementById('tf2-lightbox-counter');
     var lbDownload  = document.getElementById('tf2-lightbox-download');
+    var lbLike      = document.getElementById('tf2-lightbox-like');
+
+    // Sign-in gate + favourites
+    var signinSection = document.getElementById('tf2-gallery-signin');
+    var signinForm    = document.getElementById('tf2-gallery-signin-form');
+    var signinName    = document.getElementById('tf2-signin-name');
+    var signinEmail   = document.getElementById('tf2-signin-email');
+    var signinError   = document.getElementById('tf2-signin-error');
+    var signinBtn     = document.getElementById('tf2-signin-btn');
+    var tabAll        = document.getElementById('tf2-tab-all');
+    var tabLiked      = document.getElementById('tf2-tab-liked');
+    var likedCountEl  = document.getElementById('tf2-liked-count');
+    var downloadLiked = document.getElementById('tf2-gallery-download-liked');
+
+    // Visitor identity persists across visits (localStorage), so a returning
+    // guest is never asked for their details twice.
+    var VISITOR_KEY = 'tf_gallery_visitor_' + code;
+    var visitorToken = '';
+    try { visitorToken = localStorage.getItem(VISITOR_KEY) || ''; } catch (e) {}
+    var visitorReady = false;      // resolved (resumed or signed in) this session
+    var likedIds = {};             // photo_id -> true
+    var viewMode = 'all';          // 'all' | 'liked'
+    var pendingReveal = false;     // reveal once the visitor is resolved
 
     var galleryLoaded = false;
     var needsPassword = false;
@@ -571,7 +594,20 @@
 
     function revealGallery() {
         if (galleryRevealed) return;
+
+        // The name/email gate stands in front of every gallery. A returning
+        // guest is resolved silently from their saved token; a new one is
+        // asked once. Nothing below runs until we know who is looking.
+        if (!visitorReady) {
+            resolveVisitor(function(ok) {
+                if (ok) revealGallery();
+                else showSignin();
+            });
+            return;
+        }
+
         galleryRevealed = true;
+        hideSignin();
 
         var msgEl = document.getElementById('tf2-gallery-message');
         if (msgEl) msgEl.style.display = 'none';
@@ -591,9 +627,229 @@
             });
         }
 
+        wireFavouritesUI();
+        refreshLikedUI();
+
         setTimeout(function() {
             if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
+    }
+
+    // ── Visitor sign-in (name + email, remembered) ─────
+
+    // Resume a saved visitor from their token; cb(true) if recognised.
+    function resolveVisitor(cb) {
+        if (visitorReady) { cb(true); return; }
+        if (!visitorToken) { cb(false); return; }
+        postVisitor({ token: visitorToken }, function(data) {
+            if (data && data.ok) { adoptVisitor(data); cb(true); }
+            else { clearVisitor(); cb(false); }
+        }, function() { cb(false); });
+    }
+
+    function adoptVisitor(data) {
+        visitorReady = true;
+        visitorToken = data.token || visitorToken;
+        try { localStorage.setItem(VISITOR_KEY, visitorToken); } catch (e) {}
+        likedIds = {};
+        (data.likes || []).forEach(function(id) { likedIds[id] = true; });
+    }
+
+    function clearVisitor() {
+        visitorToken = '';
+        try { localStorage.removeItem(VISITOR_KEY); } catch (e) {}
+    }
+
+    function postVisitor(body, onOk, onErr) {
+        fetch(galleryUrl + code + '/visitor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': twellerFlow2Tracker.nonce },
+            body: JSON.stringify(body)
+        })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, body: j }; }); })
+        .then(function(res) {
+            if (res.ok && res.body && res.body.ok) onOk(res.body);
+            else if (onOk) onOk(res.body && res.body.ok ? res.body : null);
+        })
+        .catch(function(e) { if (onErr) onErr(e); });
+    }
+
+    function showSignin() {
+        if (heroCover) heroCover.style.display = 'none';
+        if (pwSection) pwSection.style.display = 'none';
+        var msgEl = document.getElementById('tf2-gallery-message');
+        if (msgEl) msgEl.style.display = 'none';
+        if (signinSection) {
+            signinSection.style.display = 'block';
+            signinSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function hideSignin() {
+        if (signinSection) signinSection.style.display = 'none';
+    }
+
+    if (signinForm) {
+        signinForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var name = (signinName.value || '').trim();
+            var email = (signinEmail.value || '').trim();
+            if (!name || email.indexOf('@') < 1) {
+                if (signinError) signinError.style.display = 'block';
+                return;
+            }
+            if (signinError) signinError.style.display = 'none';
+            if (signinBtn) { signinBtn.disabled = true; signinBtn.textContent = 'One moment…'; }
+
+            postVisitor({ name: name, email: email }, function(data) {
+                if (signinBtn) { signinBtn.disabled = false; signinBtn.textContent = 'View the gallery'; }
+                if (data && data.ok) {
+                    adoptVisitor(data);
+                    hideSignin();
+                    revealGallery();
+                } else {
+                    if (signinError) { signinError.textContent = 'Please enter your name and a valid email.'; signinError.style.display = 'block'; }
+                }
+            }, function() {
+                if (signinBtn) { signinBtn.disabled = false; signinBtn.textContent = 'View the gallery'; }
+                if (signinError) { signinError.textContent = 'Something went wrong. Please try again.'; signinError.style.display = 'block'; }
+            });
+        });
+    }
+
+    // ── Favourites: like toggle, tabs, download ────────
+
+    var favWired = false;
+    function wireFavouritesUI() {
+        if (favWired) return;
+        favWired = true;
+
+        if (tabAll)   tabAll.addEventListener('click', function() { setViewMode('all'); });
+        if (tabLiked) tabLiked.addEventListener('click', function() { setViewMode('liked'); });
+
+        if (downloadLiked) {
+            downloadLiked.addEventListener('click', function(e) {
+                if (!likedCount()) { e.preventDefault(); return; }
+                trackActivity('liked_downloaded', likedCount() + ' liked photos');
+            });
+        }
+
+        if (lbLike) {
+            lbLike.addEventListener('click', function() {
+                var photo = photos[currentIdx];
+                if (photo) toggleLike(photo.id);
+            });
+        }
+    }
+
+    function likedCount() {
+        var n = 0;
+        for (var k in likedIds) { if (likedIds[k]) n++; }
+        return n;
+    }
+
+    function isLiked(photoId) { return !!likedIds[photoId]; }
+
+    // Toggle a like optimistically, then persist. On failure we roll back so
+    // the heart never lies about what the server actually stored.
+    function toggleLike(photoId) {
+        if (!visitorReady) { showSignin(); return; }
+        var next = !likedIds[photoId];
+        likedIds[photoId] = next;
+        applyLikeState(photoId);
+        refreshLikedUI();
+
+        fetch(galleryUrl + code + '/like', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': twellerFlow2Tracker.nonce },
+            body: JSON.stringify({ token: visitorToken, photo_id: photoId, liked: next ? 1 : 0 })
+        })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, body: j }; }); })
+        .then(function(res) {
+            if (!res.ok || !res.body || !res.body.ok) {
+                likedIds[photoId] = !next; // roll back
+                applyLikeState(photoId);
+                refreshLikedUI();
+            }
+        })
+        .catch(function() {
+            likedIds[photoId] = !next;
+            applyLikeState(photoId);
+            refreshLikedUI();
+        });
+    }
+
+    // Reflect one photo's like state on its grid tile + the lightbox.
+    function applyLikeState(photoId) {
+        if (grid) {
+            var tiles = grid.querySelectorAll('.tf2-gallery__item[data-photo-id="' + photoId + '"]');
+            for (var i = 0; i < tiles.length; i++) {
+                var on = isLiked(photoId);
+                tiles[i].classList.toggle('tf2-gallery__item--liked', on);
+                var btn = tiles[i].querySelector('.tf2-like');
+                if (btn) btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            }
+        }
+        var cur = photos[currentIdx];
+        if (lbLike && cur && cur.id === photoId) syncLightboxLike();
+    }
+
+    function refreshLikedUI() {
+        var n = likedCount();
+        if (likedCountEl) likedCountEl.textContent = String(n);
+        if (tabLiked) tabLiked.classList.toggle('tf2-gtab--has', n > 0);
+        if (downloadLiked) {
+            downloadLiked.style.display = n > 0 ? '' : 'none';
+            // Keep the href current so the link always downloads the latest
+            // favourites even if the click handler is bypassed.
+            if (visitorToken) {
+                downloadLiked.href = galleryUrl + code + '/download-liked?token=' + encodeURIComponent(visitorToken);
+            }
+        }
+        if (viewMode === 'liked') applyViewFilter();
+    }
+
+    function setViewMode(mode) {
+        viewMode = (mode === 'liked') ? 'liked' : 'all';
+        if (tabAll) {
+            tabAll.classList.toggle('tf2-gtab--active', viewMode === 'all');
+            tabAll.setAttribute('aria-selected', viewMode === 'all' ? 'true' : 'false');
+        }
+        if (tabLiked) {
+            tabLiked.classList.toggle('tf2-gtab--active', viewMode === 'liked');
+            tabLiked.setAttribute('aria-selected', viewMode === 'liked' ? 'true' : 'false');
+        }
+        applyViewFilter();
+    }
+
+    // In "liked" view, hide the tiles that aren't liked. No re-index — the
+    // grid keeps its data-idx, so the lightbox and print selection are
+    // unaffected; only visibility changes.
+    function applyViewFilter() {
+        if (!grid) return;
+        var showingLiked = (viewMode === 'liked');
+        grid.classList.toggle('tf2-gallery__grid--liked', showingLiked);
+        var tiles = grid.querySelectorAll('.tf2-gallery__item');
+        var shown = 0;
+        for (var i = 0; i < tiles.length; i++) {
+            var pid = parseInt(tiles[i].getAttribute('data-photo-id'), 10);
+            var vis = !showingLiked || isLiked(pid);
+            tiles[i].style.display = vis ? '' : 'none';
+            if (vis) shown++;
+        }
+        var empty = document.getElementById('tf2-liked-empty');
+        if (showingLiked && shown === 0) {
+            if (!empty) {
+                empty = document.createElement('div');
+                empty.id = 'tf2-liked-empty';
+                empty.className = 'tf2-gallery__liked-empty';
+                empty.innerHTML = 'No favourites yet — tap the &#9825; on any photo to save it here.';
+                grid.parentNode.insertBefore(empty, grid.nextSibling);
+            }
+            empty.style.display = '';
+        } else if (empty) {
+            empty.style.display = 'none';
+        }
     }
 
     // Password form
@@ -658,6 +914,8 @@
 
             item.appendChild(img);
             item.setAttribute('data-idx', String(idx));
+            item.setAttribute('data-photo-id', String(photo.id));
+            if (isLiked(photo.id)) item.classList.add('tf2-gallery__item--liked');
             item.addEventListener('click', function() {
                 if (selMode) {
                     toggleSelect(idx);
@@ -665,6 +923,9 @@
                     openLightbox(idx);
                 }
             });
+
+            // Favourite heart — always available to a signed-in visitor.
+            item.appendChild(makeLikeBtn(photo));
 
             // Print store: per-photo order button (only when the store is loaded)
             if (window.TwellerPrints) {
@@ -679,6 +940,24 @@
 
         updatePrintBadges();
         syncSelectionUI();
+        applyViewFilter();
+    }
+
+    // The heart overlay on a grid tile. Elegant but unmissable: a soft
+    // circle that fills gold when liked. stopPropagation keeps a like from
+    // also opening the lightbox.
+    function makeLikeBtn(photo) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tf2-like';
+        btn.setAttribute('aria-label', 'Like this photo');
+        btn.setAttribute('aria-pressed', isLiked(photo.id) ? 'true' : 'false');
+        btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleLike(photo.id);
+        });
+        return btn;
     }
 
     function makeSelectCheck() {
@@ -989,8 +1268,29 @@
     }
 
     // ── Lightbox ───────────────────────────────────────
+    // The lightbox navigates the CURRENTLY VISIBLE set: all photos, or just
+    // the liked ones when the Liked tab is active. navIndices holds indices
+    // into the canonical `photos` array, so print selection and downloads
+    // (which use `photos`) are untouched.
+    var navIndices = [];
+    var navPos = 0;
+
+    function currentNav() {
+        var out = [];
+        for (var i = 0; i < photos.length; i++) {
+            if (viewMode !== 'liked' || isLiked(photos[i].id)) out.push(i);
+        }
+        return out;
+    }
+
     function openLightbox(idx) {
-        currentIdx = idx;
+        navIndices = currentNav();
+        navPos = navIndices.indexOf(idx);
+        if (navPos === -1) {
+            if (!navIndices.length) return;
+            navPos = 0;
+        }
+        currentIdx = navIndices[navPos];
         renderLightbox();
         lightbox.style.display = 'flex';
         document.body.style.overflow = 'hidden';
@@ -1005,21 +1305,36 @@
         var photo = photos[currentIdx];
         if (!photo) return;
         lbImg.src = photo.url;
-        lbCounter.textContent = (currentIdx + 1) + ' / ' + photos.length;
+        lbCounter.textContent = (navPos + 1) + ' / ' + navIndices.length;
         // Store data for download handler
         lbDownload.setAttribute('data-url', photo.url);
         lbDownload.setAttribute('data-filename', photo.filename);
+        syncLightboxLike();
         // Keep the per-photo print counter in sync while navigating
         updatePrintBadges();
     }
 
+    function syncLightboxLike() {
+        if (!lbLike) return;
+        var photo = photos[currentIdx];
+        var on = photo ? isLiked(photo.id) : false;
+        lbLike.classList.toggle('tf2-lightbox__like--on', on);
+        lbLike.setAttribute('aria-pressed', on ? 'true' : 'false');
+        var lbl = lbLike.querySelector('.tf2-lightbox__like-label');
+        if (lbl) lbl.textContent = on ? 'Liked' : 'Like';
+    }
+
     function prevPhoto() {
-        currentIdx = (currentIdx - 1 + photos.length) % photos.length;
+        if (!navIndices.length) return;
+        navPos = (navPos - 1 + navIndices.length) % navIndices.length;
+        currentIdx = navIndices[navPos];
         renderLightbox();
     }
 
     function nextPhoto() {
-        currentIdx = (currentIdx + 1) % photos.length;
+        if (!navIndices.length) return;
+        navPos = (navPos + 1) % navIndices.length;
+        currentIdx = navIndices[navPos];
         renderLightbox();
     }
 

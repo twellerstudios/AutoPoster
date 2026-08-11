@@ -489,6 +489,73 @@
                 <?php endif; ?>
             </div>
 
+            <!-- Gallery Favourites (CloudSpot-style) -->
+            <?php if ( class_exists( 'TwellerFlow2_Gallery_Favorites' ) ) :
+                $fav_visitors  = TwellerFlow2_Gallery_Favorites::visitors_with_likes( $session );
+                $fav_aggregate = TwellerFlow2_Gallery_Favorites::aggregate_likes( $session );
+                $fav_v_count   = TwellerFlow2_Gallery_Favorites::count_visitors( $session->id );
+                $fav_l_count   = TwellerFlow2_Gallery_Favorites::count_likes( $session->id );
+            ?>
+            <div class="tf2-card tf2-mb-6">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                    <h2 style="margin:0;">Gallery Favourites</h2>
+                    <span style="color:#6B7280; font-size:13px;">
+                        <strong><?php echo (int) $fav_v_count; ?></strong> visitor<?php echo $fav_v_count === 1 ? '' : 's'; ?>
+                        &middot; <strong><?php echo (int) $fav_l_count; ?></strong> like<?php echo $fav_l_count === 1 ? '' : 's'; ?>
+                    </span>
+                </div>
+                <p class="tf2-description" style="margin-top:6px;">Who viewed the gallery and which photos they hearted — the shortlist worth pushing for prints.</p>
+
+                <?php if ( empty( $fav_visitors ) ) : ?>
+                    <p style="color:#9CA3AF; padding:14px 0;">No one has signed in and liked photos yet. Likes appear here as visitors heart images in the gallery.</p>
+                <?php else : ?>
+
+                    <?php if ( ! empty( $fav_aggregate ) ) : ?>
+                        <div style="border:1px solid #F3F4F6; border-radius:10px; padding:14px; margin:12px 0 18px; background:#FCFCFD;">
+                            <h3 style="margin:0 0 10px; font-size:13px; font-weight:700; color:#374151;">Most loved <span style="font-weight:400; color:#9CA3AF;">— across everyone</span></h3>
+                            <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">
+                                <?php foreach ( array_slice( $fav_aggregate, 0, 24 ) as $ph ) : ?>
+                                    <a href="<?php echo esc_url( $ph['url'] ); ?>" target="_blank" rel="noopener" title="<?php echo esc_attr( $ph['filename'] . ' — ' . $ph['likes'] . ' like' . ( $ph['likes'] === 1 ? '' : 's' ) ); ?>" style="position:relative; flex:0 0 auto; display:block; width:84px; height:84px; border-radius:8px; overflow:hidden; background:#EEF0F3;">
+                                        <img src="<?php echo esc_url( $ph['thumb_url'] ); ?>" alt="" loading="lazy" style="width:100%; height:100%; object-fit:cover; display:block;">
+                                        <span style="position:absolute; top:4px; right:4px; background:#C9A227; color:#fff; font-size:11px; font-weight:700; line-height:1; padding:3px 6px; border-radius:100px; box-shadow:0 1px 2px rgba(0,0,0,0.25);">&#9829; <?php echo (int) $ph['likes']; ?></span>
+                                    </a>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php foreach ( $fav_visitors as $fv ) : ?>
+                        <div style="border-top:1px solid #F3F4F6; padding:14px 0;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
+                                <div>
+                                    <strong style="color:#111827;"><?php echo esc_html( $fv['name'] ); ?></strong>
+                                    <a href="mailto:<?php echo esc_attr( $fv['email'] ); ?>" style="color:#6B7280; text-decoration:none; margin-left:8px;"><?php echo esc_html( $fv['email'] ); ?></a>
+                                </div>
+                                <span style="color:#6B7280; font-size:12px;">
+                                    <?php echo (int) $fv['like_count']; ?> liked
+                                    <?php if ( ! empty( $fv['last_seen'] ) ) : ?>
+                                        &middot; last seen <?php echo esc_html( date( 'M j, g:ia', strtotime( $fv['last_seen'] ) ) ); ?>
+                                    <?php endif; ?>
+                                </span>
+                            </div>
+                            <?php if ( empty( $fv['photos'] ) ) : ?>
+                                <p style="color:#9CA3AF; font-size:13px; margin:0;">Signed in but hasn't liked anything yet.</p>
+                            <?php else : ?>
+                                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                                    <?php foreach ( $fv['photos'] as $ph ) : ?>
+                                        <a href="<?php echo esc_url( $ph['url'] ); ?>" target="_blank" rel="noopener" title="<?php echo esc_attr( $ph['filename'] ); ?>" style="display:block; width:70px; height:70px; border-radius:6px; overflow:hidden; background:#EEF0F3;">
+                                            <img src="<?php echo esc_url( $ph['thumb_url'] ); ?>" alt="" loading="lazy" style="width:100%; height:100%; object-fit:cover; display:block;">
+                                        </a>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+
             <!-- Culling Status -->
             <?php $culling = TwellerFlow2_Culling::get_summary( $session->id ); ?>
             <?php if ( $culling['enabled'] ) : ?>

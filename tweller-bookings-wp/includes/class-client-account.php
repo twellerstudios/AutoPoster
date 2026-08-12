@@ -29,10 +29,15 @@ class TwellerFlow2_Client_Account {
     public static function init() {
         self::register_role();
 
-        // The client, via their tracker/gallery link. output_og_tags() on
-        // wp_head already resolves $_GET['code'] on every tracker view, so
-        // this hook is proven to run before any body output on that page.
-        add_action( 'wp_head', array( __CLASS__, 'maybe_login_from_tracker' ), 4 );
+        // The client, via their tracker/gallery link. This MUST run before
+        // any output: login_as() sets an auth cookie, which needs the HTTP
+        // headers still unsent. wp_head fires inside <head>, after the theme
+        // has already emitted the doctype — on a host without output
+        // buffering that flushes the headers, so login_as() silently bails
+        // on headers_sent() and the cookie never lands (the login, and thus
+        // the nav link, quietly never happens). template_redirect is the
+        // last front-end hook before template output; headers still unsent.
+        add_action( 'template_redirect', array( __CLASS__, 'maybe_login_from_tracker' ) );
 
         // Anyone who signs into a gallery (client or guest) — hooked from
         // class-gallery-favorites.php's rest_visitor(), not registered here,
@@ -171,12 +176,12 @@ class TwellerFlow2_Client_Account {
     // ── Auto-login: the client, via their tracker link ──
 
     /**
-     * Runs on every front-end page load (wp_head, priority 4 — before
-     * output_og_tags at priority 5, and well before body output). Only
-     * does anything when the URL carries a real session code, which is
-     * exactly the bearer credential that already fully unlocks that
-     * session's tracker page today — this does not grant access to
-     * anything the code didn't already grant.
+     * Runs on template_redirect — the last front-end hook before any
+     * template output, so the auth cookie login_as() sets still lands in
+     * unsent headers. Only does anything when the URL carries a real
+     * session code, which is exactly the bearer credential that already
+     * fully unlocks that session's tracker page today — this does not
+     * grant access to anything the code didn't already grant.
      */
     public static function maybe_login_from_tracker() {
         if ( is_admin() || empty( $_GET['code'] ) ) return;

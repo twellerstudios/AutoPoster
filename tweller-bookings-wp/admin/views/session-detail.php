@@ -506,6 +506,15 @@
                 </div>
                 <p class="tf2-description" style="margin-top:6px;">Who viewed the gallery and which photos they hearted — the shortlist worth pushing for prints.</p>
 
+                <?php if ( $fav_v_count > 0 ) :
+                    $tf2_export_url = wp_nonce_url(
+                        admin_url( 'admin.php?page=tweller-flow-2-session&id=' . (int) $session->id . '&tf2_action=export_visitors&session_id=' . (int) $session->id ),
+                        'tweller_flow_2_export_visitors'
+                    );
+                ?>
+                    <p style="margin:2px 0 10px;"><a href="<?php echo esc_url( $tf2_export_url ); ?>" class="button">&#11015; Download viewer list (CSV)</a></p>
+                <?php endif; ?>
+
                 <?php if ( empty( $fav_visitors ) ) : ?>
                     <p style="color:#9CA3AF; padding:14px 0;">No one has signed in and liked photos yet. Likes appear here as visitors heart images in the gallery.</p>
                 <?php else : ?>

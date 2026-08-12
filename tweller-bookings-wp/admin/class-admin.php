@@ -132,6 +132,17 @@ class TwellerFlow2_Admin {
     public function handle_actions() {
         if ( ! current_user_can( 'manage_options' ) ) return;
 
+        // Download gallery viewers as CSV (names + emails of everyone who
+        // signed in to view a gallery). Reads only the visitor sign-in
+        // table — no WordPress accounts are created or touched. session_id
+        // scopes it to one gallery; omitted = every gallery.
+        if ( isset( $_GET['tf2_action'] ) && $_GET['tf2_action'] === 'export_visitors'
+             && class_exists( 'TwellerFlow2_Gallery_Favorites' ) ) {
+            check_admin_referer( 'tweller_flow_2_export_visitors' );
+            $this->export_visitors_csv( isset( $_GET['session_id'] ) ? absint( $_GET['session_id'] ) : 0 );
+            // export_visitors_csv() sends the file and exits.
+        }
+
         // Create session
         if ( isset( $_POST['tweller_flow_2_create_session'] ) ) {
             check_admin_referer( 'tweller_flow_2_create_session' );
@@ -388,14 +399,6 @@ class TwellerFlow2_Admin {
             update_option( 'tweller_flow_2_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );
             update_option( 'tweller_flow_2_booking_ical_url', esc_url_raw( $_POST['booking_ical_url'] ?? '' ) );
 
-            // Which nav menu the "My Gallery" / "My Account" client link
-            // appears in. Blank = every menu on the page.
-            if ( class_exists( 'TwellerFlow2_Client_Account' ) ) {
-                $registered = array_keys( get_registered_nav_menus() );
-                $chosen     = sanitize_text_field( $_POST['client_nav_location'] ?? '' );
-                update_option( 'tweller_flow_2_client_nav_location', in_array( $chosen, $registered, true ) ? $chosen : '' );
-            }
-
             // Session types & packages are managed on the Offerings page
 
             // WiPay card payments
@@ -505,6 +508,59 @@ class TwellerFlow2_Admin {
                 exit;
             }
         }
+    }
+
+    /**
+     * Stream the gallery-viewers CSV and exit. Called from handle_actions()
+     * on admin_init, so it runs before any admin page output — headers are
+     * safe to send. Caller has already verified manage_options + the nonce.
+     */
+    private function export_visitors_csv( $session_id = 0 ) {
+        $rows = TwellerFlow2_Gallery_Favorites::export_visitor_rows( $session_id );
+
+        $scope = 'all-galleries';
+        if ( $session_id > 0 ) {
+            $session = TwellerFlow2_Session::get( $session_id );
+            if ( $session ) {
+                $scope = sanitize_file_name( $session->tracking_code . '-' . $session->client_name );
+            }
+        }
+        $filename = 'gallery-viewers-' . $scope . '-' . date( 'Y-m-d' ) . '.csv';
+
+        nocache_headers();
+        header( 'Content-Type: text/csv; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+
+        $out = fopen( 'php://output', 'w' );
+        // UTF-8 BOM so Excel opens accented names correctly.
+        fwrite( $out, "\xEF\xBB\xBF" );
+        fputcsv( $out, array( 'Name', 'Email', 'Gallery Code', 'Booked Client', 'First Viewed', 'Last Seen', 'Photos Liked' ) );
+        foreach ( $rows as $r ) {
+            fputcsv( $out, array(
+                self::csv_cell( $r['name'] ),
+                self::csv_cell( $r['email'] ),
+                self::csv_cell( $r['session_code'] ),
+                self::csv_cell( $r['client_name'] ),
+                $r['created_at'],
+                $r['last_seen_at'],
+                (int) $r['like_count'],
+            ) );
+        }
+        fclose( $out );
+        exit;
+    }
+
+    /**
+     * Neutralise CSV/formula injection: a cell a spreadsheet would run as a
+     * formula (leading = + - @, or a leading tab/CR) is prefixed with a
+     * single quote so it's shown literally instead of executed.
+     */
+    private static function csv_cell( $value ) {
+        $value = (string) $value;
+        if ( $value !== '' && in_array( $value[0], array( '=', '+', '-', '@', "\t", "\r" ), true ) ) {
+            $value = "'" . $value;
+        }
+        return $value;
     }
 
     /**

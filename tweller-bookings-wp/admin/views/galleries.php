@@ -2,6 +2,19 @@
 <div class="wrap tf2-wrap">
     <h1>Galleries</h1>
 
+    <?php
+    // Master export: names + emails of everyone who signed in to view any
+    // gallery, across every session — your full viewer mailing list.
+    $tf2_export_all_url = wp_nonce_url(
+        admin_url( 'admin.php?page=tweller-flow-2-galleries&tf2_action=export_visitors' ),
+        'tweller_flow_2_export_visitors'
+    );
+    ?>
+    <p style="margin:0 0 16px;">
+        <a href="<?php echo esc_url( $tf2_export_all_url ); ?>" class="button">&#11015; Download all gallery viewers (CSV)</a>
+        <span style="color:#6B7280; font-size:12px; margin-left:8px;">Every name &amp; email captured at gallery sign-in, across all galleries.</span>
+    </p>
+
     <?php if ( isset( $_GET['saved'] ) ) : ?>
         <div class="tf2-alert tf2-alert--success">Gallery settings saved.</div>
     <?php elseif ( isset( $_GET['deleted'] ) ) : ?>

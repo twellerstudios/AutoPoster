@@ -144,6 +144,7 @@ class TwellerFlow2_Gallery_Favorites {
             $visitor = self::visitor_by_token( $token, $session->id );
             if ( $visitor ) {
                 $wpdb->update( self::visitors_table(), array( 'last_seen_at' => current_time( 'mysql' ) ), array( 'id' => $visitor->id ) );
+                self::login_visitor_site_wide( $visitor, $session );
                 return rest_ensure_response( self::visitor_payload( $visitor ) );
             }
             // Token didn't match this gallery — fall through to registration
@@ -171,6 +172,7 @@ class TwellerFlow2_Gallery_Favorites {
                 'last_seen_at' => current_time( 'mysql' ),
             ), array( 'id' => $existing->id ) );
             $existing->name = $name;
+            self::login_visitor_site_wide( $existing, $session );
             return rest_ensure_response( self::visitor_payload( $existing ) );
         }
 
@@ -194,6 +196,7 @@ class TwellerFlow2_Gallery_Favorites {
             TwellerFlow2_Client_Activity::log( $session->id, $session->tracking_code, 'gallery_signin', $name . ' <' . $email . '>' );
         }
 
+        self::login_visitor_site_wide( $visitor, $session );
         return rest_ensure_response( self::visitor_payload( $visitor ) );
     }
 
@@ -394,6 +397,64 @@ class TwellerFlow2_Gallery_Favorites {
         return (int) $wpdb->get_var( $wpdb->prepare(
             "SELECT COUNT(*) FROM " . self::likes_table() . " WHERE session_id = %d", $session_id
         ) );
+    }
+
+    /**
+     * Every gallery this email address has liked photos in, across every
+     * session — the Client Dashboard's "Galleries You've Liked Photos In"
+     * list, and part of what decides whether the nav shows a link at all.
+     *
+     * @param string $email
+     * @return array<int, array{session_id:int, tracking_code:string, client_name:string, like_count:int}>
+     */
+    public static function sessions_liked_by_email( $email ) {
+        $email = sanitize_email( (string) $email );
+        if ( ! is_email( $email ) ) return array();
+
+        global $wpdb;
+        $visitors = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, session_id FROM " . self::visitors_table() . " WHERE email = %s",
+            $email
+        ) );
+        if ( ! is_array( $visitors ) || empty( $visitors ) ) return array();
+
+        $out = array();
+        foreach ( $visitors as $v ) {
+            $count = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM " . self::likes_table() . " WHERE visitor_id = %d", $v->id
+            ) );
+            if ( $count < 1 ) continue; // signed in, never liked anything — nothing to show
+
+            $session = TwellerFlow2_Session::get( (int) $v->session_id );
+            if ( ! $session ) continue;
+
+            $out[] = array(
+                'session_id'    => (int) $session->id,
+                'tracking_code' => $session->tracking_code,
+                'client_name'   => $session->client_name,
+                'like_count'    => $count,
+            );
+        }
+        return $out;
+    }
+
+    /**
+     * Give this browser a real (but powerless) WordPress login, so the nav
+     * link and Client Dashboard can recognise it site-wide — separate from
+     * and in addition to the visitor token above, which remains the only
+     * thing the likes themselves depend on. Session is linked to the
+     * account ONLY when this visitor's email is the session's own booking
+     * client — a friend or family member who signed in with their own
+     * email to like photos does not get that session listed as theirs.
+     */
+    private static function login_visitor_site_wide( $visitor, $session ) {
+        if ( ! class_exists( 'TwellerFlow2_Client_Account' ) ) return;
+
+        $session_id = 0;
+        if ( isset( $session->client_email ) && strcasecmp( (string) $session->client_email, (string) $visitor->email ) === 0 ) {
+            $session_id = (int) $session->id;
+        }
+        TwellerFlow2_Client_Account::login_and_link( $visitor->email, $visitor->name, $session_id );
     }
 
     // ── Internals ──────────────────────────────────────

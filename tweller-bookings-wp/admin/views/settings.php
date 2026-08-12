@@ -182,6 +182,29 @@
                         add, remove, reorder, and edit prices there.
                     </p>
                 </div>
+
+                <?php if ( class_exists( 'TwellerFlow2_Client_Account' ) ) :
+                    $nav_locations = get_registered_nav_menus();
+                    $nav_chosen    = get_option( 'tweller_flow_2_client_nav_location', '' );
+                ?>
+                <div class="tf2-field" style="max-width:640px;">
+                    <label class="tf2-field__label">Client "My Gallery" Link</label>
+                    <div class="tf2-field__hint" style="margin-bottom:6px;">
+                        A signed-in client sees a personal "My Gallery" (or "My Account") link — nobody else does.
+                        Choose which menu it appears in, or leave on <em>All menus</em> if your theme only has one.
+                    </div>
+                    <?php if ( empty( $nav_locations ) ) : ?>
+                        <p class="tf2-description">Your active theme hasn't registered any menu locations, so this link can't be placed automatically. It will still work once the theme (or a menu plugin) registers one.</p>
+                    <?php else : ?>
+                        <select name="client_nav_location">
+                            <option value="">All menus</option>
+                            <?php foreach ( $nav_locations as $slug => $desc ) : ?>
+                                <option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $nav_chosen, $slug ); ?>><?php echo esc_html( $desc ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
 

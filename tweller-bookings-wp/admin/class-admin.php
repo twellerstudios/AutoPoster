@@ -388,6 +388,14 @@ class TwellerFlow2_Admin {
             update_option( 'tweller_flow_2_webhook_secret', sanitize_text_field( $_POST['webhook_secret'] ) );
             update_option( 'tweller_flow_2_booking_ical_url', esc_url_raw( $_POST['booking_ical_url'] ?? '' ) );
 
+            // Which nav menu the "My Gallery" / "My Account" client link
+            // appears in. Blank = every menu on the page.
+            if ( class_exists( 'TwellerFlow2_Client_Account' ) ) {
+                $registered = array_keys( get_registered_nav_menus() );
+                $chosen     = sanitize_text_field( $_POST['client_nav_location'] ?? '' );
+                update_option( 'tweller_flow_2_client_nav_location', in_array( $chosen, $registered, true ) ? $chosen : '' );
+            }
+
             // Session types & packages are managed on the Offerings page
 
             // WiPay card payments

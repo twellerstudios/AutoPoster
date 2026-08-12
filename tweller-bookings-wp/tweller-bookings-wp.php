@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Bookings WP
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client proof uploads, photo selection portal, gallery delivery, and WiPay payment integration.
- * Version: 3.37.0
+ * Version: 3.38.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_2_VERSION', '3.37.0' );
+define( 'TWELLER_FLOW_2_VERSION', '3.38.0' );
 define( 'TWELLER_FLOW_2_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_2_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_2_TABLE_SESSIONS', 'tweller_sessions' );
@@ -30,6 +30,8 @@ require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-webhook-handler.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-photo-automation.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-gallery.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-gallery-favorites.php';
+require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-client-account.php';
+require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-client-dashboard.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-client-activity.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-culling.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-booking-api.php';
@@ -57,6 +59,8 @@ function tweller_flow_2_activate() {
     TwellerFlow2_Culling::create_tables();
     TwellerFlow2_Prints::create_tables();
     TwellerFlow2_Print_Providers::install();
+    TwellerFlow2_Client_Account::register_role();
+    TwellerFlow2_Client_Dashboard::ensure_page();
     tweller_flow_2_ensure_tracker_page();
     tweller_flow_2_ensure_culling_page();
     flush_rewrite_rules();
@@ -222,6 +226,8 @@ function tweller_flow_2_init() {
     TwellerFlow2_Photo_Automation::init();
     TwellerFlow2_Gallery::init();
     TwellerFlow2_Gallery_Favorites::init();
+    TwellerFlow2_Client_Account::init();
+    TwellerFlow2_Client_Dashboard::init();
     TwellerFlow2_Client_Activity::init();
     TwellerFlow2_Culling::init();
     TwellerFlow2_Booking_API::init();
@@ -246,6 +252,12 @@ function tweller_flow_2_init() {
     // Gallery favourites (visitors + likes) — self-heals on first load of
     // this version without a reactivation; the guard is one autoloaded read.
     TwellerFlow2_Gallery_Favorites::maybe_create_tables();
+
+    // Client accounts: role + dashboard page, same self-heal pattern —
+    // get_role()/get_option() are cheap, so this costs nothing on repeat
+    // requests and needs no reactivation to reach an already-active site.
+    TwellerFlow2_Client_Account::register_role();
+    TwellerFlow2_Client_Dashboard::ensure_page();
     add_action( 'wp_enqueue_scripts', 'tweller_flow_2_public_assets' );
 }
 add_action( 'init', 'tweller_flow_2_init' );

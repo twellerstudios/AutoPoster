@@ -691,6 +691,12 @@
         wireFavouritesUI();
         refreshLikedUI();
 
+        // Deep link from the Client Dashboard's "View Liked Photos" button
+        // (?view=liked) — jump straight to the Liked tab once the grid is up.
+        if (/[?&]view=liked\b/.test(window.location.search) && tabLiked) {
+            setViewMode('liked');
+        }
+
         setTimeout(function() {
             if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);

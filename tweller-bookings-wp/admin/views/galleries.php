@@ -214,6 +214,12 @@
                             <?php echo esc_html( $session->client_name ); ?>
                             <span style="font-weight:400; color:#6B7280; font-size:14px; margin-left:8px;"><?php echo esc_html( $session->tracking_code ); ?></span>
                         </h2>
+                        <?php
+                        if ( class_exists( 'TwellerFlow2_Image_Consent' ) ) {
+                            $tf2_gal_badge = TwellerFlow2_Image_Consent::badge_html( $session->id );
+                            if ( $tf2_gal_badge ) echo '<div style="margin:0 0 8px;">' . $tf2_gal_badge . '</div>';
+                        }
+                        ?>
                         <div style="font-size:13px; color:#9CA3AF; display:flex; gap:16px; flex-wrap:wrap;">
                             <?php if ( $session->session_date ) : ?>
                                 <span>Session: <?php echo date( 'M j, Y', strtotime( $session->session_date ) ); ?></span>

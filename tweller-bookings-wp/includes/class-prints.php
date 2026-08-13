@@ -49,6 +49,7 @@ class TwellerFlow2_Prints {
     const ITEM_CROP_SERVICE = 'crop_service';
     const ITEM_DELIVERY     = 'delivery_fee';
     const ITEM_MEETUP       = 'meetup';
+    const ITEM_CREDIT       = 'studio_credit';
 
     public static function init() {
         add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
@@ -1032,6 +1033,7 @@ class TwellerFlow2_Prints {
             'fulfilment'      => $request->get_param( 'fulfilment' ),
             'meetup_location' => sanitize_text_field( (string) $request->get_param( 'meetup_location' ) ),
             'shipping'        => $request->get_param( 'shipping' ),
+            'apply_credit'    => true,
         ));
 
         if ( is_wp_error( $order_id ) ) return $order_id;
@@ -1065,6 +1067,7 @@ class TwellerFlow2_Prints {
             'ok'                   => true,
             'order_ref'            => $order->order_ref,
             'subtotal'             => (float) $order->subtotal,
+            'credit_applied'       => self::order_credit_applied( $order ),
             'portal_url'           => self::portal_url( $order ),
             'portal_token'         => self::portal_token( $order->order_ref, $order->customer_email ),
             'wipay'                => $wipay_ok ? 1 : 0,
@@ -1212,6 +1215,7 @@ class TwellerFlow2_Prints {
             'fulfilment'      => isset( $_POST['fulfilment'] ) ? sanitize_text_field( wp_unslash( $_POST['fulfilment'] ) ) : '',
             'meetup_location' => isset( $_POST['meetup_location'] ) ? sanitize_text_field( wp_unslash( $_POST['meetup_location'] ) ) : '',
             'shipping'        => isset( $_POST['shipping'] ) ? json_decode( wp_unslash( $_POST['shipping'] ), true ) : null,
+            'apply_credit'    => true,
         ));
 
         if ( is_wp_error( $order_id ) ) return $order_id;
@@ -1537,7 +1541,7 @@ class TwellerFlow2_Prints {
         if ( ! is_array( $item ) ) return false;
         if ( isset( $item['category'] ) && (string) $item['category'] === 'service' ) return true;
         $id = isset( $item['product_id'] ) ? (string) $item['product_id'] : '';
-        return in_array( $id, array( self::ITEM_CROP_SERVICE, self::ITEM_DELIVERY, self::ITEM_MEETUP ), true );
+        return in_array( $id, array( self::ITEM_CROP_SERVICE, self::ITEM_DELIVERY, self::ITEM_MEETUP, self::ITEM_CREDIT ), true );
     }
 
     /** Only the printable lines — used by the file builder and the lab. */
@@ -1922,6 +1926,31 @@ class TwellerFlow2_Prints {
         $items = self::build_order_items( $data );
         if ( is_wp_error( $items ) ) return $items;
 
+        // A client's studio print credit (earned by allowing image sharing
+        // after delivery) rides in as a negative service line, so the stored
+        // subtotal and the visible line items stay reconciled — no mismatch
+        // banner. We peek the balance here and only spend it once the order
+        // is saved, so a failed insert never burns credit.
+        $credit_used = 0.0;
+        if ( ! empty( $data['apply_credit'] ) && class_exists( 'TwellerFlow2_Image_Consent' ) && ! empty( $data['customer_email'] ) ) {
+            $pre_total   = self::items_total( $items );
+            $balance     = TwellerFlow2_Image_Consent::print_credit_balance( $data['customer_email'] );
+            $credit_used = round( min( $balance, $pre_total ), 2 );
+            if ( $credit_used > 0 ) {
+                $items[] = array(
+                    'product_id'   => self::ITEM_CREDIT,
+                    'product_name' => 'Studio print credit',
+                    'category'     => 'service',
+                    'price'        => -1 * $credit_used,
+                    'qty'          => 1,
+                    'filename'     => '',
+                    'photo_url'    => '',
+                    'thumb_url'    => '',
+                    'crop'         => null,
+                );
+            }
+        }
+
         $subtotal = self::items_total( $items );
 
         // Delivery / meet-up detail, appended to the order notes so it
@@ -1950,7 +1979,23 @@ class TwellerFlow2_Prints {
         if ( ! $ok ) {
             return new WP_Error( 'save_failed', 'Could not save your order. Please try again.', array( 'status' => 500 ) );
         }
+
+        // Order saved — now actually draw the credit down.
+        if ( $credit_used > 0 && class_exists( 'TwellerFlow2_Image_Consent' ) ) {
+            TwellerFlow2_Image_Consent::spend_print_credit( $data['customer_email'], $credit_used );
+        }
         return (int) $wpdb->insert_id;
+    }
+
+    /** Total studio print credit applied to an order (a positive TT$ figure). */
+    public static function order_credit_applied( $order ) {
+        $total = 0.0;
+        foreach ( self::get_order_items( $order ) as $item ) {
+            if ( is_array( $item ) && isset( $item['product_id'] ) && (string) $item['product_id'] === self::ITEM_CREDIT ) {
+                $total += abs( (float) ( isset( $item['price'] ) ? $item['price'] : 0 ) );
+            }
+        }
+        return round( $total, 2 );
     }
 
     // ── Studio-initiated orders ("Send to print lab") ──

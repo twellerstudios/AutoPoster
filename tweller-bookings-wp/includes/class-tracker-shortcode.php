@@ -331,6 +331,65 @@ class TwellerFlow2_Tracker_Shortcode {
             </div>
 
             <?php if ( in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) : ?>
+
+                <?php
+                // Image-use consent after delivery. A client who kept their
+                // session private may now change their mind for print credit;
+                // clients who already allow sharing get no revoke path.
+                $tf2_consent = class_exists( 'TwellerFlow2_Image_Consent' ) ? TwellerFlow2_Image_Consent::get( $session->id ) : '';
+                $tf2_credit  = class_exists( 'TwellerFlow2_Image_Consent' ) ? TwellerFlow2_Image_Consent::print_credit_balance( $session->client_email ) : 0;
+                $tf2_fee     = class_exists( 'TwellerFlow2_Image_Consent' ) ? TwellerFlow2_Image_Consent::privacy_fee() : 50;
+                $tf2_fee_str = 'TT$' . number_format( $tf2_fee, ( $tf2_fee == (int) $tf2_fee ) ? 0 : 2 );
+                ?>
+
+                <?php if ( $tf2_consent === 'declined' ) : ?>
+                    <div class="tf2-consent-flip" id="tf2-consent-flip" style="max-width:760px; margin:0 auto 20px; background:#FBFAF7; border:1px solid #ECE9E2; border-radius:12px; padding:18px 20px;">
+                        <div id="tf2-consent-flip-body">
+                            <strong style="display:block; color:#101010; font-size:16px; margin-bottom:4px;">Happy with your photos? You can let us share them.</strong>
+                            <p style="color:#6B5E4E; line-height:1.6; margin:0 0 14px; font-size:14px;">You chose to keep this session private — always your call. If you've changed your mind, allow us to feature a few on our social media and we'll add <strong><?php echo esc_html( $tf2_fee_str ); ?> in print credit</strong> to your account as a thank-you.</p>
+                            <button type="button" id="tf2-consent-allow-btn" style="background:#101010; color:#fff; border:0; border-radius:8px; padding:11px 18px; font-size:14px; font-weight:600; cursor:pointer;">Yes, you can share my photos</button>
+                            <p id="tf2-consent-flip-error" style="display:none; color:#B91C1C; font-size:13px; margin:10px 0 0;"></p>
+                        </div>
+                        <div id="tf2-consent-flip-done" style="display:none; color:#166534; font-size:15px; line-height:1.6;"></div>
+                    </div>
+                    <script>
+                    (function(){
+                        var btn = document.getElementById('tf2-consent-allow-btn');
+                        if (!btn) return;
+                        btn.addEventListener('click', function(){
+                            btn.disabled = true; btn.textContent = 'One moment…';
+                            var err = document.getElementById('tf2-consent-flip-error');
+                            if (err) err.style.display = 'none';
+                            fetch('<?php echo esc_url_raw( rest_url( 'tweller-flow-2/v1/consent/allow' ) ); ?>', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tracking_code: '<?php echo esc_js( $session->tracking_code ); ?>' })
+                            }).then(function(r){ return r.json(); }).then(function(d){
+                                if (d && d.success) {
+                                    document.getElementById('tf2-consent-flip-body').style.display = 'none';
+                                    var done = document.getElementById('tf2-consent-flip-done');
+                                    var c = (typeof d.credit !== 'undefined') ? Number(d.credit) : 0;
+                                    done.innerHTML = d.already
+                                        ? '✓ Sharing is already enabled — thank you!'
+                                        : '✓ Thank you! We\'ve added <strong>TT$' + c.toFixed(2) + '</strong> in print credit to your account — it\'ll apply automatically at checkout.';
+                                    done.style.display = 'block';
+                                } else {
+                                    btn.disabled = false; btn.textContent = 'Yes, you can share my photos';
+                                    if (err) { err.textContent = (d && d.message) ? d.message : 'Something went wrong — please try again.'; err.style.display = 'block'; }
+                                }
+                            }).catch(function(){
+                                btn.disabled = false; btn.textContent = 'Yes, you can share my photos';
+                                if (err) { err.textContent = 'Network error — please try again.'; err.style.display = 'block'; }
+                            });
+                        });
+                    })();
+                    </script>
+                <?php elseif ( $tf2_credit > 0 ) : ?>
+                    <div class="tf2-credit-note" style="max-width:760px; margin:0 auto 20px; background:#DCFCE7; border:1px solid #BBF7D0; border-radius:12px; padding:14px 18px; color:#166534; font-size:14px;">
+                        You have <strong>TT$<?php echo esc_html( number_format( (float) $tf2_credit, 2 ) ); ?></strong> in studio print credit — it'll apply automatically when you order prints.
+                    </div>
+                <?php endif; ?>
+
                 <div id="gallery" class="tf2-gallery" data-code="<?php echo esc_attr( $session->tracking_code ); ?>">
 
                     <!-- Hero Cover (full-width, first photo as background with Ken Burns) -->

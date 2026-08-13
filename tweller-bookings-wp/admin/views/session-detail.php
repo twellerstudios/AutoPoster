@@ -42,7 +42,15 @@
             <?php
             if ( class_exists( 'TwellerFlow2_Image_Consent' ) ) {
                 $tf2_consent_badge = TwellerFlow2_Image_Consent::badge_html( $session->id );
-                if ( $tf2_consent_badge ) echo '<div style="margin:6px 0 8px;">' . $tf2_consent_badge . '</div>';
+                $tf2_client_credit = TwellerFlow2_Image_Consent::print_credit_balance( $session->client_email );
+                if ( $tf2_consent_badge || $tf2_client_credit > 0 ) {
+                    echo '<div style="margin:6px 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">';
+                    echo $tf2_consent_badge;
+                    if ( $tf2_client_credit > 0 ) {
+                        echo '<span style="display:inline-flex; align-items:center; gap:6px; background:#DCFCE7; color:#166534; font-weight:700; font-size:12px; padding:5px 11px; border-radius:100px;">&#127873; TT$' . esc_html( number_format( (float) $tf2_client_credit, 2 ) ) . ' print credit</span>';
+                    }
+                    echo '</div>';
+                }
             }
             ?>
             <div class="tf2-detail-header__code">

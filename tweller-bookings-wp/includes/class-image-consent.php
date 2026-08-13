@@ -39,6 +39,84 @@ class TwellerFlow2_Image_Consent {
 
     public static function init() {
         add_shortcode( self::SHORTCODE, array( __CLASS__, 'render_why_page' ) );
+        add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
+    }
+
+    public static function register_routes() {
+        register_rest_route( 'tweller-flow-2/v1', '/consent/allow', array(
+            'methods'             => 'POST',
+            'callback'            => array( __CLASS__, 'rest_allow_after_delivery' ),
+            'permission_callback' => '__return_true',
+        ) );
+    }
+
+    /**
+     * Post-delivery change of heart: a client who chose privacy at booking
+     * decides, once they've seen their gallery, to let the studio share after
+     * all. We flip them to "may post 1–5", thank them with print credit equal
+     * to the privacy fee they paid, and let the studio know. Clients who
+     * already allow sharing have no revoke path — this only ever loosens.
+     */
+    public static function rest_allow_after_delivery( $request ) {
+        $code = sanitize_text_field( (string) $request->get_param( 'tracking_code' ) );
+        if ( $code === '' || ! class_exists( 'TwellerFlow2_Session' ) ) {
+            return new WP_Error( 'missing_code', 'Tracking code is required.', array( 'status' => 400 ) );
+        }
+
+        $session = TwellerFlow2_Session::get_by_code( $code );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found.', array( 'status' => 404 ) );
+        }
+
+        // Only offered once the gallery is actually with the client.
+        if ( ! in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ) {
+            return new WP_Error( 'not_ready', 'This becomes available once your gallery is ready.', array( 'status' => 400 ) );
+        }
+
+        if ( self::get( $session->id ) !== self::DECLINED ) {
+            return rest_ensure_response( array(
+                'success' => true,
+                'already' => true,
+                'message' => 'Sharing is already enabled — thank you!',
+            ) );
+        }
+
+        self::set( $session->id, self::LIMITED );
+        $credit = self::privacy_fee();
+        self::add_print_credit( $session->client_email, $credit );
+
+        if ( method_exists( 'TwellerFlow2_Session', 'record_stage_history' ) ) {
+            TwellerFlow2_Session::record_stage_history(
+                $session->id, $session->current_stage, $session->current_stage_index,
+                'Client allowed image sharing after delivery — granted TT$' . number_format( $credit, 2 ) . ' print credit.'
+            );
+        }
+
+        self::notify_studio_allowed( $session, $credit );
+
+        return rest_ensure_response( array(
+            'success' => true,
+            'credit'  => $credit,
+            'balance' => self::print_credit_balance( $session->client_email ),
+        ) );
+    }
+
+    private static function notify_studio_allowed( $session, $credit ) {
+        if ( ! class_exists( 'TwellerFlow2_Notifications' ) ) return;
+        $recipients = array_unique( array_filter( array(
+            get_option( 'admin_email' ),
+            TwellerFlow2_Notifications::STUDIO_EMAIL,
+        ) ) );
+        if ( empty( $recipients ) ) return;
+
+        $subject = 'You can now post — ' . $session->client_name;
+        $body = "<h2 style='color:#101010; font-weight:600;'>Sharing unlocked</h2>"
+            . "<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( $session->client_name )
+            . "</strong> originally kept their session private, and has now chosen to let you share their photos on social media.</p>"
+            . "<p style='color:#3D3630; line-height:1.7;'>We've credited them <strong>TT$" . number_format( $credit, 2 )
+            . "</strong> toward prints as a thank-you. Their session is now marked <strong>OK to post</strong>.</p>"
+            . "<p style='color:#3D3630;'>Shoot Code: <strong>" . esc_html( $session->tracking_code ) . "</strong></p>";
+        TwellerFlow2_Notifications::send_raw( $recipients, $subject, $body );
     }
 
     public static function valid_choices() {

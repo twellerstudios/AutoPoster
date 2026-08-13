@@ -60,6 +60,12 @@
                                     <span class="tf2-client-name"><?php echo esc_html( $s->client_name ); ?></span>
                                 </a>
                                 <div class="tf2-muted tf2-text-sm"><?php echo esc_html( $s->tracking_code ); ?></div>
+                                <?php
+                                if ( class_exists( 'TwellerFlow2_Image_Consent' ) ) {
+                                    $tf2_row_badge = TwellerFlow2_Image_Consent::badge_html( $s->id );
+                                    if ( $tf2_row_badge ) echo '<div style="margin-top:5px;">' . $tf2_row_badge . '</div>';
+                                }
+                                ?>
                             </td>
                             <td><?php echo esc_html( $pkg_name ); ?></td>
                             <td>

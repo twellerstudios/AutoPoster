@@ -105,9 +105,10 @@
             tile('In production', stats.in_production) +
             tile('Ready', stats.ready) +
             tile('Done this month', stats.completed_month) +
-            tile('Value this month', money(stats.value_month)) +
             // Payout / earnings — completed jobs only, so this reads as real
             // money earned, not a forecast of what's still in the pipeline.
+            // The partner only ever sees what they earn, never the studio's
+            // retail takings.
             tile('Earned this month', money(stats.earned_month), true) +
             tile('Earned all-time', money(stats.earned_all_time), true) +
             tile('Jobs completed', stats.jobs_completed) +
@@ -143,13 +144,10 @@
             html += '<p class="tfpv__sizes">' + esc(order.sizes) + '</p>';
         }
 
-        // Payout line, Printful/Printify style: gross order value next to
-        // what THIS job earns this provider. Never the studio's margin.
+        // Payout line: only what THIS job pays the provider. The retail total
+        // the customer paid and the studio's margin are never shown — the
+        // studio charges what it likes, the partner just sees their cost.
         html += '<div class="tfpv__pay">' +
-            '<div class="tfpv__pay-item">' +
-                '<span class="tfpv__pay-label">Order value</span>' +
-                '<span class="tfpv__pay-value">' + esc(money(order.value)) + '</span>' +
-            '</div>' +
             '<div class="tfpv__pay-item tfpv__pay-item--earn">' +
                 '<span class="tfpv__pay-label">You earn</span>' +
                 '<span class="tfpv__pay-value">' + esc(money(order.your_earnings)) + '</span>' +

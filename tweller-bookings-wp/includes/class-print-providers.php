@@ -1825,12 +1825,17 @@ class TwellerFlow2_Print_Providers {
 			$orders[] = self::order_payload( $order, $provider, false );
 		}
 
+		// The partner sees their own throughput and earnings, never the
+		// studio's retail takings — strip the customer-value figure out.
+		$stats = self::provider_stats( $provider['id'] );
+		unset( $stats['value_month'] );
+
 		return rest_ensure_response( array(
 			'provider' => array(
 				'name'          => $provider['name'],
 				'does_delivery' => (int) $provider['does_delivery'],
 			),
-			'stats'    => self::provider_stats( $provider['id'] ),
+			'stats'    => $stats,
 			'currency' => 'TT$',
 			'orders'   => $orders,
 		) );
@@ -2620,11 +2625,11 @@ if ( count( $parts ) !== 2 ) {
 			'can_ship'      => ( ! $closed && ! empty( $provider['does_delivery'] ) && (string) $f['shipped_at'] === '' ) ? 1 : 0,
 		);
 
-		// Payout line, Printful/Printify style: the order's gross value and
-		// what THIS provider earns on it. The studio's margin never appears
-		// here — order_economics() computes it, we simply never read it out.
+		// Payout line: only what THIS provider is owed for the job. The
+		// retail total the customer paid and the studio's margin never appear
+		// here — order_economics() computes them, we simply never read them
+		// out. The studio sets its own prices and the partner never sees them.
 		$eco                        = self::order_economics( $order, $provider );
-		$payload['value']           = $eco['value'];
 		$payload['your_earnings']   = $eco['provider_cost'];
 		$payload['unpriced_count']  = $eco['unpriced_items'];
 

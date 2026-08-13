@@ -646,6 +646,11 @@ class TwellerFlow2_Photo_Automation {
             TwellerFlow2_Session::update( $session->id, $update_data );
         }
 
+        // Was this gallery already live before this call? Used to fire the
+        // studio "gallery uploaded" alert exactly once — on the first move
+        // into uploaded/delivered, not on every re-send from the watcher.
+        $was_ready = in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true );
+
         $result = TwellerFlow2_Session::set_stage( $session->id, $target_stage, '[Watcher] ' . $notes );
 
         if ( ! $result ) {
@@ -653,6 +658,16 @@ class TwellerFlow2_Photo_Automation {
         }
 
         self::log_activity( $session->id, $target_stage, $notes );
+
+        // Customised studio backend email when a gallery is uploaded & sent
+        // from Lightroom — separate from the client's delivery email (and
+        // from the Bcc copy of it). Fires once, when the gallery first goes live.
+        if ( ! $was_ready && in_array( $result, array( 'uploaded', 'delivered' ), true )
+             && class_exists( 'TwellerFlow2_Notifications' ) ) {
+            TwellerFlow2_Notifications::notify_studio_gallery_uploaded(
+                TwellerFlow2_Session::get( $session->id ), $photo_count, $gallery_url
+            );
+        }
 
         $stages_conf = TwellerFlow2_Database::get_stages();
         $notified = ! empty( $stages_conf[ $result ]['notify'] ) && ! empty( $session->client_email );

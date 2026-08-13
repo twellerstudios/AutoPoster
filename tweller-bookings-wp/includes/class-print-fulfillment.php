@@ -2094,16 +2094,27 @@ class TwellerFlow2_Print_Fulfillment {
 		$first = trim( (string) strtok( trim( (string) $order->customer_name ), ' ' ) );
 		$rows  = TwellerFlow2_Notifications::email_detail_row( 'Order', esc_html( $order->order_ref ) );
 		$rows .= TwellerFlow2_Notifications::email_detail_row( 'Delivered', esc_html( date_i18n( 'F j, Y', current_time( 'timestamp' ) ) ) );
+		$delivery_card = TwellerFlow2_Notifications::email_card( 'Delivery', $rows );
 
+		$subject = "Your prints have been delivered, {$first}";
 		$body = "
 			<h2 style='color:#101010; font-weight:600;'>Delivered</h2>
 			<p style='color:#3D3630;'>Hi " . esc_html( $order->customer_name ) . ",</p>
 			<p style='color:#3D3630; line-height:1.7;'>Your order <strong>" . esc_html( $order->order_ref ) . "</strong> has been delivered. We hope they look beautiful.</p>
-			" . TwellerFlow2_Notifications::email_card( 'Delivery', $rows ) . "
+			{$delivery_card}
 			<p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
 		";
 
-		return TwellerFlow2_Notifications::send_raw( $order->customer_email, "Your prints have been delivered, {$first}", $body );
+		if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+			list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'prints_delivered', $subject, $body, array(
+				'customer_name' => esc_html( $order->customer_name ),
+				'first_name'    => esc_html( $first ),
+				'order_ref'     => esc_html( $order->order_ref ),
+				'delivery_card' => $delivery_card,
+			) );
+		}
+
+		return TwellerFlow2_Notifications::send_raw( $order->customer_email, $subject, $body );
 	}
 
 	/** GET /prints/label/{order_ref} — admin cookie auth OR signed token. */

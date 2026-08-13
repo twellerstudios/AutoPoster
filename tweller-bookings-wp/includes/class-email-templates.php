@@ -289,6 +289,143 @@ class TwellerFlow2_Email_Templates {
                     . "{{portal_button}}\n"
                     . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
             ),
+
+            // ── Culling (photo selection) ───────────────────
+            'culling_ready' => array(
+                'group'   => 'Client — photo selection',
+                'label'   => 'Proofs ready (choose your photos)',
+                'desc'    => 'Invites the client to browse their proofs and pick the photos to retouch.',
+                'tokens'  => array( 'client_name', 'first_name', 'package', 'package_details', 'choose_button' ),
+                'subject' => "Time to choose your photos, {{first_name}} ✨",
+                'body'    => "<h2>Your proofs are ready</h2>\n"
+                    . "<p>Hi {{client_name}},</p>\n"
+                    . "<p>The exciting part — your photo proofs are ready for viewing. Take your time browsing, and pick the ones you'd love us to retouch and finish for you.</p>\n"
+                    . "{{package_details}}\n"
+                    . "{{choose_button}}\n"
+                    . "<p>Once you submit your selections they can't be changed, so take your time — there's no rush.</p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'culling_selection' => array(
+                'group'   => 'Client — photo selection',
+                'label'   => 'Selections received',
+                'desc'    => "Confirms the client's photo picks were received. The extra-photo cost breakdown ({{extra_cost_section}}) only appears when they chose more than their package includes.",
+                'tokens'  => array( 'client_name', 'total_selected', 'package', 'included', 'extra_cost_section', 'next_steps', 'track_button' ),
+                'subject' => "We've Received Your Photo Selections! 📸",
+                'body'    => "<h2>Thank you, {{client_name}}! 🎉</h2>\n"
+                    . "<p>We've received your photo selections and we're excited to start editing!</p>\n"
+                    . "<p><strong>{{total_selected}} photos selected</strong> — {{package}} package, {{included}} included.</p>\n"
+                    . "{{extra_cost_section}}\n"
+                    . "{{next_steps}}\n"
+                    . "{{track_button}}",
+            ),
+
+            // ── Print store — customer ──────────────────────
+            'prints_order_received' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Order received',
+                'desc'    => 'Confirms a new print order to the customer with the items, amount due and payment options.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'pickup_note', 'order_items', 'payment_block', 'portal_button' ),
+                'subject' => "We've received your print order, {{first_name}} — {{order_ref}}",
+                'body'    => "<h2>Your print order is in</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Thank you for your order — we can't wait to see these in print. Your order reference is <strong>{{order_ref}}</strong>.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{payment_block}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>{{pickup_note}}</p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_confirmed' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: payment confirmed / in production',
+                'desc'    => 'Sent when a print order\'s payment is confirmed and it enters production.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Payment confirmed — your print order is in production, {{first_name}}",
+                'body'    => "<h2>Payment confirmed</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Lovely news — we've confirmed your payment and your print order <strong>{{order_ref}}</strong> is now in the production queue.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_printing' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: in production',
+                'desc'    => 'Sent while a print order is being printed.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Your prints are in production, {{first_name}}",
+                'body'    => "<h2>In production</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> is being printed right now. We'll let you know the moment it's ready.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_ready' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: ready',
+                'desc'    => "Sent when a print order is printed and ready. {{ready_line}} adapts to pickup, delivery or meet-up.",
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'ready_line', 'pickup_note', 'order_items', 'portal_button' ),
+                'subject' => "Your prints are ready, {{first_name}} ✨",
+                'body'    => "<h2>Ready</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>The moment you've been waiting for — your order <strong>{{order_ref}}</strong> is done. {{ready_line}}<br><br>{{pickup_note}}</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_completed' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: completed',
+                'desc'    => 'A thank-you once a print order is fully complete.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Enjoy your prints, {{first_name}}!",
+                'body'    => "<h2>Order completed</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> is complete. Thank you for printing with Tweller Studios — we hope they look beautiful on your walls.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_cancelled' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: cancelled',
+                'desc'    => 'Notifies the customer that a print order was cancelled.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Your print order has been cancelled — {{order_ref}}",
+                'body'    => "<h2>Order cancelled</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> has been cancelled. If this is unexpected, just reply to this email and we'll sort it out.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_delivered' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Prints delivered',
+                'desc'    => 'Confirms a print order has been delivered to the customer.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'delivery_card' ),
+                'subject' => "Your prints have been delivered, {{first_name}}",
+                'body'    => "<h2>Delivered</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> has been delivered. We hope they look beautiful.</p>\n"
+                    . "{{delivery_card}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+
+            // ── Studio alerts (go to you, not the client) ───
+            'studio_gallery_uploaded' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Gallery uploaded from Lightroom',
+                'desc'    => 'Your own backend alert when a gallery is uploaded & sent from Lightroom — who it is, how many photos, and links to view it. Goes to your studio inbox, not the client.',
+                'tokens'  => array( 'client_name', 'client_email', 'package', 'photo_count', 'shoot_code', 'gallery_details', 'view_button', 'admin_button' ),
+                'subject' => "Gallery uploaded — {{client_name}} ({{photo_count}} photos)",
+                'body'    => "<h2>A gallery just went up</h2>\n"
+                    . "<p><strong>{{client_name}}</strong>'s gallery has been uploaded from Lightroom and is ready — {{photo_count}} photos.</p>\n"
+                    . "{{gallery_details}}\n"
+                    . "{{view_button}}\n"
+                    . "{{admin_button}}",
+            ),
         );
     }
 

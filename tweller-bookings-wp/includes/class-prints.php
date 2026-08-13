@@ -2457,23 +2457,36 @@ class TwellerFlow2_Prints {
             <p style='margin:6px 0 0; color:#3D3630; line-height:1.7;'>{$pay_line}</p>
         " );
 
+        $order_items   = TwellerFlow2_Notifications::email_card( 'Your Order', self::items_table_html( $order ) );
+        $portal_button = "<div style='text-align:center; margin:28px 0;'>" . TwellerFlow2_Notifications::email_button( esc_url( $portal ), 'View your order / Make payment' ) . "</div>";
+
         $subject = "We've received your print order, {$first_name} — " . $order->order_ref;
         $body = "
             <h2 style='color:#101010; font-weight:600;'>Your print order is in</h2>
             <p style='color:#3D3630;'>Hi " . esc_html( $order->customer_name ) . ",</p>
             <p style='color:#3D3630; line-height:1.7;'>Thank you for your order — we can't wait to see these in print. Your order reference is <strong style='color:#101010;'>" . esc_html( $order->order_ref ) . "</strong>.</p>
 
-            " . TwellerFlow2_Notifications::email_card( 'Your Order', self::items_table_html( $order ) ) . "
+            {$order_items}
 
             {$payment_block}
 
-            <div style='text-align:center; margin:28px 0;'>
-                " . TwellerFlow2_Notifications::email_button( esc_url( $portal ), 'View your order / Make payment' ) . "
-            </div>
+            {$portal_button}
 
             <p style='color:#3D3630; line-height:1.7;'>" . esc_html( $settings['pickup_note'] ) . "</p>
             <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
         ";
+
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'prints_order_received', $subject, $body, array(
+                'customer_name' => esc_html( $order->customer_name ),
+                'first_name'    => esc_html( $first_name ),
+                'order_ref'     => esc_html( $order->order_ref ),
+                'pickup_note'   => esc_html( $settings['pickup_note'] ),
+                'order_items'   => $order_items,
+                'payment_block' => $payment_block,
+                'portal_button' => $portal_button,
+            ) );
+        }
 
         return TwellerFlow2_Notifications::send_raw( $order->customer_email, $subject, $body );
     }
@@ -2569,18 +2582,32 @@ class TwellerFlow2_Prints {
         $c = $copy[ $status ];
         $portal = self::portal_url( $order );
 
+        $order_items   = TwellerFlow2_Notifications::email_card( 'Your Order', self::items_table_html( $order ) );
+        $portal_button = "<div style='text-align:center; margin:28px 0;'>" . TwellerFlow2_Notifications::email_button( esc_url( $portal ), 'View your order' ) . "</div>";
+
+        $subject = $c['subject'];
         $body = "
             <h2 style='color:#101010; font-weight:600;'>" . $c['heading'] . "</h2>
             <p style='color:#3D3630;'>Hi " . esc_html( $order->customer_name ) . ",</p>
             <p style='color:#3D3630; line-height:1.7;'>" . $c['line'] . "</p>
-            " . TwellerFlow2_Notifications::email_card( 'Your Order', self::items_table_html( $order ) ) . "
-            <div style='text-align:center; margin:28px 0;'>
-                " . TwellerFlow2_Notifications::email_button( esc_url( $portal ), 'View your order' ) . "
-            </div>
+            {$order_items}
+            {$portal_button}
             <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
         ";
 
-        return TwellerFlow2_Notifications::send_raw( $order->customer_email, $c['subject'], $body );
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'prints_status_' . $status, $subject, $body, array(
+                'customer_name' => esc_html( $order->customer_name ),
+                'first_name'    => esc_html( $first_name ),
+                'order_ref'     => esc_html( $order->order_ref ),
+                'ready_line'    => $ready_line,
+                'pickup_note'   => esc_html( $settings['pickup_note'] ),
+                'order_items'   => $order_items,
+                'portal_button' => $portal_button,
+            ) );
+        }
+
+        return TwellerFlow2_Notifications::send_raw( $order->customer_email, $subject, $body );
     }
 
     /** Studio alert: a bank-transfer receipt arrived and needs verification. */

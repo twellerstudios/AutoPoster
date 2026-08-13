@@ -136,6 +136,73 @@ class TwellerFlow2_Notifications {
     }
 
     /**
+     * Studio-facing "a gallery just went up" alert — the customised backend
+     * notification the studio wanted when a gallery is uploaded and sent from
+     * Lightroom. Goes to the studio inbox(es), not the client, and carries
+     * what the studio actually needs: whose gallery, how many photos, and
+     * one-tap links to view it and open the session. Editable on the Emails
+     * screen (key studio_gallery_uploaded).
+     *
+     * @param object $session
+     * @param int    $photo_count
+     * @param string $gallery_url  Optional; resolved from the code if blank.
+     * @return bool
+     */
+    public static function notify_studio_gallery_uploaded( $session, $photo_count = 0, $gallery_url = '' ) {
+        if ( ! $session ) return false;
+
+        $recipients = array_values( array_unique( array_filter( array(
+            get_option( 'admin_email' ),
+            self::STUDIO_EMAIL,
+        ) ) ) );
+        if ( empty( $recipients ) ) return false;
+
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $pkg      = isset( $packages[ $session->package_type ] ) ? $packages[ $session->package_type ] : array();
+        $pkg_name = isset( $pkg['name'] ) ? $pkg['name'] : ucfirst( (string) $session->package_type );
+
+        if ( ! $gallery_url && class_exists( 'TwellerFlow2_Gallery' ) ) {
+            $gallery_url = TwellerFlow2_Gallery::get_gallery_url( $session->tracking_code );
+        }
+        $admin_url = admin_url( 'admin.php?page=tweller-flow-2-session&id=' . (int) $session->id );
+
+        $rows  = self::email_detail_row( 'Client', esc_html( $session->client_name ) );
+        if ( ! empty( $session->client_email ) ) $rows .= self::email_detail_row( 'Email', esc_html( $session->client_email ) );
+        $rows .= self::email_detail_row( 'Package', esc_html( $pkg_name ) );
+        if ( (int) $photo_count > 0 ) $rows .= self::email_detail_row( 'Photos', (int) $photo_count );
+        $rows .= self::email_detail_row( 'Shoot code', esc_html( $session->tracking_code ) );
+
+        $gallery_details = self::email_card( 'Gallery', $rows );
+        $view_button     = $gallery_url ? self::email_button_row( $gallery_url, 'View the gallery' ) : '';
+        $admin_button    = self::email_button_row( $admin_url, 'Open in dashboard', false, 6 );
+        $count_phrase    = (int) $photo_count > 0 ? " — {$photo_count} photos" : '';
+
+        $subject = "Gallery uploaded — {$session->client_name}" . ( (int) $photo_count > 0 ? " ({$photo_count} photos)" : '' );
+        $body = "
+            <h2 style='color:" . self::C_BLACK . "; font-weight:600;'>A gallery just went up</h2>
+            <p style='color:" . self::C_TEXT . "; line-height:1.7;'><strong>" . esc_html( $session->client_name ) . "</strong>'s gallery has been uploaded from Lightroom and is ready{$count_phrase}.</p>
+            {$gallery_details}
+            {$view_button}
+            {$admin_button}
+        ";
+
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'studio_gallery_uploaded', $subject, $body, array(
+                'client_name'     => esc_html( $session->client_name ),
+                'client_email'    => esc_html( (string) $session->client_email ),
+                'package'         => esc_html( $pkg_name ),
+                'photo_count'     => (int) $photo_count,
+                'shoot_code'      => esc_html( $session->tracking_code ),
+                'gallery_details' => $gallery_details,
+                'view_button'     => $view_button,
+                'admin_button'    => $admin_button,
+            ) );
+        }
+
+        return self::send_raw( $recipients, $subject, $body );
+    }
+
+    /**
      * Client email when a receipt could not be verified — asks them to
      * re-upload. Extracted from the admin handler so the app's reject
      * action sends the identical message.

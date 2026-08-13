@@ -811,27 +811,38 @@ class TwellerFlow2_Culling {
 
         $first_name = trim( explode( ' ', trim( $session->client_name ) )[0] );
         $subject = "Time to choose your photos, {$first_name} ✨";
+
+        $package_details = TwellerFlow2_Notifications::email_card( 'Your Package', "
+                <p style='margin:6px 0; color:#3D3630;'><strong>{$pkg_name}:</strong> {$included} retouched photos included" . ( self::FREEBIES > 0 ? " + " . self::FREEBIES . " bonus free" : "" ) . "</p>
+                <p style='margin:6px 0; color:#3D3630;'>Select up to <strong>" . ( $included + self::FREEBIES ) . "</strong> photos at no extra cost.</p>
+                <p style='margin:6px 0; color:#8A8178;'><em>Want more? You can add extra photos during selection.</em></p>
+            " );
+        $choose_button = "<div style='text-align:center; margin:30px 0;'>" . TwellerFlow2_Notifications::email_button( $culling_url, 'Choose My Photos' ) . "</div>";
+        $before_card   = TwellerFlow2_Notifications::email_card( 'Before You Start', "
+                <p style='margin:0; color:#3D3630; line-height:1.7;'>Once you submit your selections they can't be changed, so take your time — there's no rush.</p>
+            " );
+
         $body = "
             <h2 style='color:#101010; font-weight:600;'>Your proofs are ready</h2>
             <p style='color:#3D3630;'>Hi {$session->client_name},</p>
             <p style='color:#3D3630; line-height:1.7;'>The exciting part — your photo proofs are ready for viewing. Take your time browsing, and pick the ones you'd love us to retouch and finish for you.</p>
 
-            " . TwellerFlow2_Notifications::email_card( 'Your Package', "
-                <p style='margin:6px 0; color:#3D3630;'><strong>{$pkg_name}:</strong> {$included} retouched photos included" . ( self::FREEBIES > 0 ? " + " . self::FREEBIES . " bonus free" : "" ) . "</p>
-                <p style='margin:6px 0; color:#3D3630;'>Select up to <strong>" . ( $included + self::FREEBIES ) . "</strong> photos at no extra cost.</p>
-                <p style='margin:6px 0; color:#8A8178;'><em>Want more? You can add extra photos during selection.</em></p>
-            " ) . "
+            {$package_details}
 
-            <div style='text-align:center; margin:30px 0;'>
-                " . TwellerFlow2_Notifications::email_button( $culling_url, 'Choose My Photos' ) . "
-            </div>
+            {$choose_button}
 
-            " . TwellerFlow2_Notifications::email_card( 'Before You Start', "
-                <p style='margin:0; color:#3D3630; line-height:1.7;'>Once you submit your selections they can't be changed, so take your time — there's no rush.</p>
-            " ) . "
+            {$before_card}
 
             <p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
         ";
+
+        list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'culling_ready', $subject, $body, array(
+            'client_name'     => esc_html( $session->client_name ),
+            'first_name'      => esc_html( $first_name ),
+            'package'         => esc_html( $pkg_name ),
+            'package_details' => $package_details,
+            'choose_button'   => $choose_button,
+        ) );
 
         TwellerFlow2_Notifications::send_email( $session, $subject, $body );
     }
@@ -1548,6 +1559,17 @@ class TwellerFlow2_Culling {
                 </div>";
         }
 
+        $next_steps = "<div style='background:#F8FAFC; border-radius:10px; padding:20px 24px; margin:24px 0;'>
+                <h3 style='font-size:15px; color:#374151; margin:0 0 10px;'>What Happens Next?</h3>
+                <ol style='margin:0; padding-left:20px; font-size:14px; color:#374151; line-height:2;'>
+                    <li>Our team reviews your selections</li>
+                    <li>We begin retouching your photos with care</li>
+                    <li>Your gallery will be ready for download</li>
+                    <li>You'll receive an email the moment it's live</li>
+                </ol>
+            </div>";
+        $track_button = TwellerFlow2_Notifications::email_button_row( $tracker_url, 'Track My Session' );
+
         $body = "
             <h2 style='color:#111827; font-size:22px; margin:0 0 8px;'>Thank you, {$session->client_name}! 🎉</h2>
             <p style='color:#6B7280; font-size:15px; margin:0 0 24px;'>We've received your photo selections and we're excited to start editing!</p>
@@ -1565,21 +1587,23 @@ class TwellerFlow2_Culling {
 
             {$extra_section}
 
-            <div style='background:#F8FAFC; border-radius:10px; padding:20px 24px; margin:24px 0;'>
-                <h3 style='font-size:15px; color:#374151; margin:0 0 10px;'>What Happens Next?</h3>
-                <ol style='margin:0; padding-left:20px; font-size:14px; color:#374151; line-height:2;'>
-                    <li>Our team reviews your selections</li>
-                    <li>We begin retouching your photos with care</li>
-                    <li>Your gallery will be ready for download</li>
-                    <li>You'll receive an email the moment it's live</li>
-                </ol>
-            </div>
+            {$next_steps}
 
             <p style='font-size:14px; color:#374151;'>You can track your session progress anytime:</p>
-            " . TwellerFlow2_Notifications::email_button_row( $tracker_url, 'Track My Session' ) . "
+            {$track_button}
 
             <p style='font-size:13px; color:#9CA3AF; text-align:center; margin-top:24px;'>Questions? Reply to this email — we're happy to help! 😊</p>
         ";
+
+        list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'culling_selection', $subject, $body, array(
+            'client_name'        => esc_html( $session->client_name ),
+            'total_selected'     => (int) $total_selected,
+            'package'            => esc_html( $pkg_name ),
+            'included'           => (int) $included,
+            'extra_cost_section' => $extra_section,
+            'next_steps'         => $next_steps,
+            'track_button'       => $track_button,
+        ) );
 
         TwellerFlow2_Notifications::send_email( $session, $subject, $body );
     }

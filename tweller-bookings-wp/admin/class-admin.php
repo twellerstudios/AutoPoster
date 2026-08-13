@@ -80,6 +80,15 @@ class TwellerFlow2_Admin {
 
         add_submenu_page(
             'tweller-flow-2',
+            'Emails',
+            'Emails',
+            'manage_options',
+            'tweller-flow-2-emails',
+            array( $this, 'page_emails' )
+        );
+
+        add_submenu_page(
+            'tweller-flow-2',
             'Settings',
             'Settings',
             'manage_options',
@@ -141,6 +150,49 @@ class TwellerFlow2_Admin {
             check_admin_referer( 'tweller_flow_2_export_visitors' );
             $this->export_visitors_csv( isset( $_GET['session_id'] ) ? absint( $_GET['session_id'] ) : 0 );
             // export_visitors_csv() sends the file and exits.
+        }
+
+        // Emails: studio copy (Cc/Bcc) settings
+        if ( isset( $_POST['tweller_flow_2_save_email_copy'] ) && class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            check_admin_referer( 'tweller_flow_2_emails' );
+            TwellerFlow2_Email_Templates::save_copy_settings(
+                ! empty( $_POST['email_copy_enabled'] ),
+                wp_unslash( $_POST['email_copy_cc'] ?? '' ),
+                wp_unslash( $_POST['email_copy_bcc'] ?? '' )
+            );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-emails&copy_saved=1' ) );
+            exit;
+        }
+
+        // Emails: save one template override
+        if ( isset( $_POST['tweller_flow_2_save_email_template'] ) && class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            check_admin_referer( 'tweller_flow_2_emails' );
+            $key     = sanitize_key( $_POST['email_key'] ?? '' );
+            $subject = sanitize_text_field( wp_unslash( $_POST['email_subject'] ?? '' ) );
+            // Body is HTML with merge tags — allow the email markup the studio
+            // needs (tables, inline styles) but strip scripts via wp_kses_post.
+            $body    = wp_kses_post( wp_unslash( $_POST['email_body'] ?? '' ) );
+            $ok      = TwellerFlow2_Email_Templates::save_override( $key, $subject, $body );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-emails&tpl=' . rawurlencode( $key ) . ( $ok ? '&tpl_saved=1' : '&tpl_error=1' ) . '#tpl-' . rawurlencode( $key ) ) );
+            exit;
+        }
+
+        // Emails: reset one template to its built-in default
+        if ( isset( $_POST['tweller_flow_2_reset_email_template'] ) && class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            check_admin_referer( 'tweller_flow_2_emails' );
+            $key = sanitize_key( $_POST['email_key'] ?? '' );
+            TwellerFlow2_Email_Templates::reset_override( $key );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-emails&tpl=' . rawurlencode( $key ) . '&tpl_reset=1#tpl-' . rawurlencode( $key ) ) );
+            exit;
+        }
+
+        // Emails: send a test of one template to the current admin
+        if ( isset( $_POST['tweller_flow_2_test_email'] ) && class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            check_admin_referer( 'tweller_flow_2_emails' );
+            $key  = sanitize_key( $_POST['email_key'] ?? '' );
+            $sent = $this->send_email_template_test( $key );
+            wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-emails&tpl=' . rawurlencode( $key ) . ( $sent ? '&tpl_tested=1' : '&tpl_test_failed=1' ) . '#tpl-' . rawurlencode( $key ) ) );
+            exit;
         }
 
         // Create session
@@ -333,7 +385,11 @@ class TwellerFlow2_Admin {
                 // Send the delivery email
                 $template = TwellerFlow2_Notifications::get_email_template( 'delivered', $session );
                 if ( $template && ! empty( $session->client_email ) ) {
-                    $sent = TwellerFlow2_Notifications::send_email( $session, $template['subject'], $template['body'] );
+                    list( $d_subject, $d_body ) = TwellerFlow2_Email_Templates::resolve(
+                        'delivered', $template['subject'], $template['body'],
+                        TwellerFlow2_Email_Templates::session_tokens( $session )
+                    );
+                    $sent = TwellerFlow2_Notifications::send_email( $session, $d_subject, $d_body );
                     if ( $sent ) {
                         // Advance to delivered if not already
                         if ( $session->current_stage !== 'delivered' ) {
@@ -561,6 +617,44 @@ class TwellerFlow2_Admin {
             $value = "'" . $value;
         }
         return $value;
+    }
+
+    public function page_emails() {
+        include TWELLER_FLOW_2_PLUGIN_DIR . 'admin/views/emails.php';
+    }
+
+    /**
+     * Send a test of a template to the logged-in admin, rendered against a
+     * representative sample session so every merge tag has a value. Sends the
+     * editor's current content (saved override, or the built-in default).
+     */
+    private function send_email_template_test( $key ) {
+        if ( ! class_exists( 'TwellerFlow2_Email_Templates' ) ) return false;
+        $edit = TwellerFlow2_Email_Templates::editable( $key );
+        if ( ! $edit ) return false;
+
+        $to = wp_get_current_user()->user_email;
+        if ( ! is_email( $to ) ) $to = get_option( 'admin_email' );
+        if ( ! is_email( $to ) ) return false;
+
+        $sample = (object) array(
+            'client_name'    => 'Jane Sample',
+            'client_email'   => $to,
+            'client_phone'   => '',
+            'tracking_code'  => 'SAMPLE-2026',
+            'package_type'   => 'session',
+            'total_amount'   => 2400,
+            'deposit_amount' => 1200,
+            'session_date'   => date( 'Y-m-d', strtotime( '+2 weeks' ) ),
+            'session_time'   => '14:00',
+            'location'       => 'Tweller Studios',
+            'current_stage'  => 'delivered',
+        );
+        $tokens  = TwellerFlow2_Email_Templates::session_tokens( $sample );
+        $subject = TwellerFlow2_Email_Templates::apply_tokens( $edit['subject'], $tokens );
+        $body    = TwellerFlow2_Email_Templates::apply_tokens( $edit['body'], $tokens );
+
+        return TwellerFlow2_Notifications::send_raw( $to, '[TEST] ' . $subject, $body );
     }
 
     /**

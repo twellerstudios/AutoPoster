@@ -3,7 +3,7 @@
  * Plugin Name: Tweller Bookings WP
  * Plugin URI: https://twellerstudios.com
  * Description: Photography session workflow — booking, pipeline tracking, client proof uploads, photo selection portal, gallery delivery, and WiPay payment integration.
- * Version: 3.40.0
+ * Version: 3.41.0
  * Author: Tweller Studios
  * Author URI: https://twellerstudios.com
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TWELLER_FLOW_2_VERSION', '3.40.0' );
+define( 'TWELLER_FLOW_2_VERSION', '3.41.0' );
 define( 'TWELLER_FLOW_2_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TWELLER_FLOW_2_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'TWELLER_FLOW_2_TABLE_SESSIONS', 'tweller_sessions' );
@@ -25,6 +25,7 @@ define( 'TWELLER_FLOW_2_TABLE_NOTIFICATIONS', 'tweller_notifications' );
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-database.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-session.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-notifications.php';
+require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-email-templates.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-tracker-shortcode.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-webhook-handler.php';
 require_once TWELLER_FLOW_2_PLUGIN_DIR . 'includes/class-photo-automation.php';

@@ -53,6 +53,13 @@ class TwellerFlow2_Notifications {
         $template = self::get_email_template( $stage, $session );
         if ( ! $template ) return;
 
+        // Apply any studio customisation of this template. With no override,
+        // resolve() returns the built-in subject/body unchanged.
+        list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve(
+            $stage, $template['subject'], $template['body'],
+            TwellerFlow2_Email_Templates::session_tokens( $session )
+        );
+
         $attachments = array();
         $extra_to    = array();
 
@@ -66,7 +73,7 @@ class TwellerFlow2_Notifications {
             }
         }
 
-        self::send_email( $session, $template['subject'], $template['body'], $attachments, $extra_to );
+        self::send_email( $session, $subject, $body, $attachments, $extra_to );
 
         foreach ( $attachments as $file ) {
             @unlink( $file );
@@ -146,7 +153,11 @@ class TwellerFlow2_Notifications {
             <p style='color:" . self::C_TEXT . "; line-height:1.7;'>Please re-upload the correct receipt through your client portal and we'll take another look right away. Your date is still being held for you.</p>
             " . self::email_button_row( $tracker_url, 'Re-upload My Receipt' ) . "
             <p style='color:" . self::C_TEXT . ";'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>";
-        return self::send_email( $session, "Quick fix needed — we couldn't verify your receipt", $body );
+        list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve(
+            'receipt_rejected', "Quick fix needed — we couldn't verify your receipt", $body,
+            TwellerFlow2_Email_Templates::session_tokens( $session )
+        );
+        return self::send_email( $session, $subject, $body );
     }
 
     public static function send_email( $session, $subject, $body, $attachments = array(), $extra_recipients = array() ) {
@@ -161,7 +172,16 @@ class TwellerFlow2_Notifications {
     public static function send_raw( $to, $subject, $body, $attachments = array() ) {
         add_action( 'phpmailer_init', array( __CLASS__, 'configure_smtp' ) );
 
-        $headers   = array( 'Content-Type: text/html; charset=UTF-8' );
+        $headers = array( 'Content-Type: text/html; charset=UTF-8' );
+
+        // Studio copy: Cc hello@ + Bcc stephen (configurable on the Emails
+        // screen) on EVERY email the plugin sends — since every send funnels
+        // through here — deduped against the direct recipients.
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            $recipients = is_array( $to ) ? $to : preg_split( '/\s*,\s*/', (string) $to );
+            $headers    = array_merge( $headers, TwellerFlow2_Email_Templates::studio_headers( $recipients ) );
+        }
+
         $html_body = self::wrap_email_html( $body );
         $sent = wp_mail( $to, $subject, $html_body, $headers, $attachments );
 
@@ -470,6 +490,11 @@ class TwellerFlow2_Notifications {
 
             <p style='color:" . self::C_TEXT . ";'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
         ";
+
+        list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve(
+            'confirmed', $subject, $body,
+            TwellerFlow2_Email_Templates::session_tokens( $session )
+        );
 
         $attachments = array();
         $extra_to    = array();

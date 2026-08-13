@@ -124,13 +124,24 @@ class TwellerFlow2_Notifications {
         }
         $rows .= self::email_detail_row( 'Shoot code', $session->tracking_code );
 
+        $booking_details = self::email_card( 'Booking Details', $rows );
+        $review_button   = self::email_button_row( $review_link, 'Open in Tweller Bookings Dashboard' );
+
         $subject = "New booking — {$session->client_name}";
         $body = "
             <h2 style='color:" . self::C_BLACK . "; font-weight:600;'>A new booking just came in</h2>
             <p style='color:" . self::C_TEXT . "; line-height:1.7;'><strong>" . esc_html( $session->client_name ) . "</strong> just booked a session. Their welcome email with payment details has already gone out &mdash; they'll send a bank-transfer receipt or pay by card to confirm.</p>
-            " . self::email_card( 'Booking Details', $rows ) . "
-            " . self::email_button_row( $review_link, 'Open in Tweller Bookings Dashboard' ) . "
+            {$booking_details}
+            {$review_button}
         ";
+
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'new_booking', $subject, $body, array(
+                'client_name'     => esc_html( $session->client_name ),
+                'booking_details' => $booking_details,
+                'review_button'   => $review_button,
+            ) );
+        }
 
         return self::send_raw( $recipients, $subject, $body );
     }

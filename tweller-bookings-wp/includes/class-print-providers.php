@@ -3908,6 +3908,7 @@ if ( count( $parts ) !== 2 ) {
 		if ( (string) $row->email === '' ) return false;
 
 		$first = esc_html( self::first_name_of( $row ) );
+		$subject = 'We received your print partner application';
 		$body  = "
 			<h2 style='color:#101010; font-weight:600;'>We have your application</h2>
 			<p style='color:#3D3630;'>Hi {$first},</p>
@@ -3915,7 +3916,14 @@ if ( count( $parts ) !== 2 ) {
 			<p style='color:#3D3630;'>Warm regards,<br><strong>The Tweller Studios Team</strong></p>
 		";
 
-		return self::mail( (string) $row->email, 'We received your print partner application', $body );
+		if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+			list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'partner_application_received', $subject, $body, array(
+				'first_name'    => $first,
+				'business_name' => esc_html( (string) $row->business_name ),
+			) );
+		}
+
+		return self::mail( (string) $row->email, $subject, $body );
 	}
 
 	/** Heads-up to the studio, with a button straight into the review screen. */
@@ -3925,21 +3933,33 @@ if ( count( $parts ) !== 2 ) {
 
 		$review_url = self::requests_url( array( 'request' => (int) $row->id ) );
 
-		$body = "
-			<h2 style='color:#101010; font-weight:600;'>New print partner application</h2>
-			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $row->business_name ) . "</strong> has applied to print for Tweller Studios.</p>
-			" . self::card( 'Applicant',
+		$applicant_details = self::card( 'Applicant',
 				self::row( 'Business', (string) $row->business_name )
 				. self::row( 'Contact', (string) $row->contact_name )
 				. self::row( 'Email', (string) $row->email )
 				. ( (string) $row->services !== '' ? self::row( 'Services', self::services_label( (string) $row->services ) ) : '' )
 				. self::row( 'Delivers', (int) $row->does_delivery ? 'Yes' : 'No' )
-			) . "
-			" . self::btn( $review_url, 'Review this application' ) . "
+			);
+		$review_button = self::btn( $review_url, 'Review this application' );
+
+		$subject = 'New print partner application — ' . (string) $row->business_name;
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>New print partner application</h2>
+			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $row->business_name ) . "</strong> has applied to print for Tweller Studios.</p>
+			{$applicant_details}
+			{$review_button}
 			<p style='color:#8A8178; font-size:13px; text-align:center;'>Approving creates the provider record and dashboard login in one step.</p>
 		";
 
-		return self::mail( $to, 'New print partner application — ' . (string) $row->business_name, $body );
+		if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+			list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'partner_application_studio', $subject, $body, array(
+				'business_name'     => esc_html( (string) $row->business_name ),
+				'applicant_details' => $applicant_details,
+				'review_button'     => $review_button,
+			) );
+		}
+
+		return self::mail( $to, $subject, $body );
 	}
 
 	/** The welcome. Never carries a password — WordPress sends the set link. */
@@ -3950,25 +3970,36 @@ if ( count( $parts ) !== 2 ) {
 
 		// No inline dashboard button here — mail_provider() appends the one
 		// every partner email carries, so this cannot end up with two.
+		$account_details = self::card( 'Your account',
+				self::row( 'Username', (string) $login )
+				. self::row( 'Sign in with', (string) $row->email )
+				. self::row( 'Delivery', ! empty( $provider['does_delivery'] ) ? 'You deliver to customers' : 'Tweller Studios delivers' )
+			);
+
+		$subject = 'You are in — welcome to the Tweller Studios print partners';
 		$body = "
 			<h2 style='color:#101010; font-weight:600;'>Welcome aboard</h2>
 			<p style='color:#3D3630;'>Hi {$first},</p>
 			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $provider['name'] ) . "</strong> is approved as a Tweller Studios print partner &mdash; your dashboard is ready for your first job.</p>
 
-			" . self::card( 'Your account',
-				self::row( 'Username', (string) $login )
-				. self::row( 'Sign in with', (string) $row->email )
-				. self::row( 'Delivery', ! empty( $provider['does_delivery'] ) ? 'You deliver to customers' : 'Tweller Studios delivers' )
-			) . "
+			{$account_details}
 
 			<p style='color:#3D3630; line-height:1.7;'>A separate email carries your password-set link &mdash; use <em>Forgot your password?</em> on the sign-in screen if it has not arrived.</p>
 			<p style='color:#3D3630; line-height:1.7;'>When a job comes in: download the files, mark it <strong>Printing</strong>, then <strong>Ready</strong> once it is boxed, and scan the barcode on hand-over to close it out.</p>
 			<p style='color:#3D3630;'>Welcome to the team,<br><strong>The Tweller Studios Team</strong></p>
 		";
 
+		if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+			list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'partner_approved', $subject, $body, array(
+				'first_name'      => $first,
+				'provider_name'   => esc_html( (string) $provider['name'] ),
+				'account_details' => $account_details,
+			) );
+		}
+
 		return self::mail_provider(
 			(string) $row->email,
-			'You are in — welcome to the Tweller Studios print partners',
+			$subject,
 			$body,
 			'Open your partner dashboard',
 			'' // the welcome sign-off above is the closing line
@@ -4010,21 +4041,33 @@ if ( count( $parts ) !== 2 ) {
 		$to = self::studio_alert_recipients();
 		if ( empty( $to ) ) return false;
 
-		$body = "
-			<h2 style='color:#101010; font-weight:600;'>Print partner approved</h2>
-			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $provider['name'] ) . "</strong> is now a Tweller Studios print partner. Their dashboard login has been created and the welcome email is on its way to them.</p>
-			" . self::card( 'Partner',
+		$partner_details = self::card( 'Partner',
 				self::row( 'Business', (string) $provider['name'] )
 				. self::row( 'Contact', (string) $provider['contact_name'] )
 				. self::row( 'Email', (string) $provider['email'] )
 				. self::row( 'Username', (string) $login )
 				. self::row( 'Delivery', ! empty( $provider['does_delivery'] ) ? 'Partner delivers' : 'Tweller Studios delivers' )
-			) . "
-			" . self::btn( self::admin_url_for(), 'Set their print pricing' ) . "
+			);
+		$pricing_button = self::btn( self::admin_url_for(), 'Set their print pricing' );
+
+		$subject = 'Print partner approved — ' . (string) $provider['name'];
+		$body = "
+			<h2 style='color:#101010; font-weight:600;'>Print partner approved</h2>
+			<p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( (string) $provider['name'] ) . "</strong> is now a Tweller Studios print partner. Their dashboard login has been created and the welcome email is on its way to them.</p>
+			{$partner_details}
+			{$pricing_button}
 			<p style='color:#8A8178; font-size:13px; text-align:center;'>Jobs can only be costed once their per-product prices are set.</p>
 		";
 
-		return self::mail( $to, 'Print partner approved — ' . (string) $provider['name'], $body );
+		if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+			list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'partner_approved_studio', $subject, $body, array(
+				'provider_name'   => esc_html( (string) $provider['name'] ),
+				'partner_details' => $partner_details,
+				'pricing_button'  => $pricing_button,
+			) );
+		}
+
+		return self::mail( $to, $subject, $body );
 	}
 
 	private static function send_rejected_email( $row, $notes = '' ) {
@@ -4039,6 +4082,7 @@ if ( count( $parts ) !== 2 ) {
 			);
 		}
 
+		$subject = 'Your print partner application';
 		$body = "
 			<h2 style='color:#101010; font-weight:600;'>Thank you for applying</h2>
 			<p style='color:#3D3630;'>Hi {$first},</p>
@@ -4048,6 +4092,14 @@ if ( count( $parts ) !== 2 ) {
 			<p style='color:#3D3630;'>With thanks,<br><strong>The Tweller Studios Team</strong></p>
 		";
 
-		return self::mail( (string) $row->email, 'Your print partner application', $body );
+		if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+			list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'partner_rejected', $subject, $body, array(
+				'first_name'    => $first,
+				'business_name' => esc_html( (string) $row->business_name ),
+				'note_block'    => $note_block,
+			) );
+		}
+
+		return self::mail( (string) $row->email, $subject, $body );
 	}
 }

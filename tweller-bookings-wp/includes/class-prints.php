@@ -2519,16 +2519,28 @@ class TwellerFlow2_Prints {
             $meta .= TwellerFlow2_Notifications::email_detail_row( 'Notes', esc_html( $order->notes ) );
         }
 
+        $order_details = TwellerFlow2_Notifications::email_card( 'Order Details', $meta );
+        $order_items   = TwellerFlow2_Notifications::email_card( 'Items', self::items_table_html( $order ) );
+        $admin_button  = "<div style='text-align:center; margin:28px 0;'>" . TwellerFlow2_Notifications::email_button( esc_url( $admin_url ), 'Open Print Store Orders' ) . "</div>";
+
         $subject = 'New print order ' . $order->order_ref . ' — ' . $order->customer_name . ' — TT$ ' . number_format( (float) $order->subtotal, 2 );
         $body = "
             <h2 style='color:#101010; font-weight:600;'>New print order</h2>
             <p style='color:#3D3630; line-height:1.7;'>A new print order just came in: <strong>" . esc_html( $order->order_ref ) . "</strong>.</p>
-            " . TwellerFlow2_Notifications::email_card( 'Order Details', $meta ) . "
-            " . TwellerFlow2_Notifications::email_card( 'Items', self::items_table_html( $order ) ) . "
-            <div style='text-align:center; margin:28px 0;'>
-                " . TwellerFlow2_Notifications::email_button( esc_url( $admin_url ), 'Open Print Store Orders' ) . "
-            </div>
+            {$order_details}
+            {$order_items}
+            {$admin_button}
         ";
+
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'prints_new_order', $subject, $body, array(
+                'order_ref'     => esc_html( $order->order_ref ),
+                'customer_name' => esc_html( $order->customer_name ),
+                'order_details' => $order_details,
+                'order_items'   => $order_items,
+                'admin_button'  => $admin_button,
+            ) );
+        }
 
         return TwellerFlow2_Notifications::send_raw( $to, $subject, $body );
     }
@@ -2638,15 +2650,25 @@ class TwellerFlow2_Prints {
             ? "<p style='margin:14px 0 0;'><a href='" . esc_url( $order->receipt_url ) . "' style='color:#101010; font-weight:600;'>Open the uploaded receipt &rarr;</a></p>"
             : '';
 
+        $payment_details = TwellerFlow2_Notifications::email_card( 'Payment Details', $meta . $receipt_link );
+        $admin_button    = "<div style='text-align:center; margin:28px 0;'>" . TwellerFlow2_Notifications::email_button( esc_url( $admin_url ), 'Review in Print Store Orders' ) . "</div>";
+
         $subject = 'Receipt uploaded — verify payment · ' . $order->order_ref . ' · ' . $order->customer_name;
         $body = "
             <h2 style='color:#101010; font-weight:600;'>Receipt uploaded — verify payment</h2>
             <p style='color:#3D3630; line-height:1.7;'><strong>" . esc_html( $order->customer_name ) . "</strong> uploaded a bank-transfer receipt for print order <strong>" . esc_html( $order->order_ref ) . "</strong>. Once the transfer checks out, press &ldquo;Confirm payment&rdquo; on the order.</p>
-            " . TwellerFlow2_Notifications::email_card( 'Payment Details', $meta . $receipt_link ) . "
-            <div style='text-align:center; margin:28px 0;'>
-                " . TwellerFlow2_Notifications::email_button( esc_url( $admin_url ), 'Review in Print Store Orders' ) . "
-            </div>
+            {$payment_details}
+            {$admin_button}
         ";
+
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'prints_receipt_review', $subject, $body, array(
+                'order_ref'       => esc_html( $order->order_ref ),
+                'customer_name'   => esc_html( $order->customer_name ),
+                'payment_details' => $payment_details,
+                'admin_button'    => $admin_button,
+            ) );
+        }
 
         return TwellerFlow2_Notifications::send_raw( $to, $subject, $body );
     }
@@ -2666,15 +2688,25 @@ class TwellerFlow2_Prints {
             $meta .= TwellerFlow2_Notifications::email_detail_row( 'Transaction', esc_html( $payment['transaction_id'] ) );
         }
 
+        $payment_details = TwellerFlow2_Notifications::email_card( 'Payment Details', $meta );
+        $admin_button    = "<div style='text-align:center; margin:28px 0;'>" . TwellerFlow2_Notifications::email_button( esc_url( $admin_url ), 'Open Print Store Orders' ) . "</div>";
+
         $subject = 'Card payment received · ' . $order->order_ref . ' · ' . $order->customer_name;
         $body = "
             <h2 style='color:#101010; font-weight:600;'>Card payment received</h2>
             <p style='color:#3D3630; line-height:1.7;'>WiPay confirmed the card payment for print order <strong>" . esc_html( $order->order_ref ) . "</strong>. The order has moved to <strong>Payment confirmed</strong> and is ready for production.</p>
-            " . TwellerFlow2_Notifications::email_card( 'Payment Details', $meta ) . "
-            <div style='text-align:center; margin:28px 0;'>
-                " . TwellerFlow2_Notifications::email_button( esc_url( $admin_url ), 'Open Print Store Orders' ) . "
-            </div>
+            {$payment_details}
+            {$admin_button}
         ";
+
+        if ( class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+            list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( 'prints_payment', $subject, $body, array(
+                'order_ref'       => esc_html( $order->order_ref ),
+                'customer_name'   => esc_html( $order->customer_name ),
+                'payment_details' => $payment_details,
+                'admin_button'    => $admin_button,
+            ) );
+        }
 
         return TwellerFlow2_Notifications::send_raw( $to, $subject, $body );
     }

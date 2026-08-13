@@ -426,6 +426,136 @@ class TwellerFlow2_Email_Templates {
                     . "{{view_button}}\n"
                     . "{{admin_button}}",
             ),
+            'new_booking' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'New booking received',
+                'desc'    => 'Your alert when a new booking comes in, with the booking details and a link to open it.',
+                'tokens'  => array( 'client_name', 'booking_details', 'review_button' ),
+                'subject' => "New booking — {{client_name}}",
+                'body'    => "<h2>A new booking just came in</h2>\n"
+                    . "<p><strong>{{client_name}}</strong> just booked a session. Their welcome email with payment details has already gone out.</p>\n"
+                    . "{{booking_details}}\n"
+                    . "{{review_button}}",
+            ),
+            'prints_new_order' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'New print order',
+                'desc'    => 'Your alert when a customer places a print order.',
+                'tokens'  => array( 'order_ref', 'customer_name', 'order_details', 'order_items', 'admin_button' ),
+                'subject' => "New print order {{order_ref}} — {{customer_name}}",
+                'body'    => "<h2>New print order</h2>\n"
+                    . "<p>A new print order just came in: <strong>{{order_ref}}</strong>.</p>\n"
+                    . "{{order_details}}\n"
+                    . "{{order_items}}\n"
+                    . "{{admin_button}}",
+            ),
+            'prints_receipt_review' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print receipt to verify',
+                'desc'    => 'Your alert when a customer uploads a bank-transfer receipt for a print order that needs verifying.',
+                'tokens'  => array( 'order_ref', 'customer_name', 'payment_details', 'admin_button' ),
+                'subject' => "Receipt uploaded — verify payment · {{order_ref}} · {{customer_name}}",
+                'body'    => "<h2>Receipt uploaded — verify payment</h2>\n"
+                    . "<p><strong>{{customer_name}}</strong> uploaded a bank-transfer receipt for print order <strong>{{order_ref}}</strong>. Once the transfer checks out, press “Confirm payment” on the order.</p>\n"
+                    . "{{payment_details}}\n"
+                    . "{{admin_button}}",
+            ),
+            'prints_payment' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print card payment received',
+                'desc'    => 'Your alert when a WiPay card payment is confirmed for a print order.',
+                'tokens'  => array( 'order_ref', 'customer_name', 'payment_details', 'admin_button' ),
+                'subject' => "Card payment received · {{order_ref}} · {{customer_name}}",
+                'body'    => "<h2>Card payment received</h2>\n"
+                    . "<p>WiPay confirmed the card payment for print order <strong>{{order_ref}}</strong>. The order has moved to <strong>Payment confirmed</strong> and is ready for production.</p>\n"
+                    . "{{payment_details}}\n"
+                    . "{{admin_button}}",
+            ),
+            'prints_assigned' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print order sent to a lab',
+                'desc'    => 'Your alert when a print order is assigned/moved to a print lab.',
+                'tokens'  => array( 'heading', 'intro', 'job_details', 'cta_button' ),
+                'subject' => "Print order sent to a lab",
+                'body'    => "<h2>{{heading}}</h2>\n<p>{{intro}}</p>\n{{job_details}}\n{{cta_button}}",
+            ),
+            'prints_build_failed' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print files failed to build',
+                'desc'    => 'Your alert when a print job\'s files could not be prepared, so the lab never received them.',
+                'tokens'  => array( 'heading', 'intro', 'job_details', 'cta_button' ),
+                'subject' => "Print files failed to build",
+                'body'    => "<h2>{{heading}}</h2>\n<p>{{intro}}</p>\n{{job_details}}\n{{cta_button}}",
+            ),
+            'prints_provider_update' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print lab moved a job',
+                'desc'    => 'Your alert when a print partner marks a job in production, ready, shipped or delivered.',
+                'tokens'  => array( 'heading', 'intro', 'job_details', 'cta_button' ),
+                'subject' => "A print lab updated a job",
+                'body'    => "<h2>{{heading}}</h2>\n<p>{{intro}}</p>\n{{job_details}}\n{{cta_button}}",
+            ),
+
+            // ── Print partners ──────────────────────────────
+            'partner_application_received' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Application received (to applicant)',
+                'desc'    => 'Confirms to a would-be print partner that their application was received.',
+                'tokens'  => array( 'first_name', 'business_name' ),
+                'subject' => "We received your print partner application",
+                'body'    => "<h2>We have your application</h2>\n"
+                    . "<p>Hi {{first_name}},</p>\n"
+                    . "<p>Thanks for putting <strong>{{business_name}}</strong> forward as a Tweller Studios print partner. A real person will read it — we will write back either way.</p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'partner_approved' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Approved / welcome (to partner)',
+                'desc'    => 'Welcomes a newly-approved print partner. A dashboard button is always appended automatically.',
+                'tokens'  => array( 'first_name', 'provider_name', 'account_details' ),
+                'subject' => "You are in — welcome to the Tweller Studios print partners",
+                'body'    => "<h2>Welcome aboard</h2>\n"
+                    . "<p>Hi {{first_name}},</p>\n"
+                    . "<p><strong>{{provider_name}}</strong> is approved as a Tweller Studios print partner — your dashboard is ready for your first job.</p>\n"
+                    . "{{account_details}}\n"
+                    . "<p>A separate email carries your password-set link — use <em>Forgot your password?</em> on the sign-in screen if it hasn't arrived.</p>\n"
+                    . "<p>Welcome to the team,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'partner_rejected' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Application declined (to applicant)',
+                'desc'    => 'A gracious decline to a print-partner applicant. The optional studio note appears as {{note_block}}.',
+                'tokens'  => array( 'first_name', 'business_name', 'note_block' ),
+                'subject' => "Your print partner application",
+                'body'    => "<h2>Thank you for applying</h2>\n"
+                    . "<p>Hi {{first_name}},</p>\n"
+                    . "<p>Thanks for offering to print for Tweller Studios. We are not able to take on <strong>{{business_name}}</strong> right now — we keep the partner list deliberately small, so this isn't a reflection on your work.</p>\n"
+                    . "{{note_block}}\n"
+                    . "<p>Please do reach out again if things change.</p>\n"
+                    . "<p>With thanks,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'partner_application_studio' => array(
+                'group'   => 'Print partners',
+                'label'   => 'New application (to you)',
+                'desc'    => 'Your alert when someone applies to become a print partner.',
+                'tokens'  => array( 'business_name', 'applicant_details', 'review_button' ),
+                'subject' => "New print partner application — {{business_name}}",
+                'body'    => "<h2>New print partner application</h2>\n"
+                    . "<p><strong>{{business_name}}</strong> has applied to print for Tweller Studios.</p>\n"
+                    . "{{applicant_details}}\n"
+                    . "{{review_button}}",
+            ),
+            'partner_approved_studio' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Partner approved (to you)',
+                'desc'    => 'Your alert when a print partner is approved and their login is created.',
+                'tokens'  => array( 'provider_name', 'partner_details', 'pricing_button' ),
+                'subject' => "Print partner approved — {{provider_name}}",
+                'body'    => "<h2>Print partner approved</h2>\n"
+                    . "<p><strong>{{provider_name}}</strong> is now a Tweller Studios print partner. Their dashboard login has been created and the welcome email is on its way to them.</p>\n"
+                    . "{{partner_details}}\n"
+                    . "{{pricing_button}}",
+            ),
         );
     }
 

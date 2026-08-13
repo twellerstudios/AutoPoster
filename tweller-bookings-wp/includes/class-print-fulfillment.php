@@ -2637,16 +2637,28 @@ class TwellerFlow2_Print_Fulfillment {
 	}
 
 	/** Shared shell for the short studio-facing fulfilment emails. */
-	private static function send_studio_email( $subject, $heading, $intro, $rows, $order_id, $cta = 'Open the order' ) {
+	private static function send_studio_email( $subject, $heading, $intro, $rows, $order_id, $cta = 'Open the order', $key = '' ) {
 		$to = self::studio_recipients();
 		if ( empty( $to ) || ! class_exists( 'TwellerFlow2_Notifications' ) ) return false;
+
+		$job_details = TwellerFlow2_Notifications::email_card( 'Job', $rows );
+		$cta_button  = TwellerFlow2_Notifications::email_button_row( esc_url( self::admin_order_url( (int) $order_id ) ), $cta );
 
 		$body = "
 			<h2 style='color:#101010; font-weight:600;'>" . esc_html( $heading ) . "</h2>
 			<p style='color:#3D3630; line-height:1.7;'>" . $intro . "</p>
-			" . TwellerFlow2_Notifications::email_card( 'Job', $rows ) . "
-			" . TwellerFlow2_Notifications::email_button_row( esc_url( self::admin_order_url( (int) $order_id ) ), $cta ) . "
+			{$job_details}
+			{$cta_button}
 		";
+
+		if ( $key !== '' && class_exists( 'TwellerFlow2_Email_Templates' ) ) {
+			list( $subject, $body ) = TwellerFlow2_Email_Templates::resolve( $key, $subject, $body, array(
+				'heading'     => esc_html( $heading ),
+				'intro'       => $intro,
+				'job_details' => $job_details,
+				'cta_button'  => $cta_button,
+			) );
+		}
 
 		return TwellerFlow2_Notifications::send_raw( $to, $subject, $body );
 	}
@@ -2677,7 +2689,7 @@ class TwellerFlow2_Print_Fulfillment {
 		$subject = ( $previous ? 'Print order ' . $order->order_ref . ' moved to ' : 'Print order ' . $order->order_ref . ' sent to ' )
 			. $provider['name'];
 
-		return self::send_studio_email( $subject, $heading, $intro, $rows, (int) $order->id );
+		return self::send_studio_email( $subject, $heading, $intro, $rows, (int) $order->id, 'Open the order', 'prints_assigned' );
 	}
 
 	/** "The files for this job did not build" — never a silent stall. */
@@ -2698,7 +2710,8 @@ class TwellerFlow2_Print_Fulfillment {
 				. esc_html( $name ) . ' has not received the package. The order is still assigned to them.',
 			$rows,
 			(int) $order->id,
-			'Fix it in the order'
+			'Fix it in the order',
+			'prints_build_failed'
 		);
 	}
 
@@ -2739,7 +2752,9 @@ class TwellerFlow2_Print_Fulfillment {
 			'<strong>' . esc_html( $name ) . '</strong> ' . esc_html( $lines[ $event ][0] ) . ' for order <strong>'
 				. esc_html( (string) $order->order_ref ) . '</strong>.',
 			$rows,
-			(int) $order->id
+			(int) $order->id,
+			'Open the order',
+			'prints_provider_update'
 		);
 	}
 

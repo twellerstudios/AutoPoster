@@ -196,9 +196,19 @@ class TwellerFlow2_Booking_API {
             return new WP_Error( 'invalid_package', 'Invalid package selected.', array( 'status' => 400 ) );
         }
 
+        // Image-use consent: privacy fee if declined, next-session discount
+        // (banked from a prior "unlimited" choice) applied to the total here.
+        $client_email = sanitize_email( $data['client_email'] );
+        $consent      = 'limited';
+        $pricing      = array( 'total' => (float) $package['price'], 'fee' => 0.0, 'discount' => 0.0, 'discount_applied' => false );
+        if ( class_exists( 'TwellerFlow2_Image_Consent' ) ) {
+            $consent = TwellerFlow2_Image_Consent::sanitize_choice( $data['image_consent'] ?? 'limited' );
+            $pricing = TwellerFlow2_Image_Consent::price_booking( $package['price'], $consent, $client_email );
+        }
+
         $session_data = array(
             'client_name' => sanitize_text_field( $data['client_name'] ),
-            'client_email' => sanitize_email( $data['client_email'] ),
+            'client_email' => $client_email,
             'client_phone' => sanitize_text_field( $data['client_phone'] ?? '' ),
             'package_type' => sanitize_text_field( $data['package_type'] ),
             'session_date' => sanitize_text_field( $data['session_date'] ),
@@ -207,7 +217,7 @@ class TwellerFlow2_Booking_API {
             'notes' => sanitize_textarea_field( $data['notes'] ?? '' ),
             'payment_status' => 'pending',
             'deposit_amount' => 0, // Bank transfer to follow
-            'total_amount' => $package['price'],
+            'total_amount' => $pricing['total'],
             'members_count' => $package['members']
         );
 
@@ -215,6 +225,19 @@ class TwellerFlow2_Booking_API {
 
         if ( ! $session_id ) {
             return new WP_Error( 'create_failed', 'Could not create booking.', array( 'status' => 500 ) );
+        }
+
+        // Record the consent choice and settle the client-level credits: a
+        // redeemed next-session discount is spent now, and choosing "unlimited"
+        // banks a fresh discount for the client's next booking.
+        if ( class_exists( 'TwellerFlow2_Image_Consent' ) ) {
+            TwellerFlow2_Image_Consent::set( $session_id, $consent );
+            if ( ! empty( $pricing['discount_applied'] ) ) {
+                TwellerFlow2_Image_Consent::redeem_next_session_discount( $client_email );
+            }
+            if ( $consent === TwellerFlow2_Image_Consent::UNLIMITED ) {
+                TwellerFlow2_Image_Consent::grant_next_session_discount( $client_email );
+            }
         }
 
         $session = TwellerFlow2_Session::get( $session_id );

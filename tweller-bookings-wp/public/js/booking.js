@@ -152,11 +152,30 @@ const tfBooking = {
         const summary = document.getElementById('tf2-summary-card');
         const d = new Date(this.selectedDate + 'T' + this.selectedTimeStr);
         const options = { weekday:'long', year:'numeric', month:'long', day:'numeric' };
-        
+
+        const base = parseFloat(String(this.selectedPackageData.price).replace(/[^0-9.]/g, '')) || 0;
+        const cfg = document.getElementById('tf2-consent-cfg');
+        const fee = cfg ? (parseFloat(cfg.dataset.fee) || 0) : 0;
+        const choiceEl = document.querySelector('input[name="tf2_image_consent"]:checked');
+        const choice = choiceEl ? choiceEl.value : 'limited';
+
+        const fmt = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        let lines = '';
+        let total = base;
+        if (choice === 'declined' && fee > 0) {
+            total = base + fee;
+            lines = `
+                <div style="display:flex; justify-content:space-between; opacity:0.9; font-size:14px; margin-top:8px;"><span>Session</span><span>TTD ${fmt(base)}</span></div>
+                <div style="display:flex; justify-content:space-between; opacity:0.9; font-size:14px;"><span>Privacy fee</span><span>TTD ${fmt(fee)}</span></div>`;
+        } else if (choice === 'unlimited') {
+            lines = `<div style="font-size:12.5px; color:#C9A227; margin-top:8px;">✓ You'll earn a discount on your next session.</div>`;
+        }
+
         summary.innerHTML = `
             <h4>${this.selectedPackageData.name}</h4>
             <div class="tf2-summary-detail">${d.toLocaleDateString(undefined, options)} at ${this.selectedTimeDisplay}</div>
-            <div style="margin-top: 10px; opacity: 0.9;">Total: TTD ${this.selectedPackageData.price}</div>
+            ${lines}
+            <div style="margin-top: 10px; opacity: 0.95; font-weight:600;">Total: TTD ${fmt(total)}</div>
         `;
     },
 
@@ -228,7 +247,8 @@ const tfBooking = {
             session_type: this.selectedSessionTypeKey,
             package_type: this.selectedPackageKey,
             session_date: this.selectedDate,
-            session_time: this.selectedTimeStr
+            session_time: this.selectedTimeStr,
+            image_consent: (document.querySelector('input[name="tf2_image_consent"]:checked') || {}).value || 'limited'
         };
 
         const loading = document.getElementById('tf2-booking-loading');

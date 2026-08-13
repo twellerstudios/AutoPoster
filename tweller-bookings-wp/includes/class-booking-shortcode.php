@@ -118,7 +118,35 @@ class TwellerFlow2_Booking_Shortcode {
                         <label>Location Preference / Notes</label>
                         <textarea id="tf2-client-notes" rows="3" placeholder="Studio or ON Location? Tell us any details you want included..."></textarea>
                     </div>
-                    
+
+                    <?php
+                    $tf2_fee     = class_exists( 'TwellerFlow2_Image_Consent' ) ? TwellerFlow2_Image_Consent::privacy_fee() : 50;
+                    $tf2_pct     = class_exists( 'TwellerFlow2_Image_Consent' ) ? TwellerFlow2_Image_Consent::next_discount_pct() : 50;
+                    $tf2_why     = class_exists( 'TwellerFlow2_Image_Consent' ) ? TwellerFlow2_Image_Consent::why_url() : '#';
+                    $tf2_fee_str = 'TT$' . number_format( $tf2_fee, ( $tf2_fee == (int) $tf2_fee ) ? 0 : 2 );
+                    ?>
+                    <div class="tf2-field tf2-consent" id="tf2-consent-cfg" data-fee="<?php echo esc_attr( $tf2_fee ); ?>" style="background:#FBFAF7; padding:14px 16px; border:1px solid #ECE9E2; border-radius:8px; margin-bottom:15px;">
+                        <label style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin:0 0 4px;">
+                            <span>Sharing your photos on our social media</span>
+                            <a href="<?php echo esc_url( $tf2_why ); ?>" target="_blank" rel="noopener" style="font-size:12.5px; font-weight:600; color:#8A6D1B; text-decoration:underline;">Why this fee?</a>
+                        </label>
+                        <p style="font-size:12.5px; color:#6B7280; margin:0 0 10px;">Your call — we respect it either way.</p>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <label class="tf2-consent-opt" style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-weight:normal; margin:0; padding:10px 12px; border:1px solid #E5E7EB; border-radius:6px;">
+                                <input type="radio" name="tf2_image_consent" value="limited" checked onchange="tfBooking.renderSummary()" style="margin-top:3px; flex-shrink:0;">
+                                <span style="font-size:14px; color:#374151;"><strong>Allow 1–5 images</strong> — our standard. <span style="color:#16A34A;">No fee.</span></span>
+                            </label>
+                            <label class="tf2-consent-opt" style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-weight:normal; margin:0; padding:10px 12px; border:1px solid #E5E7EB; border-radius:6px;">
+                                <input type="radio" name="tf2_image_consent" value="unlimited" onchange="tfBooking.renderSummary()" style="margin-top:3px; flex-shrink:0;">
+                                <span style="font-size:14px; color:#374151;"><strong>Share as many as you like</strong> — <span style="color:#8A6D1B;"><?php echo esc_html( (int) $tf2_pct ); ?>% off your next session.</span></span>
+                            </label>
+                            <label class="tf2-consent-opt" style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-weight:normal; margin:0; padding:10px 12px; border:1px solid #E5E7EB; border-radius:6px;">
+                                <input type="radio" name="tf2_image_consent" value="declined" onchange="tfBooking.renderSummary()" style="margin-top:3px; flex-shrink:0;">
+                                <span style="font-size:14px; color:#374151;"><strong>Keep my session private</strong> — no images shared. <span style="color:#B91C1C;">+<?php echo esc_html( $tf2_fee_str ); ?> privacy fee.</span></span>
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="tf2-field tf2-confirm-availability" style="background:#F9FAFB; padding:12px; border:1px solid #E5E7EB; border-radius:6px; margin-bottom:15px;">
                         <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-weight:normal; margin:0;">
                             <input type="checkbox" id="tf2-client-confirmed" required style="width:18px;height:18px; margin-top:3px; flex-shrink:0;">

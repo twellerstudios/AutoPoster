@@ -39,6 +39,12 @@
         <div class="tf2-detail-header__left">
             <a href="<?php echo admin_url( 'admin.php?page=tweller-flow-2-sessions' ); ?>" class="tf2-btn tf2-btn--ghost tf2-btn--sm" style="margin-bottom:8px;">&larr; Back to Sessions</a>
             <h1><?php echo esc_html( $session->client_name ); ?></h1>
+            <?php
+            if ( class_exists( 'TwellerFlow2_Image_Consent' ) ) {
+                $tf2_consent_badge = TwellerFlow2_Image_Consent::badge_html( $session->id );
+                if ( $tf2_consent_badge ) echo '<div style="margin:6px 0 8px;">' . $tf2_consent_badge . '</div>';
+            }
+            ?>
             <div class="tf2-detail-header__code">
                 Shoot Code: <span><?php echo esc_html( $session->tracking_code ); ?></span>
                 <button class="tf2-copy-btn" onclick="navigator.clipboard.writeText('<?php echo esc_attr( $session->tracking_code ); ?>'); this.textContent='Copied!';">Copy</button>

@@ -2813,6 +2813,21 @@ class TwellerFlow2_Print_Fulfillment {
 		$meta  = TwellerFlow2_Notifications::email_detail_row( 'Job reference', esc_html( $order->order_ref ) );
 		$meta .= TwellerFlow2_Notifications::email_detail_row( 'Files', (int) $stats['files'] );
 		$meta .= TwellerFlow2_Notifications::email_detail_row( 'Total pieces', (int) $stats['pieces'] );
+
+		// What the studio pays this partner for the job — their cost only,
+		// never the retail total the customer paid. Matches the "You earn"
+		// figure on their dashboard. If any line has no cost price for this
+		// partner yet, the figure is understated, so we say so plainly.
+		if ( class_exists( 'TwellerFlow2_Print_Providers' ) && method_exists( 'TwellerFlow2_Print_Providers', 'order_economics' ) ) {
+			$eco    = TwellerFlow2_Print_Providers::order_economics( $order, $provider );
+			$payout = 'TT$ ' . number_format( (float) $eco['provider_cost'], 2 );
+			if ( (int) $eco['unpriced_items'] > 0 ) {
+				$payout .= ' <span style="color:#B91C1C;">(' . (int) $eco['unpriced_items'] . ' item'
+					. ( (int) $eco['unpriced_items'] === 1 ? '' : 's' ) . ' not yet priced)</span>';
+			}
+			$meta .= TwellerFlow2_Notifications::email_detail_row( 'Your payout', $payout );
+		}
+
 		$meta .= TwellerFlow2_Notifications::email_detail_row( 'Finish', esc_html( $settings['paper_finish'] ) );
 		$meta .= TwellerFlow2_Notifications::email_detail_row( 'Download expires', esc_html( date_i18n( 'F j, Y', $expires ) ) );
 

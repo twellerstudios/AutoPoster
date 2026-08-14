@@ -1734,10 +1734,6 @@ body.page .page-hero {
 }
 .tf2-gtab--active .tf2-gtab__count { background: var(--tf-gold); color: var(--tf-white); }
 
-/* Download-favourites button picks up the gold accent */
-.tf2-gbtn--like { border-color: rgba(201, 168, 76, 0.5); color: var(--tf-gold-dark); }
-.tf2-gbtn--like:hover { background: rgba(201, 168, 76, 0.08); }
-
 /* ── Tile heart ── */
 .tf2-like {
     position: absolute;

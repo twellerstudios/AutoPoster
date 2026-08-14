@@ -452,18 +452,18 @@ class TwellerFlow2_Tracker_Shortcode {
                             </div>
 
                             <div class="tf2-gallery__actions" id="tf2-gallery-actions">
-                                <a id="tf2-gallery-download-liked" class="tf2-gbtn tf2-gbtn--like" href="#" title="Download your favourites" style="display:none;">
+                                <a id="tf2-gallery-download-liked" class="tf2-gbtn" href="#" title="Download liked" style="display:none;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                    <span class="tf2-gbtn__label">Download Favourites</span>
+                                    <span class="tf2-gbtn__label">Download Liked</span>
                                 </a>
                                 <button id="tf2-prints-open" class="tf2-gbtn tf2-gbtn--primary" type="button" title="Order Prints" style="display:none;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                                     <span class="tf2-gbtn__label">Order Prints</span>
                                     <span class="tf2-prints-badge" id="tf2-prints-count" style="display:none;">0</span>
                                 </button>
-                                <button id="tf2-printsel-enter" class="tf2-gbtn" type="button" title="Select photos for print" style="display:none;">
+                                <button id="tf2-printsel-enter" class="tf2-gbtn" type="button" title="Select photos to print" style="display:none;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                                    <span class="tf2-gbtn__label">Select Photos</span>
+                                    <span class="tf2-gbtn__label">Select to Print</span>
                                 </button>
                                 <button id="tf2-gallery-slideshow" class="tf2-gbtn" type="button" title="Play Slideshow">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg>

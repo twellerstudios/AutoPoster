@@ -901,6 +901,9 @@
             tabLiked.setAttribute('aria-selected', viewMode === 'liked' ? 'true' : 'false');
         }
         applyViewFilter();
+        // If a print selection is in progress, drop anything the new view
+        // hides so "Continue" only ever carries what's on screen.
+        if (selMode) { pruneSelectionToVisible(); syncSelectionUI(); }
     }
 
     // In "liked" view, hide the tiles that aren't liked. No re-index — the
@@ -924,7 +927,7 @@
                 empty = document.createElement('div');
                 empty.id = 'tf2-liked-empty';
                 empty.className = 'tf2-gallery__liked-empty';
-                empty.innerHTML = 'No favourites yet — tap the &#9825; on any photo to save it here.';
+                empty.innerHTML = 'No liked photos yet — tap the &#9825; on any photo to save it here.';
                 grid.parentNode.insertBefore(empty, grid.nextSibling);
             }
             empty.style.display = '';
@@ -1222,6 +1225,28 @@
         return n;
     }
 
+    // Which photo indices are on screen right now — everything in "All", only
+    // the liked ones in "Liked". Print selection (and its "Select all") is
+    // scoped to this, so ordering prints from the Liked tab uses exactly the
+    // liked photos and never anything hidden behind the filter.
+    function isIdxVisible(idx) {
+        if (viewMode !== 'liked') return true;
+        return !!(photos[idx] && isLiked(photos[idx].id));
+    }
+    function visibleIndices() {
+        var out = [];
+        for (var i = 0; i < photos.length; i++) { if (isIdxVisible(i)) out.push(i); }
+        return out;
+    }
+    function pruneSelectionToVisible() {
+        var k;
+        for (k in selected) {
+            if (Object.prototype.hasOwnProperty.call(selected, k) && !isIdxVisible(parseInt(k, 10))) {
+                delete selected[k];
+            }
+        }
+    }
+
     function enterSelectMode() {
         if (selMode || !grid || !printsCan('openBatchOrder')) return;
         selMode = true;
@@ -1273,7 +1298,9 @@
             selAllBtn.textContent = '';
             var lbl = document.createElement('span');
             lbl.className = 'tf2-gbtn__label';
-            lbl.textContent = (n > 0 && n === photos.length) ? 'Deselect all' : 'Select all';
+            var vis = visibleIndices();
+            var allVis = vis.length > 0 && vis.every(function(i) { return !!selected[i]; });
+            lbl.textContent = allVis ? 'Deselect all' : 'Select all';
             selAllBtn.appendChild(lbl);
         }
     }
@@ -1287,12 +1314,10 @@
 
     if (selAllBtn) {
         selAllBtn.addEventListener('click', function() {
-            if (selCount() === photos.length) {
-                selected = {};
-            } else {
-                selected = {};
-                for (var i = 0; i < photos.length; i++) selected[i] = true;
-            }
+            var vis = visibleIndices();
+            var allSel = vis.length > 0 && vis.every(function(i) { return !!selected[i]; });
+            selected = {};
+            if (!allSel) { vis.forEach(function(i) { selected[i] = true; }); }
             syncSelectionUI();
         });
     }
@@ -1319,7 +1344,7 @@
             if (!printsCan('openBatchOrder')) return;
             var batch = [];
             for (var i = 0; i < photos.length; i++) {
-                if (selected[i]) batch.push(printPayload(photos[i]));
+                if (selected[i] && isIdxVisible(i)) batch.push(printPayload(photos[i]));
             }
             if (!batch.length) return;
             trackActivity('prints_batch_selected', batch.length + ' photos');

@@ -119,6 +119,33 @@ body.tf2p-noscroll {
     border-color: var(--tf2p-black);
 }
 
+/*
+ * "Add all liked photos" — highlighted so it reads as the recommended path,
+ * but tinted rather than solid gold so it never competes with Place Order.
+ */
+.tf2p-btn--liked {
+    background: rgba(201, 162, 39, 0.12);
+    color: var(--tf2p-black);
+    border: 1px solid rgba(201, 162, 39, 0.55);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.tf2p-btn--liked:hover {
+    background: rgba(201, 162, 39, 0.2);
+    border-color: var(--tf2p-gold);
+}
+
+.tf2p-btn--liked svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+    color: var(--tf2p-gold);
+    fill: var(--tf2p-gold);
+}
+
 .tf2p-btn--full {
     width: 100%;
 }
@@ -2144,6 +2171,7 @@ a.tf2p-btn {
     text-underline-offset: 2px;
 }
 .tf2p-linkbtn--danger { color: #B91C1C; }
+.tf2p-linkbtn--liked { font-weight: 700; }
 
 /* ── Crop modal — full-screen, above everything ──── */
 

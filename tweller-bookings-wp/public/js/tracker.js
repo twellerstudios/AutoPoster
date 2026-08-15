@@ -443,6 +443,7 @@
     var tabLiked      = document.getElementById('tf2-tab-liked');
     var likedCountEl  = document.getElementById('tf2-liked-count');
     var downloadLiked = document.getElementById('tf2-gallery-download-liked');
+    var dlLikedCount  = document.getElementById('tf2-download-liked-count');
 
     // Visitor identity persists across visits (localStorage), so a returning
     // guest is never asked for their details twice.
@@ -682,9 +683,10 @@
             downloadAll.href = galleryUrl + code + '/download-all'
                 + (galleryToken ? '?token=' + encodeURIComponent(galleryToken) : '');
 
-            downloadAll.addEventListener('click', function() {
+            downloadAll.addEventListener('click', function(e) {
+                e.preventDefault();
                 if (selMode) exitSelectMode();
-                trackActivity('all_downloaded', photos.length + ' photos');
+                openDownloadDialog('all', downloadAll.href, photos.length);
             });
         }
 
@@ -810,8 +812,11 @@
 
         if (downloadLiked) {
             downloadLiked.addEventListener('click', function(e) {
-                if (!likedCount()) { e.preventDefault(); return; }
-                trackActivity('liked_downloaded', likedCount() + ' liked photos');
+                e.preventDefault();
+                var n = likedIndices().length;
+                if (!n || downloadLiked.getAttribute('aria-disabled') === 'true') return;
+                if (selMode) exitSelectMode();
+                openDownloadDialog('liked', downloadLiked.href, n);
             });
         }
 
@@ -823,12 +828,9 @@
         }
     }
 
-    function likedCount() {
-        var n = 0;
-        for (var k in likedIds) { if (likedIds[k]) n++; }
-        return n;
-    }
-
+    // NB: no raw count of likedIds. It can hold ids for photos this album no
+    // longer contains, so every count comes from likedIndices() instead — see
+    // below — which is scoped to the photos actually on the page.
     function isLiked(photoId) { return !!likedIds[photoId]; }
 
     // Toggle a like optimistically, then persist. On failure we roll back so
@@ -875,19 +877,57 @@
         if (lbLike && cur && cur.id === photoId) syncLightboxLike();
     }
 
+    // Liked photos that actually exist in THIS gallery. likedIds can carry ids
+    // the current album no longer contains, so every counter on screen is
+    // derived from here — a badge must never promise more than the button
+    // it sits on can deliver.
+    function likedIndices() {
+        var out = [];
+        for (var i = 0; i < photos.length; i++) {
+            if (isLiked(photos[i].id)) out.push(i);
+        }
+        return out;
+    }
+
     function refreshLikedUI() {
-        var n = likedCount();
+        var n = likedIndices().length;
+
         if (likedCountEl) likedCountEl.textContent = String(n);
         if (tabLiked) tabLiked.classList.toggle('tf2-gtab--has', n > 0);
+
+        // Download Liked stays put and simply switches between enabled and
+        // disabled. It used to appear on the first like, which re-flowed the
+        // whole actions row and shoved Order Prints sideways.
         if (downloadLiked) {
-            downloadLiked.style.display = n > 0 ? '' : 'none';
+            if (dlLikedCount) dlLikedCount.textContent = String(n);
+            downloadLiked.setAttribute('aria-disabled', n > 0 ? 'false' : 'true');
+            downloadLiked.title = n > 0
+                ? 'Download your ' + n + ' liked photo' + (n === 1 ? '' : 's')
+                : 'Like a photo to enable this';
             // Keep the href current so the link always downloads the latest
             // favourites even if the click handler is bypassed.
             if (visitorToken) {
                 downloadLiked.href = galleryUrl + code + '/download-liked?token=' + encodeURIComponent(visitorToken);
             }
         }
+
+        syncSlideshowCounts();
+        pushLikedToPrints();
+
         if (viewMode === 'liked') applyViewFilter();
+        // A heart toggled while the selection bar is open changes both what is
+        // selectable and the "Select liked" count, and syncSelectionUI() has no
+        // other way to hear about it.
+        if (selMode) { pruneSelectionToVisible(); syncSelectionUI(); }
+    }
+
+    // Hand the print store the liked set so it can offer "Add all liked
+    // photos" and pre-select them. Guarded on the method existing, so an older
+    // prints.js simply never sees it.
+    function pushLikedToPrints() {
+        if (!printsCan('setLiked')) return;
+        var list = likedIndices().map(function(i) { return printPayload(photos[i]); });
+        try { window.TwellerPrints.setLiked(list); } catch (e) {}
     }
 
     function setViewMode(mode) {
@@ -900,6 +940,8 @@
             tabLiked.classList.toggle('tf2-gtab--active', viewMode === 'liked');
             tabLiked.setAttribute('aria-selected', viewMode === 'liked' ? 'true' : 'false');
         }
+        // Keep the panel pointing at whichever tab currently describes it.
+        if (grid) grid.setAttribute('aria-labelledby', viewMode === 'liked' ? 'tf2-tab-liked' : 'tf2-tab-all');
         applyViewFilter();
         // If a print selection is in progress, drop anything the new view
         // hides so "Continue" only ever carries what's on screen.
@@ -1164,6 +1206,8 @@
     var selEnterBtn = document.getElementById('tf2-printsel-enter');
     var selBar      = document.getElementById('tf2-printsel-bar');
     var selCountEl  = document.getElementById('tf2-printsel-count');
+    var selLikedBtn = document.getElementById('tf2-printsel-liked');
+    var selLikedNum = document.getElementById('tf2-printsel-liked-count');
     var selAllBtn   = document.getElementById('tf2-printsel-all');
     var selClearBtn = document.getElementById('tf2-printsel-clear');
     var selDoneBtn  = document.getElementById('tf2-printsel-done');
@@ -1247,6 +1291,20 @@
         }
     }
 
+    // Liked AND currently on screen — the exact set "Select liked" will tick,
+    // so the badge beside it can never over-promise.
+    function likedVisibleIndices() {
+        return likedIndices().filter(isIdxVisible);
+    }
+
+    // The bar is fixed to the bottom, so the gallery has to reserve room or it
+    // hides the last row of photos. Its height varies with how the buttons
+    // wrap, so measure it rather than trusting a hard-coded figure.
+    function reserveSelBarSpace() {
+        if (!gallery || !selBar || !selMode) return;
+        gallery.style.paddingBottom = (selBar.offsetHeight + 16) + 'px';
+    }
+
     function enterSelectMode() {
         if (selMode || !grid || !printsCan('openBatchOrder')) return;
         selMode = true;
@@ -1256,15 +1314,21 @@
         if (selBar) selBar.style.display = 'block';
         if (selEnterBtn) selEnterBtn.classList.add('tf2-gbtn--on');
         syncSelectionUI();
+        reserveSelBarSpace();
         trackActivity('prints_batch_select_started');
     }
+
+    window.addEventListener('resize', reserveSelBarSpace);
 
     function exitSelectMode() {
         if (!selMode) return;
         selMode = false;
         selected = {};
         if (grid) grid.classList.remove('tf2-printsel-on');
-        if (gallery) gallery.classList.remove('tf2-gallery--printsel');
+        if (gallery) {
+            gallery.classList.remove('tf2-gallery--printsel');
+            gallery.style.paddingBottom = '';
+        }
         if (selBar) selBar.style.display = 'none';
         if (selEnterBtn) selEnterBtn.classList.remove('tf2-gbtn--on');
         syncSelectionUI();
@@ -1303,6 +1367,17 @@
             lbl.textContent = allVis ? 'Deselect all' : 'Select all';
             selAllBtn.appendChild(lbl);
         }
+
+        // Update the liked badge in place — never via the textContent rebuild
+        // above, which would delete the badge element.
+        if (selLikedBtn) {
+            var likedVis = likedVisibleIndices().length;
+            if (selLikedNum) selLikedNum.textContent = String(likedVis);
+            selLikedBtn.setAttribute('aria-disabled', likedVis > 0 ? 'false' : 'true');
+        }
+
+        // Relabelling can rewrap the bar and change its height.
+        reserveSelBarSpace();
     }
 
     if (selEnterBtn) {
@@ -1322,6 +1397,19 @@
         });
     }
 
+    // "Select liked" replaces the selection rather than adding to it, matching
+    // the neighbouring "Select all" so the two buttons behave the same way.
+    if (selLikedBtn) {
+        selLikedBtn.addEventListener('click', function() {
+            if (selLikedBtn.getAttribute('aria-disabled') === 'true') return;
+            var liked = likedVisibleIndices();
+            if (!liked.length) return;
+            selected = {};
+            liked.forEach(function(i) { selected[i] = true; });
+            syncSelectionUI();
+        });
+    }
+
     if (selClearBtn) {
         selClearBtn.addEventListener('click', function() {
             selected = {};
@@ -1336,8 +1424,17 @@
         if (e.key !== 'Escape' || !selMode) return;
         if (lightbox && lightbox.style.display !== 'none') return;
         if (ss && ss.style.display !== 'none') return;
+        if (dlIsOpen()) return;
         exitSelectMode();
     });
+
+    // The download dialog is modal, so it takes Escape ahead of everything else.
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && dlIsOpen()) {
+            e.stopPropagation();
+            closeDownloadDialog();
+        }
+    }, true);
 
     if (selNextBtn) {
         selNextBtn.addEventListener('click', function() {
@@ -1354,6 +1451,180 @@
             } catch (e) {}
         });
     }
+
+    // ── Download dialog ────────────────────────────────
+    // Both ZIP endpoints build the whole archive before sending a single byte,
+    // so the browser sits silent for the entire build — that is the "it just
+    // hangs" the client sees. We keep the NATIVE download (galleries run to
+    // gigabytes; buffering one into a blob would kill a phone tab) and instead
+    // cover the silent stretch: confirm the count, show an honest working
+    // state, then wait for the server's own "I've started sending" signal.
+
+    var dlModal    = document.getElementById('tf2-dl-modal');
+    var dlIcon     = document.getElementById('tf2-dl-icon');
+    var dlTitle    = document.getElementById('tf2-dl-title');
+    var dlBody     = document.getElementById('tf2-dl-body');
+    var dlProg     = document.getElementById('tf2-dl-prog');
+    var dlFill     = document.getElementById('tf2-dl-fill');
+    var dlHint     = document.getElementById('tf2-dl-hint');
+    var dlActions  = document.getElementById('tf2-dl-actions');
+    var dlGo       = document.getElementById('tf2-dl-go');
+    var dlCancel   = document.getElementById('tf2-dl-cancel');
+    var dlCloseBtn = document.getElementById('tf2-dl-close');
+    var dlBackdrop = document.getElementById('tf2-dl-backdrop');
+
+    var DL_COOKIE = 'tf2_dl';
+    var dlPending = null, dlFrame = null, dlPoll = null, dlGiveUp = null, dlLastFocus = null;
+
+    function dlReadCookie() {
+        var parts = ('; ' + document.cookie).split('; ' + DL_COOKIE + '=');
+        return parts.length === 2 ? parts.pop().split(';').shift() : '';
+    }
+    function dlClearCookie() { document.cookie = DL_COOKIE + '=; Max-Age=0; path=/'; }
+    function dlIsOpen() { return !!dlModal && dlModal.style.display !== 'none'; }
+    function dlSetCloseLabel(text) {
+        if (!dlCloseBtn) return;
+        var l = dlCloseBtn.querySelector('.tf2-gbtn__label');
+        if (l) l.textContent = text;
+    }
+
+    function openDownloadDialog(kind, url, count) {
+        // No dialog markup (older cached page) → behave exactly as before.
+        if (!dlModal) { window.location.href = url; return; }
+        if (!count) return;
+
+        dlPending = { kind: kind, url: url, count: count };
+        dlLastFocus = document.activeElement;
+
+        var noun = count === 1 ? 'photo' : 'photos';
+        dlModal.className = 'tf2-dlm';
+        dlTitle.textContent = kind === 'liked' ? 'Download your liked photos' : 'Download all photos';
+        dlBody.innerHTML = 'You’re about to download <strong>' + count + ' ' + noun +
+            '</strong> as a single ZIP file.' +
+            (count > 40 ? ' Large galleries take a little while to package.' : '');
+        dlProg.hidden = true;
+        dlActions.hidden = false;
+        dlCloseBtn.hidden = true;
+        dlModal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (dlGo) dlGo.focus();
+    }
+
+    function startDownload() {
+        if (!dlPending) return;
+        var job = dlPending;
+        var token = 'd' + String(Date.now()) + String(Math.floor(Math.random() * 1000000));
+        var noun = job.count === 1 ? 'photo' : 'photos';
+
+        dlClearCookie();
+
+        dlModal.className = 'tf2-dlm tf2-dlm--working';
+        dlTitle.textContent = 'Preparing your download';
+        dlBody.innerHTML = 'We’re packaging <strong>' + job.count + ' ' + noun + '</strong> into a ZIP file.';
+        dlFill.className = 'tf2-dlm__fill';
+        dlHint.textContent = 'This can take a moment — please keep this page open.';
+        dlProg.hidden = false;
+        dlActions.hidden = true;
+        dlCloseBtn.hidden = false;
+        dlSetCloseLabel('Hide');
+
+        // A hidden iframe keeps the visitor on the gallery: an attachment
+        // response never navigates it away, and a JSON error lands somewhere we
+        // can read rather than replacing the page with raw JSON.
+        if (dlFrame && dlFrame.parentNode) dlFrame.parentNode.removeChild(dlFrame);
+        dlFrame = document.createElement('iframe');
+        dlFrame.style.display = 'none';
+        dlFrame.addEventListener('load', onDownloadFrameLoad);
+        document.body.appendChild(dlFrame);
+        dlFrame.src = job.url + (job.url.indexOf('?') === -1 ? '?' : '&') + 'dl=' + encodeURIComponent(token);
+
+        trackActivity(
+            job.kind === 'liked' ? 'liked_downloaded' : 'all_downloaded',
+            job.count + (job.kind === 'liked' ? ' liked photos' : ' photos')
+        );
+
+        // The server drops a cookie the instant it starts streaming, which is
+        // the only truthful "it has begun" we can observe from here.
+        var started = Date.now();
+        clearInterval(dlPoll);
+        dlPoll = setInterval(function() {
+            if (dlReadCookie() === token) { onDownloadStarted(); return; }
+            if (Date.now() - started > 25000) {
+                dlHint.textContent = 'Still packaging — a big gallery can take a few minutes. ' +
+                    'You can hide this and keep browsing; the download starts on its own.';
+            }
+        }, 400);
+
+        clearTimeout(dlGiveUp);
+        dlGiveUp = setTimeout(function() { clearInterval(dlPoll); }, 600000);
+    }
+
+    function onDownloadStarted() {
+        clearInterval(dlPoll);
+        clearTimeout(dlGiveUp);
+        dlClearCookie();
+        if (!dlIsOpen()) return;
+
+        dlModal.className = 'tf2-dlm tf2-dlm--done';
+        if (dlIcon) {
+            dlIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+                '<polyline points="20 6 9 17 4 12"/></svg>';
+        }
+        dlTitle.textContent = 'Download started';
+        dlBody.textContent = 'Your photos are on the way — check your downloads.';
+        dlFill.className = 'tf2-dlm__fill tf2-dlm__fill--done';
+        dlHint.textContent = '';
+        dlSetCloseLabel('Done');
+
+        setTimeout(function() {
+            if (dlModal && dlModal.className.indexOf('tf2-dlm--done') !== -1) closeDownloadDialog();
+        }, 2600);
+    }
+
+    function onDownloadFrameLoad() {
+        // A real attachment leaves the iframe blank. Anything readable here is
+        // an error payload, and saying so beats an endless "preparing".
+        var msg = '';
+        try {
+            var doc = dlFrame && dlFrame.contentDocument;
+            var txt = doc && doc.body ? doc.body.textContent : '';
+            if (txt && txt.indexOf('"message"') !== -1) {
+                msg = (JSON.parse(txt) || {}).message || '';
+            }
+        } catch (e) {}
+        if (!msg || !dlIsOpen()) return;
+
+        clearInterval(dlPoll);
+        clearTimeout(dlGiveUp);
+        dlModal.className = 'tf2-dlm';
+        dlTitle.textContent = 'We couldn’t build that download';
+        dlBody.textContent = msg;
+        dlProg.hidden = true;
+        dlActions.hidden = true;
+        dlCloseBtn.hidden = false;
+        dlSetCloseLabel('Close');
+    }
+
+    // Closing never cancels the transfer — the iframe is left in place so a
+    // download the visitor hid still lands.
+    function closeDownloadDialog() {
+        clearInterval(dlPoll);
+        clearTimeout(dlGiveUp);
+        if (dlModal) { dlModal.style.display = 'none'; dlModal.className = 'tf2-dlm'; }
+        document.body.style.overflow = '';
+        dlPending = null;
+        if (dlIcon) {
+            dlIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">' +
+                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/>' +
+                '<line x1="12" y1="15" x2="12" y2="3"/></svg>';
+        }
+        if (dlLastFocus && dlLastFocus.focus) { try { dlLastFocus.focus(); } catch (e) {} }
+    }
+
+    if (dlGo)       dlGo.addEventListener('click', startDownload);
+    if (dlCancel)   dlCancel.addEventListener('click', closeDownloadDialog);
+    if (dlCloseBtn) dlCloseBtn.addEventListener('click', closeDownloadDialog);
+    if (dlBackdrop) dlBackdrop.addEventListener('click', closeDownloadDialog);
 
     // ── Force download helper ─────────────────────────
     function forceDownload(url, filename) {
@@ -1530,27 +1801,95 @@
     var ssClose   = document.getElementById('tf2-ss-close');
     var ssPause   = document.getElementById('tf2-ss-pause');
 
+    var ssMenu     = document.getElementById('tf2-ssmenu');
+    var ssMenuList = document.getElementById('tf2-ssmenu-list');
+    var ssAllCount = document.getElementById('tf2-ss-all-count');
+    var ssLikedNum = document.getElementById('tf2-ss-liked-count');
+
     var SS_INTERVAL = 4000;  // ms per photo
     var ssTimer = null, ssIdleTimer = null;
-    var ssIndex = 0, ssFront = null, ssPaused = false;
+    var ssFront = null, ssPaused = false;
 
-    // Slideshow launches straight into the classic (crossfade) mode —
-    // there is no style chooser.
-    if (ssBtn && ss) {
-        ssBtn.addEventListener('click', function() {
+    // The show runs a PLAYLIST of indices into `photos`, not `photos` itself,
+    // so it can play just the liked ones. Mirrors navIndices/navPos in the
+    // lightbox. ssPos is a position in ssList, never a photo index.
+    var ssList = [], ssPos = 0;
+
+    function indicesForScope(scope) {
+        if (scope === 'liked') return likedIndices();
+        var out = [];
+        for (var i = 0; i < photos.length; i++) out.push(i);
+        return out;
+    }
+
+    function syncSlideshowCounts() {
+        var liked = likedIndices().length;
+        if (ssAllCount) ssAllCount.textContent = String(photos.length);
+        if (ssLikedNum) ssLikedNum.textContent = String(liked);
+        if (ssMenuList) {
+            var likedItem = ssMenuList.querySelector('[data-scope="liked"]');
+            if (likedItem) likedItem.setAttribute('aria-disabled', liked > 0 ? 'false' : 'true');
+        }
+    }
+
+    function closeSlideshowMenu() {
+        if (!ssMenuList || ssMenuList.hidden) return;
+        ssMenuList.hidden = true;
+        if (ssBtn) ssBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function openSlideshowMenu() {
+        if (!ssMenuList) return;
+        syncSlideshowCounts();
+        ssMenuList.hidden = false;
+        if (ssBtn) ssBtn.setAttribute('aria-expanded', 'true');
+        var first = ssMenuList.querySelector('[role="menuitem"]:not([aria-disabled="true"])');
+        if (first) first.focus();
+    }
+
+    if (ssBtn && ssMenuList) {
+        ssBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
             if (!photos.length) return;
+            if (ssMenuList.hidden) openSlideshowMenu();
+            else closeSlideshowMenu();
+        });
+
+        ssMenuList.addEventListener('click', function(e) {
+            var item = e.target.closest ? e.target.closest('[role="menuitem"]') : null;
+            if (!item || item.getAttribute('aria-disabled') === 'true') return;
+            closeSlideshowMenu();
             if (selMode) exitSelectMode();
-            startSlideshow();
+            startSlideshow(item.getAttribute('data-scope'));
+        });
+
+        // Click-away and Escape close the menu; neither should reach the
+        // gallery underneath.
+        document.addEventListener('click', function(e) {
+            if (ssMenuList.hidden) return;
+            if (ssMenu && ssMenu.contains(e.target)) return;
+            closeSlideshowMenu();
+        });
+        ssMenuList.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeSlideshowMenu();
+                ssBtn.focus();
+            }
         });
     }
 
-    function startSlideshow() {
-        trackActivity('slideshow_played', 'classic');
+    function startSlideshow(scope) {
+        scope = (scope === 'liked') ? 'liked' : 'all';
+        ssList = indicesForScope(scope);
+        if (!ssList.length) return;
+
+        trackActivity('slideshow_played', scope === 'liked' ? 'liked' : 'all');
         ss.className = 'tf2-slideshow';
         ss.style.display = 'block';
         document.body.style.overflow = 'hidden';
 
-        ssIndex = 0;
+        ssPos = 0;
         ssFront = null;
         ssPaused = false;
         ssLayerA.className = 'tf2-slideshow__layer';
@@ -1566,15 +1905,18 @@
         try { if (ss.requestFullscreen) ss.requestFullscreen().catch(function(){}); } catch (e) {}
     }
 
-    function showSlide(idx) {
-        ssIndex = ((idx % photos.length) + photos.length) % photos.length;
+    // `pos` is a position within ssList, so the show wraps around the chosen
+    // playlist rather than the whole album.
+    function showSlide(pos) {
+        if (!ssList.length) return;
+        ssPos = ((pos % ssList.length) + ssList.length) % ssList.length;
         var incoming = (ssFront === ssLayerA) ? ssLayerB : ssLayerA;
         var outgoing = ssFront;
 
         incoming.className = 'tf2-slideshow__layer';
         // Force a style flush so the crossfade restarts cleanly
         void incoming.offsetWidth;
-        incoming.style.backgroundImage = 'url("' + photos[ssIndex].url + '")';
+        incoming.style.backgroundImage = 'url("' + photos[ssList[ssPos]].url + '")';
         incoming.classList.add('tf2-slideshow__layer--visible');
 
         if (outgoing) outgoing.classList.remove('tf2-slideshow__layer--visible');
@@ -1582,14 +1924,14 @@
 
         // Preload the next image so the crossfade never stutters
         var nxt = new Image();
-        nxt.src = photos[(ssIndex + 1) % photos.length].url;
+        nxt.src = photos[ssList[(ssPos + 1) % ssList.length]].url;
     }
 
     function scheduleNext() {
         clearTimeout(ssTimer);
         if (ssPaused) return;
         ssTimer = setTimeout(function() {
-            showSlide(ssIndex + 1);
+            showSlide(ssPos + 1);
             scheduleNext();
         }, SS_INTERVAL);
     }
@@ -1630,8 +1972,8 @@
             if (ss.style.display === 'none') return;
             if (e.key === 'Escape') stopSlideshow();
             if (e.key === ' ') { e.preventDefault(); ssPause.click(); }
-            if (e.key === 'ArrowRight') { showSlide(ssIndex + 1); scheduleNext(); ssWake(); }
-            if (e.key === 'ArrowLeft')  { showSlide(ssIndex - 1); scheduleNext(); ssWake(); }
+            if (e.key === 'ArrowRight') { showSlide(ssPos + 1); scheduleNext(); ssWake(); }
+            if (e.key === 'ArrowLeft')  { showSlide(ssPos - 1); scheduleNext(); ssWake(); }
         });
 
         // Leaving native fullscreen (Esc) also ends the show cleanly

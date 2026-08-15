@@ -482,8 +482,13 @@ class TwellerFlow2_Gallery {
             TwellerFlow2_Client_Activity::log( $session->id, $code, 'all_downloaded', count( $photos ) . ' photos' );
         }
 
+        // The name the visitor sees, and a build path unique to THIS request.
+        // A shared path meant two people downloading at once wrote to one file
+        // and the first to finish deleted it from under the second.
         $zip_name = sanitize_file_name( $session->client_name ) . '-photos.zip';
-        $zip_path = $gallery_dir . '/' . $zip_name;
+        $zip_path = self::temp_zip_path( $gallery_dir );
+
+        self::prepare_for_large_download();
 
         $zip = new ZipArchive();
         if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
@@ -498,12 +503,54 @@ class TwellerFlow2_Gallery {
         }
         $zip->close();
 
-        header( 'Content-Type: application/zip' );
-        header( 'Content-Disposition: attachment; filename="' . $zip_name . '"' );
-        header( 'Content-Length: ' . filesize( $zip_path ) );
-        readfile( $zip_path );
+        self::stream_zip( $zip_path, $zip_name, $request->get_param( 'dl' ) );
+    }
 
-        // Clean up temp zip
+    /**
+     * A build path nobody else can collide with, hidden from directory
+     * listings, inside the gallery folder so it lands on the same filesystem.
+     */
+    public static function temp_zip_path( $gallery_dir ) {
+        return trailingslashit( $gallery_dir ) . '.tf2-dl-' . wp_generate_password( 16, false ) . '.zip';
+    }
+
+    /**
+     * Zipping a multi-gigabyte gallery outlasts the default limits, and a
+     * visitor who navigates away must not leave the archive behind in a
+     * publicly reachable uploads folder — so we keep running to the unlink.
+     */
+    public static function prepare_for_large_download() {
+        if ( function_exists( 'set_time_limit' ) ) { @set_time_limit( 0 ); }
+        @ignore_user_abort( true );
+    }
+
+    /**
+     * Send a built ZIP, then delete it.
+     *
+     * The archive is built synchronously before this runs, so the browser sees
+     * nothing at all until the first byte here — that silence is what made the
+     * download button look dead. `$signal` is a token the client polls for: the
+     * cookie is written at the exact moment streaming begins, which is the only
+     * truthful "your download has started" the page can observe.
+     */
+    public static function stream_zip( $zip_path, $download_name, $signal = '' ) {
+        $signal = preg_replace( '/[^A-Za-z0-9]/', '', (string) $signal );
+        if ( $signal !== '' ) {
+            // Readable by JS on purpose — it is a per-click nonce, not a secret.
+            setcookie( 'tf2_dl', $signal, time() + 600, '/', '', is_ssl(), false );
+        }
+
+        nocache_headers();
+        header( 'Content-Type: application/zip' );
+        header( 'Content-Disposition: attachment; filename="' . $download_name . '"' );
+        header( 'Content-Length: ' . filesize( $zip_path ) );
+        header( 'X-Robots-Tag: noindex, nofollow' );
+
+        // An active output buffer would hold the entire archive in PHP memory —
+        // fatal on a large gallery — and gzip would make Content-Length a lie.
+        while ( ob_get_level() > 0 ) { ob_end_clean(); }
+
+        readfile( $zip_path );
         @unlink( $zip_path );
         exit;
     }

@@ -258,11 +258,16 @@ class TwellerFlow2_Gallery_Favorites {
 
         $gallery_dir = TwellerFlow2_Gallery::get_gallery_dir( $session->tracking_code );
         $zip_name    = sanitize_file_name( $session->client_name . '-favourites' ) . '.zip';
-        $zip_path    = trailingslashit( $gallery_dir ) . $zip_name;
+        // Per-request build path. The old shared path was keyed only on the
+        // client name, so two VISITORS of the same gallery downloading their
+        // own favourites at once collided on one file.
+        $zip_path    = TwellerFlow2_Gallery::temp_zip_path( $gallery_dir );
 
         if ( ! class_exists( 'ZipArchive' ) ) {
             return new WP_Error( 'no_zip', 'Downloads are unavailable on this server.', array( 'status' => 500 ) );
         }
+
+        TwellerFlow2_Gallery::prepare_for_large_download();
 
         $zip = new ZipArchive();
         if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
@@ -284,12 +289,7 @@ class TwellerFlow2_Gallery_Favorites {
             TwellerFlow2_Client_Activity::log( $session->id, $session->tracking_code, 'liked_downloaded', $added . ' liked photos' );
         }
 
-        header( 'Content-Type: application/zip' );
-        header( 'Content-Disposition: attachment; filename="' . $zip_name . '"' );
-        header( 'Content-Length: ' . filesize( $zip_path ) );
-        readfile( $zip_path );
-        @unlink( $zip_path );
-        exit;
+        TwellerFlow2_Gallery::stream_zip( $zip_path, $zip_name, $request->get_param( 'dl' ) );
     }
 
     /** GET /gallery/{code}/favorites — admin JSON (also powers the app later). */

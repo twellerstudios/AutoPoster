@@ -636,21 +636,45 @@ body.page .page-hero {
 }
 
 @media (min-width: 641px) {
+    /*
+     * Wrapping is deliberate. Name + view strip + four action buttons can
+     * exceed a tablet-width row; allowing a wrap drops the actions onto their
+     * own right-aligned line instead of overflowing the toolbar.
+     */
     .tf2-gallery__toolbar-inner {
         flex-direction: row;
         align-items: center;
-        justify-content: space-between;
-        gap: 20px;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 14px 20px;
         padding: 14px 24px;
     }
     .tf2-gallery__toolbar-name { font-size: 13px; }
     .tf2-gallery__actions {
         display: flex;
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         justify-content: flex-end;
+        margin-left: auto;
         gap: 10px;
     }
     .tf2-gbtn { padding: 0 16px; }
+}
+
+/*
+ * Phones: the view strip carries two tabs plus the slideshow control, which
+ * together overrun a 375px row. Drop the slideshow's word — the icon, the
+ * caret and its aria-label still say what it is — and tighten the tabs.
+ */
+@media (max-width: 560px) {
+    .tf2-ssmenu__btn > span { display: none; }
+    .tf2-ssmenu__btn { padding: 0 10px; }
+    .tf2-gtab { padding: 0 11px; }
+    /*
+     * "Download Liked" carries an icon, a label and a count in a half-width
+     * grid cell; without this trim the label ellipsises between ~380 and
+     * ~430px, which is squarely in phone territory.
+     */
+    .tf2-gallery__actions .tf2-gbtn { gap: 6px; padding: 0 10px; }
 }
 
 /* Very narrow phones: trim the padding, never the legibility */
@@ -663,6 +687,18 @@ body.page .page-hero {
         padding: 0 8px;
     }
     .tf2-gbtn svg { width: 15px; height: 15px; }
+    .tf2-gtab { padding: 0 9px; font-size: 12.5px; }
+    .tf2-gbtn__count { min-width: 18px; height: 18px; padding: 0 5px; font-size: 10.5px; }
+    /*
+     * At 320px a half-width cell cannot hold icon + "Download Liked" + count.
+     * The labels are the part that carries meaning, so the icons go — across
+     * the whole row, so the four buttons stay visually consistent. The tab
+     * strip keeps its icons.
+     */
+    .tf2-gallery__actions .tf2-gbtn > svg { display: none; }
+    /* Later than the <=560px rule, so this wins: the last few pixels
+     * "Download Liked" needs to sit on one line at 320px. */
+    .tf2-gallery__actions .tf2-gbtn { padding: 0 6px; gap: 4px; }
 }
 
 /* ── Photo Grid (masonry-like via columns) ──────── */
@@ -1416,14 +1452,25 @@ body.page .page-hero {
     border-radius: 6px;
 }
 
+/*
+ * Flex-wrap rather than a fixed 2-column grid: the bar carries three select
+ * controls plus a full-width Continue, and an odd count left a dead cell in
+ * the grid. Wrapping also survives a fourth control being added later.
+ */
 .tf2-printsel-bar__actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     min-width: 0;
 }
 
-.tf2-printsel-bar__continue { grid-column: 1 / -1; }
+.tf2-printsel-bar__actions > .tf2-gbtn {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Same selector depth as the rule above, or it loses on specificity. */
+.tf2-printsel-bar__actions > .tf2-printsel-bar__continue { flex: 1 0 100%; }
 
 @media (min-width: 641px) {
     .tf2-printsel-bar__inner {
@@ -1437,10 +1484,12 @@ body.page .page-hero {
     .tf2-printsel-bar__count { font-size: 14px; }
     .tf2-printsel-bar__actions {
         display: flex;
+        flex-wrap: nowrap;
         justify-content: flex-end;
         gap: 10px;
     }
-    .tf2-printsel-bar__continue { grid-column: auto; }
+    .tf2-printsel-bar__actions > .tf2-gbtn { flex: 0 0 auto; }
+    .tf2-printsel-bar__actions > .tf2-printsel-bar__continue { flex: 0 0 auto; }
     .tf2-gallery--printsel { padding-bottom: 96px; }
 }
 
@@ -1688,13 +1737,33 @@ body.page .page-hero {
 }
 
 /* ── All / Liked tabs ── */
-.tf2-gallery__tabs {
+/*
+ * The pill chrome lives on the STRIP, not the tablist, so the slideshow
+ * control can sit inside the same pill while staying outside role="tablist".
+ */
+.tf2-gallery__tabstrip {
     display: inline-flex;
+    align-items: center;
     gap: 4px;
     padding: 4px;
     background: var(--tf-gray-100);
     border-radius: 10px;
     align-self: flex-start;
+    max-width: 100%;
+}
+
+.tf2-gallery__tabs {
+    display: inline-flex;
+    gap: 4px;
+    min-width: 0;
+}
+
+.tf2-tabstrip__sep {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 20px;
+    margin: 0 2px;
+    background: var(--tf-gray-300);
 }
 .tf2-gtab {
     display: inline-flex;
@@ -1733,6 +1802,209 @@ body.page .page-hero {
     justify-content: center;
 }
 .tf2-gtab--active .tf2-gtab__count { background: var(--tf-gold); color: var(--tf-white); }
+
+/* ── Slideshow menu (in the tab strip, but an action not a tab) ── */
+.tf2-ssmenu { position: relative; flex: 0 0 auto; }
+
+.tf2-ssmenu__btn { white-space: nowrap; }
+.tf2-ssmenu__caret { width: 13px !important; height: 13px !important; opacity: 0.75; }
+.tf2-ssmenu__btn[aria-expanded="true"] {
+    background: var(--tf-white);
+    color: var(--tf-black);
+    box-shadow: 0 1px 3px rgba(10, 10, 10, 0.08);
+}
+
+/*
+ * Anchored to the button's RIGHT edge at every width. The strip sits well
+ * inside the toolbar on desktop and near the right of the row on a phone, so
+ * opening leftward is the only alignment that never runs off screen.
+ */
+.tf2-ssmenu__list {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 8px);
+    right: 0;
+    left: auto;
+    min-width: 208px;
+    padding: 6px;
+    background: var(--tf-white);
+    border: 1px solid var(--tf-gray-200);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(10, 10, 10, 0.14);
+}
+.tf2-ssmenu__list[hidden] { display: none; }
+
+.tf2-ssmenu__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 42px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--tf-gray-700);
+    font-family: var(--tf-font);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+.tf2-ssmenu__item:hover { background: var(--tf-gray-100); color: var(--tf-black); }
+.tf2-ssmenu__item:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.32);
+}
+.tf2-ssmenu__item[aria-disabled="true"] {
+    opacity: 0.42;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* ── Counter pill on a toolbar button (Download Liked, Select liked) ── */
+.tf2-gbtn__count {
+    flex: 0 0 auto;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 100px;
+    background: var(--tf-gray-200);
+    color: var(--tf-gray-700);
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.tf2-gbtn:hover .tf2-gbtn__count { background: var(--tf-gray-300); }
+.tf2-gbtn--primary .tf2-gbtn__count { background: var(--tf-gold); color: var(--tf-black); }
+
+/* ══════════════════════════════════════════════════════
+   Download dialog — confirm, then cover the silent stretch
+   while the server builds the ZIP.
+   ══════════════════════════════════════════════════════ */
+
+.tf2-dlm {
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.tf2-dlm__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.55);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+}
+
+.tf2-dlm__card {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    padding: 28px 24px 22px;
+    background: var(--tf-white);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(10, 10, 10, 0.3);
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.tf2-dlm__icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    background: var(--tf-gray-100);
+    color: var(--tf-black);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tf2-dlm__icon svg { width: 24px; height: 24px; }
+
+/* Gentle pulse while we wait on the server */
+.tf2-dlm--working .tf2-dlm__icon {
+    background: rgba(201, 168, 76, 0.14);
+    color: var(--tf-gold-dark);
+    animation: tf2-dlm-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tf2-dlm-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.07); opacity: 0.72; }
+}
+.tf2-dlm--done .tf2-dlm__icon { background: rgba(22, 101, 52, 0.12); color: #166534; }
+
+.tf2-dlm__title {
+    margin: 0 0 6px;
+    font-family: var(--tf-font);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--tf-black);
+}
+
+.tf2-dlm__body {
+    margin: 0 0 18px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--tf-gray-700);
+}
+
+.tf2-dlm__prog { margin: 0 0 18px; }
+
+.tf2-dlm__track {
+    height: 6px;
+    border-radius: 100px;
+    background: var(--tf-gray-200);
+    overflow: hidden;
+}
+
+/*
+ * Indeterminate by default: the server gives us no signal at all until the
+ * ZIP is built, so a sliding bar is the honest representation — never a
+ * fake percentage.
+ */
+.tf2-dlm__fill {
+    width: 40%;
+    height: 100%;
+    border-radius: 100px;
+    background: var(--tf-gold);
+    animation: tf2-dlm-slide 1.4s ease-in-out infinite;
+}
+@keyframes tf2-dlm-slide {
+    0%   { margin-left: -40%; }
+    100% { margin-left: 100%; }
+}
+.tf2-dlm__fill--done {
+    width: 100%;
+    margin-left: 0;
+    background: #16A34A;
+    animation: none;
+}
+
+.tf2-dlm__hint {
+    margin: 10px 0 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--tf-gray-500);
+}
+
+.tf2-dlm__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.tf2-dlm__actions[hidden] { display: none; }
+
+.tf2-dlm__done { width: 100%; }
+.tf2-dlm__done[hidden] { display: none; }
 
 /* ── Tile heart ── */
 .tf2-like {

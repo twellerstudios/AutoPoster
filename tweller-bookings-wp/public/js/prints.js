@@ -35,6 +35,7 @@
                 openOrder: noop,
                 openBatchOrder: noop,
                 setPhotos: noop,
+                setLiked: noop,
                 getCount: zero,
                 getCountFor: zero,
                 onCountChange: noop
@@ -97,6 +98,12 @@
     // "Continue adding" always have something to choose from.
     var photoPool     = [];
     var photoPoolKeys = {};
+
+    // Photos the visitor hearted in the gallery, pushed in by tracker.js.
+    // Keyed the same way the pool is ('id:<id>' for gallery photos), so a like
+    // maps 1:1 onto a pool entry.
+    var likedKeys  = {};
+    var likedOrder = [];
 
     // Natural pixel dimensions per photo key: {w, h}
     var photoDims = {};
@@ -200,6 +207,20 @@
 
     function poolPhoto(key) {
         return photoPoolKeys[key] || null;
+    }
+
+    /** The liked photos, in the order the gallery reported them. */
+    function likedPoolPhotos() {
+        var out = [], i, p;
+        for (i = 0; i < likedOrder.length; i++) {
+            p = photoPoolKeys[likedOrder[i]];
+            if (p) out.push(p);
+        }
+        return out;
+    }
+
+    function likedCountInPool() {
+        return likedPoolPhotos().length;
     }
 
     // ── Cart maths ─────────────────────────────────────
@@ -577,6 +598,12 @@
                     '<p class="tf2p-pickup" id="tf2p-pickup-note" style="display:none;"></p>' +
                     '<div class="tf2p-drawer__addrow">' +
                       '<button type="button" class="tf2p-btn tf2p-btn--ghost tf2p-btn--full" id="tf2p-add-size">&#65291; Add another size</button>' +
+                      // Highlighted shortcut straight from the gallery's hearts.
+                      // Hidden unless tracker.js has pushed a liked set in.
+                      '<button type="button" class="tf2p-btn tf2p-btn--liked tf2p-btn--full" id="tf2p-add-liked" style="display:none;">' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>' +
+                        '<span id="tf2p-add-liked-label">Add all liked photos</span>' +
+                      '</button>' +
                       '<button type="button" class="tf2p-btn tf2p-btn--ghost tf2p-btn--full" id="tf2p-continue">Continue adding photos</button>' +
                     '</div>' +
                     paymentChoiceHtml() +
@@ -729,6 +756,14 @@
         document.getElementById('tf2p-continue').addEventListener('click', function() {
             closeDrawer();
             startFlow({ step: 1, photos: poolAsList(), selected: [] });
+        });
+        // Straight from hearted photos to picking a size — the whole point of
+        // liking things in the gallery.
+        document.getElementById('tf2p-add-liked').addEventListener('click', function() {
+            var list = likedPoolPhotos();
+            if (!list.length) return;
+            closeDrawer();
+            startFlow({ step: 2, photos: list, selected: keysOf(list) });
         });
         document.getElementById('tf2p-success-done').addEventListener('click', function() {
             closeDrawer();
@@ -1298,6 +1333,27 @@
         }
 
         var bar = el('div', 'tf2p-selbar');
+
+        // Liked first — it is the shortcut most people want, and it mirrors
+        // the gallery's own "Select liked" sitting ahead of "Select all".
+        var likedInPool = 0;
+        for (var li = 0; li < pool.length; li++) {
+            if (likedKeys[pool[li].key]) likedInPool++;
+        }
+        if (likedInPool) {
+            var liked = btn('tf2p-linkbtn tf2p-linkbtn--liked', 'Select liked (' + likedInPool + ')');
+            liked.addEventListener('click', function() {
+                flow.selected = {};
+                flow.order = [];
+                for (var i = 0; i < flow.pool.length; i++) {
+                    var k = flow.pool[i].key;
+                    if (likedKeys[k]) { flow.selected[k] = true; flow.order.push(k); }
+                }
+                renderFlow();
+            });
+            bar.appendChild(liked);
+        }
+
         var all = btn('tf2p-linkbtn', 'Select all');
         all.addEventListener('click', function() {
             for (var i = 0; i < flow.pool.length; i++) {
@@ -1869,6 +1925,29 @@
         }
     }
 
+    /**
+     * Show "Add all liked photos" only when there are liked photos that are
+     * not already in the cart — once they are all ordered the button would be
+     * a no-op, and a button that does nothing is worse than no button.
+     */
+    function syncLikedButton() {
+        var btn = document.getElementById('tf2p-add-liked');
+        if (!btn) return;
+        var label = document.getElementById('tf2p-add-liked-label');
+        var liked = likedPoolPhotos();
+        var pending = 0, i;
+        for (i = 0; i < liked.length; i++) {
+            if (!countFor(liked[i].filename)) pending++;
+        }
+        if (!liked.length || !pending) { btn.style.display = 'none'; return; }
+        btn.style.display = '';
+        if (label) {
+            label.textContent = pending === liked.length
+                ? 'Add all ' + liked.length + ' liked photo' + (liked.length === 1 ? '' : 's')
+                : 'Add ' + pending + ' more liked photo' + (pending === 1 ? '' : 's');
+        }
+    }
+
     function renderCart() {
         var list     = document.getElementById('tf2p-cart-items');
         var empty    = document.getElementById('tf2p-cart-empty');
@@ -1903,6 +1982,7 @@
                 addRow.style.display = '';
                 var addBtn = document.getElementById('tf2p-add-size');
                 if (addBtn) addBtn.style.display = 'none';
+                syncLikedButton();
             }
             return;
         }
@@ -1913,6 +1993,7 @@
             addRow.style.display = '';
             var addBtn2 = document.getElementById('tf2p-add-size');
             if (addBtn2) addBtn2.style.display = '';
+            syncLikedButton();
         }
 
         var batches = cartBatches();
@@ -3025,6 +3106,37 @@
                 if (p) list.push(p);
             }
             addToPool(list);
+            if (flow && isFlowOpen() && flow.step === 1) {
+                flow.pool = poolAsList();
+                renderFlow();
+            }
+        },
+
+        /**
+         * The gallery's liked set. Mirrors setPhotos(): full photo payloads,
+         * because the store needs url/thumb_url to build tiles and cart lines.
+         * Called on every like change, so it must be cheap and idempotent.
+         */
+        setLiked: function(photos) {
+            var list = [], i, p;
+            for (i = 0; i < (photos ? photos.length : 0); i++) {
+                p = normalizePhoto(photos[i]);
+                if (p) list.push(p);
+            }
+            // Pool them so every liked photo is orderable even if it has never
+            // been through the flow before.
+            if (list.length) addToPool(list);
+
+            likedKeys = {};
+            likedOrder = [];
+            for (i = 0; i < list.length; i++) {
+                if (!likedKeys[list[i].key]) {
+                    likedKeys[list[i].key] = true;
+                    likedOrder.push(list[i].key);
+                }
+            }
+
+            syncLikedButton();
             if (flow && isFlowOpen() && flow.step === 1) {
                 flow.pool = poolAsList();
                 renderFlow();

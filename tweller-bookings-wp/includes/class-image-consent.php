@@ -314,39 +314,60 @@ class TwellerFlow2_Image_Consent {
         }
     }
 
-    public static function render_why_page( $atts = array() ) {
-        unset( $atts );
+    /**
+     * The explanation itself, with no page chrome — shared verbatim by the
+     * standalone page and the in-booking modal, so the two can never drift.
+     */
+    public static function why_body_html() {
         $fee = self::privacy_fee();
         $pct = self::next_discount_pct();
         $fee_str = 'TT$' . number_format( $fee, ( $fee == (int) $fee ) ? 0 : 2 );
 
         ob_start();
         ?>
-        <div class="tf2-why" style="max-width:720px; margin:0 auto; padding:8px 4px; line-height:1.75; color:#3D3630; font-size:16px;">
-            <h1 style="font-size:28px; color:#101010; margin:0 0 6px;">Why we ask about sharing your photos</h1>
-            <p style="color:#8A8178; margin:0 0 24px;">A short, honest note on the image-use choice in your booking.</p>
+        <p class="tf2-why__lead">When you book with Tweller Studios we ask one simple question: <strong>may we share a few images from your session on our social media?</strong> We ask because it matters — to you and to us — and the choice is entirely yours.</p>
 
-            <p>When you book with Tweller Studios, we ask one simple question: <strong>may we share a few images from your session on our social media?</strong> We ask because it matters — to you and to us — and we want the choice to be entirely yours.</p>
+        <h4>Your privacy comes first</h4>
+        <p>Some sessions are personal, and not everyone wants their images seen publicly. That is completely understandable, and we will always respect it. You are never obligated to let us post anything.</p>
 
-            <h2 style="font-size:20px; color:#101010; margin:28px 0 8px;">Your privacy comes first</h2>
-            <p>Some sessions are personal, and not everyone wants their images seen publicly. That is completely understandable, and we will always respect it. You are never obligated to let us post anything.</p>
+        <h4>Why sharing helps — and why there's a fee to opt out</h4>
+        <p>Our social media is, quite simply, how most people find us. It is very likely how <em>you</em> came across our work and decided to book. Every image we're able to share keeps that feed alive and brings the next client to our door.</p>
+        <p>When a client asks us to keep their session completely private we fully respect it — but it also means we lose the ability to show that work. To balance that, sessions with <strong>no sharing at all</strong> carry a small <strong>privacy fee of <?php echo esc_html( $fee_str ); ?></strong>. It isn't a penalty; it simply reflects the value of the reach we set aside to honour your request.</p>
 
-            <h2 style="font-size:20px; color:#101010; margin:28px 0 8px;">Why sharing helps — and why there's a fee to opt out</h2>
-            <p>Our social media is, quite simply, how most people find us. It is very likely how <em>you</em> came across our work and decided to book. Every image we're able to share keeps that feed alive and brings the next client to our door.</p>
-            <p>When a client asks us to keep their session completely private, we fully respect it — but it also means we lose the ability to show that work. To balance that, sessions with <strong>no sharing at all</strong> carry a small <strong>privacy fee of <?php echo esc_html( $fee_str ); ?></strong>. Some studios call it exactly that — a privacy fee. It isn't a penalty; it simply reflects the value of the reach we set aside to honour your request.</p>
+        <h4>Your options</h4>
+        <ul>
+            <li><strong>Allow 1–5 images</strong> — our standard. No fee. We may feature a small, tasteful selection.</li>
+            <li><strong>Share as many as you like</strong> — a wonderful help to us, and our thank-you is <strong><?php echo esc_html( (int) $pct ); ?>% off your next session</strong>.</li>
+            <li><strong>Keep it private</strong> — no images shared, with the <?php echo esc_html( $fee_str ); ?> privacy fee.</li>
+        </ul>
 
-            <h2 style="font-size:20px; color:#101010; margin:28px 0 8px;">Your options</h2>
-            <ul style="padding-left:20px; margin:0 0 8px;">
-                <li style="margin:8px 0;"><strong>Allow 1–5 images</strong> — our standard. No fee. We may feature a small, tasteful selection.</li>
-                <li style="margin:8px 0;"><strong>Let us share freely</strong> — a wonderful help to us, and our thank-you is <strong><?php echo esc_html( (int) $pct ); ?>% off your next session</strong>.</li>
-                <li style="margin:8px 0;"><strong>Keep it private</strong> — no images shared, with the <?php echo esc_html( $fee_str ); ?> privacy fee.</li>
-            </ul>
+        <h4>Changing your mind is always okay</h4>
+        <p>If you choose privacy and later — once you've seen your gallery — feel happy to let us share after all, you can simply say so, and we'll thank you with studio credit toward prints. The decision stays yours, always.</p>
 
-            <h2 style="font-size:20px; color:#101010; margin:28px 0 8px;">Changed your mind is always okay</h2>
-            <p>If you chose privacy and later — once you've seen your gallery — feel happy to let us share after all, you can simply say so, and we'll thank you with studio credit toward prints. The decision stays yours, always.</p>
+        <p class="tf2-why__foot">Questions? Reply to your booking email or write to <a href="mailto:hello@twellerstudios.com">hello@twellerstudios.com</a> — we're happy to talk it through.</p>
+        <?php
+        return ob_get_clean();
+    }
 
-            <p style="margin-top:24px; color:#8A8178;">Questions? Reply to your booking email or write to <a href="mailto:hello@twellerstudios.com" style="color:#101010;">hello@twellerstudios.com</a> — we're happy to talk it through.</p>
+    public static function render_why_page( $atts = array() ) {
+        unset( $atts );
+        ob_start();
+        ?>
+        <div class="tf2-why tf2-why--page">
+            <h1>Why we ask about sharing your photos</h1>
+            <p class="tf2-why__kicker">A short, honest note on the image-use choice in your booking.</p>
+            <?php echo self::why_body_html(); ?>
         </div>
+        <style>
+            .tf2-why--page { max-width:720px; margin:0 auto; padding:8px 4px; line-height:1.75; color:#3D3630; font-size:16px; }
+            .tf2-why--page h1 { font-size:28px; color:#101010; margin:0 0 6px; }
+            .tf2-why__kicker { color:#8A8178; margin:0 0 24px; }
+            .tf2-why h4 { font-size:20px; color:#101010; margin:28px 0 8px; }
+            .tf2-why ul { padding-left:20px; margin:0 0 8px; }
+            .tf2-why li { margin:8px 0; }
+            .tf2-why__foot { margin-top:24px; color:#8A8178; }
+            .tf2-why__foot a { color:#101010; }
+        </style>
         <?php
         return ob_get_clean();
     }

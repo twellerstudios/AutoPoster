@@ -432,3 +432,363 @@
     text-align: center;
     font-weight: 500;
 }
+
+/* ══════════════════════════════════════════════════════
+   Image-use consent — "Sharing your photos"
+   ══════════════════════════════════════════════════════ */
+
+/*
+ * THE bug fix: .tf2-field input sets width:100% + padding:12px, which turned
+ * every radio into a full-width box — the dot rendered centred and the label
+ * was pushed off the side. These controls opt out of that rule entirely.
+ */
+.tf2-consent input[type="radio"] {
+    width: auto;
+    padding: 0;
+    margin: 0;
+    border: 0;
+}
+
+.tf2-consent {
+    margin-bottom: 15px;
+    padding: 16px;
+    background: var(--tf-card-bg);
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius);
+}
+
+.tf2-consent__head { margin-bottom: 12px; }
+
+.tf2-consent__title {
+    margin: 0 0 2px;
+    font-family: var(--tf-font);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tf-text-dark);
+    letter-spacing: -0.01em;
+}
+
+.tf2-consent__sub {
+    margin: 0;
+    font-size: 13px;
+    color: var(--tf-text);
+}
+
+.tf2-consent__opts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Each option is a card: custom radio, body, then a price/benefit tag. */
+.tf2-consent-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 0;
+    padding: 13px 14px;
+    background: var(--tf-bg);
+    border: 1px solid var(--tf-border);
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 400;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tf2-consent-opt:hover { border-color: #C9C9C9; }
+
+/* The native input is kept for semantics and keyboard, but hidden behind a
+   drawn mark so it can never inherit the full-width field styling again. */
+.tf2-consent-opt input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.tf2-consent-opt__mark {
+    position: relative;
+    flex: 0 0 auto;
+    width: 19px;
+    height: 19px;
+    margin-top: 1px;
+    border: 1.5px solid #C4C4C4;
+    border-radius: 50%;
+    background: var(--tf-bg);
+    transition: border-color 0.15s ease;
+}
+
+.tf2-consent-opt__mark::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--tf-primary);
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.15s ease;
+}
+
+.tf2-consent-opt__body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.tf2-consent-opt__name {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--tf-text-dark);
+    line-height: 1.35;
+}
+
+.tf2-consent-opt__note {
+    display: block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--tf-text);
+}
+
+.tf2-consent-opt__tag {
+    flex: 0 0 auto;
+    align-self: center;
+    padding: 5px 10px;
+    border-radius: 100px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.tf2-consent-opt__tag--free { background: #F1F5F2; color: #4B6B57; }
+.tf2-consent-opt__tag--gift { background: rgba(201, 168, 76, 0.16); color: #8A6D1B; }
+.tf2-consent-opt__tag--fee  { background: #F6EFEF; color: #9A5B5B; }
+
+/* Selected state — the whole card responds, not just the dot. */
+.tf2-consent-opt:has(input:checked) {
+    border-color: var(--tf-primary);
+    background: var(--tf-bg);
+    box-shadow: 0 0 0 1px var(--tf-primary);
+}
+.tf2-consent-opt:has(input:checked) .tf2-consent-opt__mark { border-color: var(--tf-primary); }
+.tf2-consent-opt:has(input:checked) .tf2-consent-opt__mark::after { transform: translate(-50%, -50%) scale(1); }
+
+.tf2-consent-opt:has(input:focus-visible) {
+    border-color: var(--tf-accent);
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.28);
+}
+
+/* :has() is unsupported on older Safari/Firefox — JS mirrors the state onto
+   this class so the selection is never invisible. */
+.tf2-consent-opt.is-selected {
+    border-color: var(--tf-primary);
+    box-shadow: 0 0 0 1px var(--tf-primary);
+}
+.tf2-consent-opt.is-selected .tf2-consent-opt__mark { border-color: var(--tf-primary); }
+.tf2-consent-opt.is-selected .tf2-consent-opt__mark::after { transform: translate(-50%, -50%) scale(1); }
+
+/* ── "Why is there a privacy fee?" trigger ── */
+.tf2-consent__why {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: rgba(201, 168, 76, 0.09);
+    border: 1px solid rgba(201, 168, 76, 0.4);
+    border-radius: 10px;
+    color: #7A6015;
+    font-family: var(--tf-font);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.tf2-consent__why:hover {
+    background: rgba(201, 168, 76, 0.16);
+    border-color: var(--tf-accent);
+}
+
+.tf2-consent__why svg { flex: 0 0 auto; width: 17px; height: 17px; }
+.tf2-consent__why > span:first-of-type { flex: 1 1 auto; min-width: 0; }
+
+.tf2-consent__why-cta {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: var(--tf-accent);
+    color: #1A1A1A;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* ── Why-this-fee modal ── */
+.tf2-why-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100020;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.tf2-why-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.55);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+}
+
+.tf2-why-modal__card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 560px;
+    max-height: min(82vh, 720px);
+    background: var(--tf-bg);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(10, 10, 10, 0.32);
+    overflow: hidden;
+}
+
+.tf2-why-modal__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex: 0 0 auto;
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid var(--tf-border);
+}
+
+.tf2-why-modal__title {
+    margin: 0;
+    font-family: var(--tf-font);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--tf-text-dark);
+    line-height: 1.3;
+}
+
+.tf2-why-modal__x {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    margin: -4px -4px 0 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--tf-text);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+}
+.tf2-why-modal__x:hover { background: #F3F3F3; color: var(--tf-text-dark); }
+
+/* The scrollable part */
+.tf2-why-modal__body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px 20px 8px;
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--tf-text);
+}
+
+.tf2-why-modal__body h4 {
+    margin: 20px 0 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tf-text-dark);
+}
+.tf2-why-modal__body p { margin: 0 0 12px; }
+.tf2-why-modal__body ul { margin: 0 0 12px; padding-left: 20px; }
+.tf2-why-modal__body li { margin: 7px 0; }
+.tf2-why-modal__body strong { color: var(--tf-text-dark); }
+.tf2-why-modal__body .tf2-why__lead { font-size: 15px; color: var(--tf-text-dark); }
+.tf2-why-modal__body .tf2-why__foot { margin-top: 16px; font-size: 13px; color: #8A8178; }
+
+.tf2-why-modal__foot {
+    flex: 0 0 auto;
+    padding: 14px 20px 18px;
+    border-top: 1px solid var(--tf-border);
+}
+.tf2-why-modal__done { margin: 0; }
+
+/* ── Phones ── */
+@media (max-width: 560px) {
+    .tf2-consent { padding: 14px; }
+
+    /*
+     * Stack the tag under the text rather than squeezing it beside a long
+     * label — that squeeze is what pushed the copy off the edge.
+     */
+    .tf2-consent-opt {
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+    .tf2-consent-opt__body { flex: 1 1 100%; order: 2; min-width: 0; }
+    .tf2-consent-opt__mark { order: 1; }
+    .tf2-consent-opt__tag { order: 3; align-self: flex-start; margin-left: 31px; }
+
+    .tf2-consent__why { flex-wrap: wrap; row-gap: 8px; }
+    .tf2-consent__why > span:first-of-type { flex: 1 1 calc(100% - 26px); }
+    .tf2-consent__why-cta { margin-left: 26px; }
+
+    .tf2-why-modal { padding: 0; align-items: flex-end; }
+    .tf2-why-modal__card {
+        max-width: none;
+        max-height: 88vh;
+        border-radius: 16px 16px 0 0;
+    }
+    .tf2-why-modal__body { padding-bottom: 4px; }
+}
+
+/* ── Resumed-booking notice ── */
+.tf2-resume {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 11px 14px;
+    background: rgba(201, 168, 76, 0.09);
+    border: 1px solid rgba(201, 168, 76, 0.38);
+    border-radius: 10px;
+    font-size: 13.5px;
+    color: #7A6015;
+}
+
+.tf2-resume svg { flex: 0 0 auto; width: 17px; height: 17px; }
+.tf2-resume__text { flex: 1 1 auto; min-width: 0; line-height: 1.45; }
+
+.tf2-resume__reset {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border: 1px solid rgba(201, 168, 76, 0.5);
+    border-radius: 100px;
+    background: var(--tf-bg);
+    color: #7A6015;
+    font-family: var(--tf-font);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.tf2-resume__reset:hover { background: var(--tf-accent); color: #1A1A1A; border-color: var(--tf-accent); }
+
+@media (max-width: 560px) {
+    .tf2-resume { flex-wrap: wrap; row-gap: 8px; }
+    .tf2-resume__text { flex: 1 1 calc(100% - 27px); }
+    .tf2-resume__reset { margin-left: 27px; }
+}

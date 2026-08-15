@@ -13,11 +13,203 @@ const tfBooking = {
     init() {
         if (!window.twellerBooking) return;
         this.renderSessionTypes();
-        
+
         document.getElementById('tf2-booking-date').addEventListener('change', (e) => {
             this.selectedDate = e.target.value;
+            this.selectedTimeStr = null;
+            this.selectedTimeDisplay = null;
             this.fetchAvailability();
+            this.saveState();
         });
+
+        this.wireWhyModal();
+        this.wirePersistence();
+        this.syncConsentSelection();
+        this.restoreState();
+    },
+
+    // ── "Why is there a privacy fee?" ──────────────────
+    // Read on the page. Sending someone to another tab mid-booking is how
+    // you lose the booking.
+
+    wireWhyModal() {
+        const modal = document.getElementById('tf2-why-modal');
+        const open  = document.getElementById('tf2-why-open');
+        if (!modal || !open) return;
+
+        const show = () => {
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            const x = document.getElementById('tf2-why-close');
+            if (x) x.focus();
+        };
+        const hide = () => {
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+            open.focus();
+        };
+
+        open.addEventListener('click', show);
+        ['tf2-why-close', 'tf2-why-done', 'tf2-why-close-bg'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', hide);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display !== 'none') hide();
+        });
+    },
+
+    /*
+     * Mirror the checked radio onto a class. The card styling uses :has(),
+     * which older Safari and Firefox ESR do not support — without this the
+     * chosen option would give no visual feedback at all on those browsers.
+     */
+    syncConsentSelection() {
+        const opts = document.querySelectorAll('.tf2-consent-opt');
+        opts.forEach((opt) => {
+            const input = opt.querySelector('input[type="radio"]');
+            opt.classList.toggle('is-selected', !!(input && input.checked));
+        });
+    },
+
+    // ── Resume an interrupted booking ──────────────────
+    // Everything except the moment of submission is recoverable, so a phone
+    // call, a closed tab or a stray back-button no longer costs the visitor
+    // their whole booking.
+
+    storeKey() {
+        return 'tf_booking_draft_v1';
+    },
+
+    saveState() {
+        try {
+            const el = (id) => document.getElementById(id);
+            const consent = document.querySelector('input[name="tf2_image_consent"]:checked');
+            localStorage.setItem(this.storeKey(), JSON.stringify({
+                v: 1,
+                savedAt: Date.now(),
+                step: this.step,
+                sessionTypeKey: this.selectedSessionTypeKey,
+                packageKey: this.selectedPackageKey,
+                date: this.selectedDate,
+                timeStr: this.selectedTimeStr,
+                timeDisplay: this.selectedTimeDisplay,
+                consent: consent ? consent.value : 'limited',
+                name:  el('tf2-client-name')  ? el('tf2-client-name').value  : '',
+                email: el('tf2-client-email') ? el('tf2-client-email').value : '',
+                phone: el('tf2-client-phone') ? el('tf2-client-phone').value : '',
+                notes: el('tf2-client-notes') ? el('tf2-client-notes').value : ''
+            }));
+        } catch (e) { /* private mode / quota — never block the booking */ }
+    },
+
+    clearState() {
+        try { localStorage.removeItem(this.storeKey()); } catch (e) {}
+    },
+
+    readState() {
+        try {
+            const raw = localStorage.getItem(this.storeKey());
+            if (!raw) return null;
+            const s = JSON.parse(raw);
+            if (!s || s.v !== 1) return null;
+            // A fortnight-old draft is a stale price, not a convenience.
+            if (Date.now() - (s.savedAt || 0) > 14 * 24 * 60 * 60 * 1000) return null;
+            return s;
+        } catch (e) { return null; }
+    },
+
+    // Save on every input, not just on step changes, so a half-typed form
+    // survives too.
+    wirePersistence() {
+        ['tf2-client-name', 'tf2-client-email', 'tf2-client-phone', 'tf2-client-notes'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => this.saveState());
+        });
+        document.querySelectorAll('input[name="tf2_image_consent"]').forEach((el) => {
+            el.addEventListener('change', () => { this.syncConsentSelection(); this.saveState(); });
+        });
+    },
+
+    restoreState() {
+        const s = this.readState();
+        if (!s || !s.sessionTypeKey) return;
+
+        const types = window.twellerBooking.sessionTypes || {};
+        const pkgs  = window.twellerBooking.packages || {};
+        const type  = types[s.sessionTypeKey];
+        if (!type) { this.clearState(); return; }
+
+        // Rebuild the chain step by step, stopping wherever the saved data no
+        // longer holds up — a package that was withdrawn, a date now in the
+        // past. Better to land them on the last valid step than to restore a
+        // booking that cannot be completed.
+        this.selectedSessionTypeKey = s.sessionTypeKey;
+        this.selectedSessionData = type;
+        this.renderPackages();
+        let target = 2;
+
+        const pkg = s.packageKey ? pkgs[s.packageKey] : null;
+        if (pkg) {
+            this.selectedPackageKey = s.packageKey;
+            this.selectedPackageData = pkg;
+            target = 3;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const stillFuture = s.date && new Date(s.date + 'T00:00:00') >= today;
+
+        if (pkg && stillFuture) {
+            this.selectedDate = s.date;
+            const dateEl = document.getElementById('tf2-booking-date');
+            if (dateEl) dateEl.value = s.date;
+
+            if (s.timeStr && s.timeDisplay) {
+                this.selectedTimeStr = s.timeStr;
+                this.selectedTimeDisplay = s.timeDisplay;
+                this.renderSummary();
+                target = 4;
+            }
+            // Re-check the slot is genuinely still free; the grid re-renders
+            // from the server's answer, not from what we saved.
+            this.fetchAvailability();
+        }
+
+        // Restore the details form regardless of which step we land on.
+        const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        set('tf2-client-name',  s.name);
+        set('tf2-client-email', s.email);
+        set('tf2-client-phone', s.phone);
+        set('tf2-client-notes', s.notes);
+
+        if (s.consent) {
+            const radio = document.querySelector('input[name="tf2_image_consent"][value="' + s.consent + '"]');
+            if (radio) radio.checked = true;
+            this.syncConsentSelection();
+        }
+
+        this.goToStep(target);
+        if (target === 4) this.renderSummary();
+        this.showResumeNotice(target < 4 && s.step === 4);
+    },
+
+    showResumeNotice(downgraded) {
+        const host = document.getElementById('tf2-resume-notice');
+        if (!host) return;
+        host.querySelector('.tf2-resume__text').textContent = downgraded
+            ? 'We saved your booking, but that date or time is no longer available — please pick another.'
+            : 'We picked up where you left off.';
+        host.style.display = 'flex';
+
+        const startOver = document.getElementById('tf2-resume-reset');
+        if (startOver && !startOver.dataset.wired) {
+            startOver.dataset.wired = '1';
+            startOver.addEventListener('click', () => {
+                this.clearState();
+                window.location.reload();
+            });
+        }
     },
 
     renderSessionTypes() {
@@ -52,8 +244,11 @@ const tfBooking = {
         if (key === 'weddings') return;
         this.selectedSessionTypeKey = key;
         this.selectedSessionData = type;
+        this.selectedPackageKey = null;
+        this.selectedPackageData = null;
         this.renderPackages();
         this.goToStep(2);
+        this.saveState();
     },
 
     renderPackages() {
@@ -107,6 +302,7 @@ const tfBooking = {
         this.selectedPackageKey = key;
         this.selectedPackageData = pkg;
         this.goToStep(3);
+        this.saveState();
 
         // if date already selected, refetch to apply correct duration
         if (this.selectedDate) {
@@ -146,6 +342,7 @@ const tfBooking = {
         this.selectedTimeDisplay = displayStr;
         this.renderSummary();
         this.goToStep(4);
+        this.saveState();
     },
 
     renderSummary() {
@@ -282,6 +479,7 @@ const tfBooking = {
             const data = await res.json();
             
             if (data.success) {
+                this.clearState();
                 // Redirect to tracker page!
                 let tUrl = window.twellerBooking.trackerUrl;
                 let sep = tUrl.includes('?') ? '&' : '?';

@@ -179,24 +179,6 @@ class TwellerFlow2_Booking_Shortcode {
                         </button>
                     </div>
 
-                    <!-- Why-this-fee reader. Kept on the page: sending someone
-                         away mid-booking is how you lose the booking. -->
-                    <div class="tf2-why-modal" id="tf2-why-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="tf2-why-modal-title">
-                        <div class="tf2-why-modal__backdrop" id="tf2-why-close-bg"></div>
-                        <div class="tf2-why-modal__card">
-                            <div class="tf2-why-modal__head">
-                                <h3 class="tf2-why-modal__title" id="tf2-why-modal-title">Why is there a privacy fee?</h3>
-                                <button type="button" class="tf2-why-modal__x" id="tf2-why-close" aria-label="Close">&times;</button>
-                            </div>
-                            <div class="tf2-why-modal__body">
-                                <?php echo TwellerFlow2_Image_Consent::why_body_html(); ?>
-                            </div>
-                            <div class="tf2-why-modal__foot">
-                                <button type="button" class="tf2-btn-submit tf2-why-modal__done" id="tf2-why-done">Got it</button>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="tf2-field tf2-confirm-availability" style="background:#F9FAFB; padding:12px; border:1px solid #E5E7EB; border-radius:6px; margin-bottom:15px;">
                         <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-weight:normal; margin:0;">
                             <input type="checkbox" id="tf2-client-confirmed" required style="width:18px;height:18px; margin-top:3px; flex-shrink:0;">
@@ -215,6 +197,26 @@ class TwellerFlow2_Booking_Shortcode {
                 </form>
             </div>
             
+            <!-- Why-this-fee reader. Kept on the page: sending someone
+                 away mid-booking is how you lose the booking. -->
+            <div class="tf2-why-modal" id="tf2-why-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="tf2-why-modal-title">
+                <div class="tf2-why-modal__backdrop" id="tf2-why-close-bg"></div>
+                <div class="tf2-why-modal__card">
+                    <div class="tf2-why-modal__head">
+                        <h3 class="tf2-why-modal__title" id="tf2-why-modal-title">On sharing, and your privacy</h3>
+                        <button type="button" class="tf2-why-modal__x" id="tf2-why-close" aria-label="Close">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="tf2-why-modal__body">
+                        <?php echo TwellerFlow2_Image_Consent::why_body_html(); ?>
+                    </div>
+                    <div class="tf2-why-modal__foot">
+                        <button type="button" class="tf2-btn-submit tf2-why-modal__done" id="tf2-why-done">Got it</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="tweller-booking__loading" id="tf2-booking-loading" style="display:none;">
                 <div class="tf2-spinner"></div>
                 <p>Securing your spot...</p>

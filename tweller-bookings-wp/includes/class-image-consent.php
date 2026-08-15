@@ -325,26 +325,28 @@ class TwellerFlow2_Image_Consent {
 
         ob_start();
         ?>
-        <p class="tf2-why__lead">When you book with Tweller Studios we ask one simple question: <strong>may we share a few images from your session on our social media?</strong> We ask because it matters — to you and to us — and the choice is entirely yours.</p>
+        <p class="tf2-why__lead">Your photographs are yours first. Before a single frame appears anywhere, we ask.</p>
 
-        <h4>Your privacy comes first</h4>
-        <p>Some sessions are personal, and not everyone wants their images seen publicly. That is completely understandable, and we will always respect it. You are never obligated to let us post anything.</p>
+        <h4>Your privacy, always</h4>
+        <p>Some sessions are quiet and personal, and not every story is meant to be seen. If you would rather keep yours between us, that is entirely your right — and we will honour it without question.</p>
 
-        <h4>Why sharing helps — and why there's a fee to opt out</h4>
-        <p>Our social media is, quite simply, how most people find us. It is very likely how <em>you</em> came across our work and decided to book. Every image we're able to share keeps that feed alive and brings the next client to our door.</p>
-        <p>When a client asks us to keep their session completely private we fully respect it — but it also means we lose the ability to show that work. To balance that, sessions with <strong>no sharing at all</strong> carry a small <strong>privacy fee of <?php echo esc_html( $fee_str ); ?></strong>. It isn't a penalty; it simply reflects the value of the reach we set aside to honour your request.</p>
+        <h4>Why sharing matters to us</h4>
+        <p>Our work travels by word of mouth and by what we are able to show. In all likelihood, it is how you found us. Every image we are free to share keeps that door open for the next family who walks through it.</p>
 
-        <h4>Your options</h4>
+        <h4>And why privacy carries a fee</h4>
+        <p>When a session stays private, we set that reach aside — gladly, but not without cost. The <strong><?php echo esc_html( $fee_str ); ?> privacy fee</strong> simply reflects it. It is not a penalty, and it buys you something real: complete discretion.</p>
+
+        <h4>Your three choices</h4>
         <ul>
-            <li><strong>Allow 1–5 images</strong> — our standard. No fee. We may feature a small, tasteful selection.</li>
-            <li><strong>Share as many as you like</strong> — a wonderful help to us, and our thank-you is <strong><?php echo esc_html( (int) $pct ); ?>% off your next session</strong>.</li>
-            <li><strong>Keep it private</strong> — no images shared, with the <?php echo esc_html( $fee_str ); ?> privacy fee.</li>
+            <li><strong>A few images</strong> — our standard, and no fee at all.</li>
+            <li><strong>Share freely</strong> — our thanks is <strong><?php echo esc_html( (int) $pct ); ?>% off your next session</strong>.</li>
+            <li><strong>Nothing at all</strong> — complete privacy, with the <?php echo esc_html( $fee_str ); ?> fee.</li>
         </ul>
 
-        <h4>Changing your mind is always okay</h4>
-        <p>If you choose privacy and later — once you've seen your gallery — feel happy to let us share after all, you can simply say so, and we'll thank you with studio credit toward prints. The decision stays yours, always.</p>
+        <h4>You may always change your mind</h4>
+        <p>Should you choose privacy now and feel differently once you have seen your gallery, simply tell us. We will thank you with studio credit toward prints. The decision remains yours, from the first frame to the last.</p>
 
-        <p class="tf2-why__foot">Questions? Reply to your booking email or write to <a href="mailto:hello@twellerstudios.com">hello@twellerstudios.com</a> — we're happy to talk it through.</p>
+        <p class="tf2-why__foot">Anything you would like to talk through? Write to us at <a href="mailto:hello@twellerstudios.com">hello@twellerstudios.com</a> — we would be glad to.</p>
         <?php
         return ob_get_clean();
     }

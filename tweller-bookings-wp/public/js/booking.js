@@ -37,6 +37,18 @@ const tfBooking = {
         const open  = document.getElementById('tf2-why-open');
         if (!modal || !open) return;
 
+        /*
+         * Move the dialog to <body>. position:fixed is resolved against the
+         * nearest ancestor carrying a transform/filter/perspective, not the
+         * viewport — and .tweller-booking__step keeps a transform after its
+         * fadeIn animation settles (animation-fill-mode: forwards). That is
+         * what pushed this dialog off-centre. Reparenting makes it immune to
+         * that and to whatever the surrounding theme does.
+         */
+        if (modal.parentNode !== document.body) {
+            document.body.appendChild(modal);
+        }
+
         const show = () => {
             modal.style.display = 'flex';
             document.body.style.overflow = 'hidden';

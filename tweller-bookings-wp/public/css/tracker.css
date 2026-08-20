@@ -4,6 +4,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
+    /* Width of the classic desktop scrollbar, measured and published by
+       tracker.js. 0px on phones and anywhere scrollbars are overlays, which
+       makes every full-bleed calc() below identical to a plain 100vw there. */
+    --tf-sbw: 0px;
     --tf-gold: #C9A84C;
     --tf-gold-light: #D4B96A;
     --tf-gold-dark: #B0922F;
@@ -319,10 +323,10 @@ body.page .page-hero {
 
 .tf2-hero-cover {
     position: relative;
-    width: 100vw;
+    width: calc(100vw - var(--tf-sbw));
     height: 85vh;
     min-height: 500px;
-    margin-left: calc(-50vw + 50%);
+    margin-left: calc(-50vw + 50% + (var(--tf-sbw) / 2));
     overflow: hidden;
     margin-top: 32px;
 }
@@ -504,8 +508,8 @@ body.page .page-hero {
    ══════════════════════════════════════════════════════ */
 
 .tf2-gallery__toolbar {
-    width: 100vw;
-    margin-left: calc(-50vw + 50%);
+    width: calc(100vw - var(--tf-sbw));
+    margin-left: calc(-50vw + 50% + (var(--tf-sbw) / 2));
     margin-bottom: 4px;
     border-bottom: 1px solid var(--tf-gray-200);
     background: var(--tf-white);
@@ -717,8 +721,8 @@ body.page .page-hero {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 6px;
-    width: 100vw;
-    margin-left: calc(-50vw + 50%);
+    width: calc(100vw - var(--tf-sbw));
+    margin-left: calc(-50vw + 50% + (var(--tf-sbw) / 2));
     padding: 0 4px;
     box-sizing: border-box;
 }

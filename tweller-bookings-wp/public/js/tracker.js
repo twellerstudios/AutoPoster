@@ -461,6 +461,29 @@
     var galleryRevealed = false;
     var galleryError = false;
 
+    // The full-bleed blocks (hero, toolbar, grid) are sized with 100vw, and
+    // 100vw counts the classic desktop scrollbar while 100% does not — so on
+    // Windows/Linux desktop they overhang the page by the scrollbar's width
+    // and drag a horizontal scrollbar in with them. Phones use overlay
+    // scrollbars, which measure 0, which is why the defect is desktop-only.
+    // Publishing the real width lets the CSS subtract it; the stylesheet
+    // defaults the variable to 0px, so anywhere the scrollbar takes no space
+    // the arithmetic is byte-for-byte what it was before.
+    function syncScrollbarWidth() {
+        var sbw = window.innerWidth - document.documentElement.clientWidth;
+        if (!(sbw >= 0) || sbw > 40) sbw = 0;   // ignore nonsense (zoom, quirks)
+        document.documentElement.style.setProperty('--tf-sbw', sbw + 'px');
+    }
+    syncScrollbarWidth();
+    window.addEventListener('resize', syncScrollbarWidth);
+
+    // Declared HERE, above the first call to prefetchGallery(), on purpose.
+    // `var` hoists the binding but not the assignment, so leaving
+    // `var galleryPromise = null` further down meant the prefetch stored its
+    // promise and the declaration then immediately wiped it — defeating the
+    // very de-duplication described where loadGalleryData() is defined.
+    var galleryPromise = null;
+
     prefetchGallery();
 
     // Warm up a returning visitor's identity in parallel with the page load,
@@ -476,7 +499,8 @@
     // was still running fired a SECOND identical fetch and gave no feedback —
     // so on a big gallery or a slow connection the button felt dead for
     // seconds. Now the click reuses whatever is already loading.
-    var galleryPromise = null;
+    // (Declared with the other gallery state above, so the prefetch's promise
+    // survives — see the note there.)
     function loadGalleryData(force) {
         if (force) galleryPromise = null;
         if (!galleryPromise) {
@@ -597,6 +621,17 @@
     // network round-trip finished. Now we resolve identity first, showing a
     // busy state while we do, and only then reveal or ask them to sign in.
     function openGallery() {
+        // The hero is a COVER: revealGallery() leaves it on the page, above
+        // the grid, so this button stays reachable for the whole visit. It
+        // must therefore never be a no-op. Before this guard, the second and
+        // every later press fell through to revealGallery(), hit its
+        // `if (galleryRevealed) return` and did precisely nothing — the
+        // button was dead for the rest of the session. Desktop visitors hit
+        // it hardest: a wheel flick puts an 85vh cover back on screen in one
+        // motion, so they scroll up and press it far more often than someone
+        // thumbing down a phone.
+        if (galleryRevealed) { scrollToGallery(); return; }
+
         if (visitorReady) { revealOrLoad(); return; }
 
         // No saved identity → straight to the name/email gate.
@@ -654,8 +689,15 @@
         });
     }
 
+    // Take the visitor to the photos. Used both when the gallery first opens
+    // and whenever they press the cover's button again afterwards.
+    function scrollToGallery() {
+        var target = (toolbar && toolbar.style.display !== 'none') ? toolbar : grid;
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function revealGallery() {
-        if (galleryRevealed) return;
+        if (galleryRevealed) { scrollToGallery(); return; }
 
         // The name/email gate stands in front of every gallery. A returning
         // guest is resolved silently from their saved token; a new one is
@@ -665,6 +707,17 @@
                 if (ok) revealGallery();
                 else showSignin();
             });
+            return;
+        }
+
+        // Never latch the revealed flag on an empty album. Signing in calls
+        // straight through to here, and on a slow connection that can beat
+        // the gallery fetch home — latching then would show an empty grid
+        // AND make every later attempt return at the guard above, leaving the
+        // gallery permanently stuck with no way back short of a reload.
+        if (!photos.length) {
+            setViewBtnBusy(true);
+            loadGalleryAndReveal(false);
             return;
         }
 
@@ -699,9 +752,7 @@
             setViewMode('liked');
         }
 
-        setTimeout(function() {
-            if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
+        setTimeout(scrollToGallery, 100);
     }
 
     // ── Visitor sign-in (name + email, remembered) ─────

@@ -19,11 +19,17 @@ class TwellerFlow2_Google_Calendar {
     const COLOR_RESERVED = '5'; // Banana (yellow)
     const COLOR_PAID     = '9'; // Blueberry (blue)
 
-    const TIMEZONE = 'America/Port_of_Spain';
+    /*
+     * The studio timezone lives on TwellerFlow2_Session::timezone() so the
+     * calendar events and the .ics invites can never disagree about it.
+     * Filter 'tweller_flow_2_studio_timezone' to change it.
+     */
 
     public static function init() {
         add_action( 'tweller_flow_2_session_created', array( __CLASS__, 'on_session_created' ), 20, 2 );
         add_action( 'tweller_flow_2_payment_updated', array( __CLASS__, 'on_payment_updated' ) );
+        // Rescheduled, moved, repackaged — the event has to follow.
+        add_action( 'tweller_flow_2_session_updated', array( __CLASS__, 'on_session_updated' ), 20 );
         add_action( 'tweller_flow_2_session_deleted', array( __CLASS__, 'on_session_deleted' ) );
         add_action( 'tweller_flow_2_google_calendar_sync', array( __CLASS__, 'sync_session' ) );
     }
@@ -56,6 +62,12 @@ class TwellerFlow2_Google_Calendar {
 
     /** Payment status changed — flip color (and pick up date/time edits). */
     public static function on_payment_updated( $session_id ) {
+        if ( ! self::is_enabled() || ! TwellerFlow2_Google_Contacts::is_connected() ) return;
+        self::sync_inline_with_retry( $session_id );
+    }
+
+    /** Date, time, package, location or status changed — move the event. */
+    public static function on_session_updated( $session_id ) {
         if ( ! self::is_enabled() || ! TwellerFlow2_Google_Contacts::is_connected() ) return;
         self::sync_inline_with_retry( $session_id );
     }
@@ -275,17 +287,30 @@ class TwellerFlow2_Google_Calendar {
             $event['location'] = $session->location;
         }
 
-        if ( ! empty( $session->session_time ) ) {
-            $start_ts = strtotime( $session->session_date . ' ' . $session->session_time );
-            $haystack = strtolower( $session->package_type . ' ' . $pkg_name );
-            $hours    = ( strpos( $haystack, 'wedding' ) !== false || strpos( $haystack, 'event' ) !== false ) ? 2 : 1;
+        $start = TwellerFlow2_Session::start_datetime( $session );
+
+        if ( ! empty( $session->session_time ) && $start ) {
+            // Length comes from the package the client actually chose. It used
+            // to be guessed from keywords in the package name — one hour for
+            // everything, two if the words "wedding" or "event" happened to
+            // appear — so a 30-minute mini blocked an hour and a four-hour
+            // package blocked two, and the calendar disagreed with the .ics
+            // invite for the very same booking.
+            $minutes = TwellerFlow2_Session::duration_minutes( $session );
+
+            // One source of truth for the zone, so filtering the studio's
+            // timezone moves Google and the .ics invites together.
+            $tz_name = TwellerFlow2_Session::timezone()->getName();
+
+            // Local wall-clock paired with an explicit timeZone, which is what
+            // Google expects; no UTC conversion happens here on purpose.
             $event['start'] = array(
-                'dateTime' => date( 'Y-m-d\TH:i:s', $start_ts ),
-                'timeZone' => self::TIMEZONE,
+                'dateTime' => $start->format( 'Y-m-d\TH:i:s' ),
+                'timeZone' => $tz_name,
             );
             $event['end'] = array(
-                'dateTime' => date( 'Y-m-d\TH:i:s', $start_ts + $hours * HOUR_IN_SECONDS ),
-                'timeZone' => self::TIMEZONE,
+                'dateTime' => $start->modify( '+' . $minutes . ' minutes' )->format( 'Y-m-d\TH:i:s' ),
+                'timeZone' => $tz_name,
             );
         } else {
             // No time set — hold the whole day

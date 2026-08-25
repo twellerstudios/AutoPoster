@@ -4,6 +4,58 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class TwellerFlow2_Session {
 
     /**
+     * The studio's wall-clock timezone.
+     *
+     * Every session_date/session_time in the database is a LOCAL Trinidad
+     * wall-clock value — literally what the client picked on the booking
+     * form. WordPress forces PHP's default timezone to UTC, so parsing those
+     * strings with a bare strtotime() silently reads them as UTC. That stays
+     * invisible while the value is only formatted straight back with date()
+     * (the two shifts cancel), and turns four hours wrong the moment a real
+     * instant is needed — which is exactly how the .ics invites came to say
+     * 10:00 AM for a 2:00 PM booking.
+     *
+     * Filterable so the studio can move without a code change.
+     */
+    public static function timezone() {
+        $tz = apply_filters( 'tweller_flow_2_studio_timezone', 'America/Port_of_Spain' );
+        try {
+            return new DateTimeZone( $tz );
+        } catch ( Exception $e ) {
+            return new DateTimeZone( 'America/Port_of_Spain' );
+        }
+    }
+
+    /**
+     * A session's start as a real instant, anchored to the studio timezone.
+     * Returns null when there is no date, or the stored values won't parse.
+     * A session with a date but no time yields midnight local — callers that
+     * care about the difference should check session_time themselves.
+     */
+    public static function start_datetime( $session ) {
+        $date = is_object( $session ) ? ( $session->session_date ?? '' ) : ( $session['session_date'] ?? '' );
+        $time = is_object( $session ) ? ( $session->session_time ?? '' ) : ( $session['session_time'] ?? '' );
+        if ( empty( $date ) ) return null;
+        try {
+            return new DateTimeImmutable( trim( $date . ' ' . $time ), self::timezone() );
+        } catch ( Exception $e ) {
+            return null;
+        }
+    }
+
+    /**
+     * Booked length in minutes, taken from the package the client chose so
+     * the calendar block matches what they actually paid for. Falls back to
+     * an hour when a package carries no duration.
+     */
+    public static function duration_minutes( $session ) {
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $key      = is_object( $session ) ? ( $session->package_type ?? '' ) : ( $session['package_type'] ?? '' );
+        $mins     = intval( $packages[ $key ]['duration'] ?? 0 );
+        return $mins > 0 ? $mins : 60;
+    }
+
+    /**
      * Generate a human-readable "Shoot Code" for a session.
      * Format: 04-July-2024-JohnDoe-Mini (date-ClientName-Package).
      * Falls back to a random code only when no client data is available.
@@ -260,11 +312,45 @@ class TwellerFlow2_Session {
         return (int) $wpdb->get_var( $sql );
     }
 
+    /**
+     * Fields that decide what a calendar event should say. Changing any of
+     * them has to push the change outward; changing anything else does not.
+     */
+    const CALENDAR_FIELDS = array(
+        'session_date', 'session_time', 'package_type', 'location',
+        'client_name', 'client_phone', 'payment_status', 'current_stage',
+    );
+
     public static function update( $id, $data ) {
         global $wpdb;
         $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        // Rescheduling a client used to change the row and nothing else — no
+        // hook fired here at all, so the Google Calendar event kept the time
+        // it was first created with, forever. Read the row first, but only
+        // when a field worth watching is actually in this write.
+        $before = null;
+        foreach ( self::CALENDAR_FIELDS as $field ) {
+            if ( array_key_exists( $field, $data ) ) { $before = self::get( $id ); break; }
+        }
+
         $data['updated_at'] = current_time( 'mysql' );
-        return $wpdb->update( $table, $data, array( 'id' => $id ) );
+        $result = $wpdb->update( $table, $data, array( 'id' => $id ) );
+
+        // Fire only on a real change, so the many callers that rewrite a field
+        // with the value it already held don't each cost a Google API round
+        // trip on an admin request.
+        if ( $before && $result !== false ) {
+            foreach ( self::CALENDAR_FIELDS as $field ) {
+                if ( ! array_key_exists( $field, $data ) ) continue;
+                if ( (string) $data[ $field ] !== (string) ( $before->$field ?? '' ) ) {
+                    do_action( 'tweller_flow_2_session_updated', $id, $data, $before );
+                    break;
+                }
+            }
+        }
+
+        return $result;
     }
 
     public static function delete( $id ) {

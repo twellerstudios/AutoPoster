@@ -257,6 +257,22 @@
                     <?php endif; ?>
                 <?php endif; ?>
 
+                <?php
+                // A connection can be "connected" (a refresh token is stored)
+                // and still be refused by Google every single time. That used
+                // to fail silently, so nothing on this page ever said why the
+                // calendar had stopped filling up.
+                $g_auth_error = TwellerFlow2_Google_Contacts::get_auth_error();
+                ?>
+                <?php if ( $g_connected && $g_auth_error ) : ?>
+                    <div class="tf2-alert" style="background:#FEE2E2; color:#991B1B;">
+                        <strong>Google is refusing this connection — bookings are not syncing.</strong><br>
+                        <?php echo esc_html( $g_auth_error ); ?><br>
+                        <a class="tf2-btn tf2-btn--primary tf2-btn--sm" style="margin-top:8px;"
+                           href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Reconnect Google</a>
+                    </div>
+                <?php endif; ?>
+
                 <?php if ( $g_connected && ! $g_cal_ok ) : ?>
                     <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">
                         <strong>Reconnect Google to enable calendar sync.</strong>

@@ -22,6 +22,7 @@ class TwellerFlow2_Google_Contacts {
     const OPT_SYNCED = 'tweller_flow_2_google_synced'; // email => people resourceName
     const OPT_LOG    = 'tweller_flow_2_google_log';    // rolling log of the last 50 sync attempts
     const OPT_STATUS = 'tweller_flow_2_google_sync_status'; // session_id => per-type sync status
+    const OPT_AUTH_ERROR = 'tweller_flow_2_google_auth_error'; // last token-refresh failure, for Settings
 
     const SCOPE          = 'https://www.googleapis.com/auth/contacts';
     const SCOPE_CALENDAR = 'https://www.googleapis.com/auth/calendar.events';
@@ -182,12 +183,62 @@ class TwellerFlow2_Google_Contacts {
             }
 
             update_option( self::OPT_AUTH, $auth );
+            self::clear_auth_error(); // a fresh grant clears whatever was wrong before
             wp_redirect( admin_url( 'admin.php?page=tweller-flow-2-settings&google=connected' ) );
             exit;
         }
     }
 
     /** Get a valid access token, refreshing when expired. Null if unavailable. */
+    /** Record why Google refused us, so Settings can say something useful. */
+    public static function set_auth_error( $message ) {
+        update_option( self::OPT_AUTH_ERROR, array(
+            'message' => (string) $message,
+            'time'    => time(),
+        ), false );
+    }
+
+    public static function clear_auth_error() {
+        delete_option( self::OPT_AUTH_ERROR );
+    }
+
+    /** The current connection problem, or '' when the last refresh worked. */
+    public static function get_auth_error() {
+        $e = get_option( self::OPT_AUTH_ERROR, array() );
+        return is_array( $e ) ? ( $e['message'] ?? '' ) : '';
+    }
+
+    /**
+     * Turn Google's terse OAuth error codes into something the studio can
+     * actually act on. invalid_grant in particular has one overwhelmingly
+     * common cause that Google never mentions: an OAuth consent screen left
+     * in "Testing", where refresh tokens are killed after seven days. That
+     * is why a working connection quietly dies about a week later, every
+     * time, and why this used to look like "it stopped syncing again".
+     */
+    private static function explain_token_error( $err, $desc, $code ) {
+        switch ( $err ) {
+            case 'invalid_grant':
+                return 'Google has rejected the saved connection (invalid_grant), so no bookings can sync. '
+                     . 'This nearly always means the OAuth consent screen is still in "Testing" mode — Google '
+                     . 'expires refresh tokens after 7 days there. In Google Cloud Console open '
+                     . 'APIs & Services > OAuth consent screen and set Publishing status to "In production", '
+                     . 'then click Reconnect Google below. (It can also mean the access was revoked, or the '
+                     . 'password on the Google account changed.)';
+            case 'invalid_client':
+            case 'unauthorized_client':
+                return 'Google rejected the Client ID / Client Secret (' . $err . '). Check both values above '
+                     . 'against the OAuth client in Google Cloud Console, save, then reconnect.';
+            case 'deleted_client':
+                return 'The OAuth client has been deleted in Google Cloud Console. Create a new OAuth Client ID, '
+                     . 'paste the new ID and Secret above, save, then reconnect.';
+            default:
+                $detail = $err !== '' ? $err : ( 'HTTP ' . intval( $code ) );
+                return 'Google refused to refresh the connection (' . $detail . ')'
+                     . ( $desc !== '' ? ': ' . $desc : '' ) . '. Reconnect Google below.';
+        }
+    }
+
     public static function get_access_token() {
         $auth = get_option( self::OPT_AUTH, array() );
         if ( empty( $auth['refresh_token'] ) ) return null;
@@ -198,7 +249,7 @@ class TwellerFlow2_Google_Contacts {
 
         $config = self::get_config();
         $response = wp_remote_post( 'https://oauth2.googleapis.com/token', array(
-            'timeout' => 10,
+            'timeout' => 15,
             'body'    => array(
                 'refresh_token' => $auth['refresh_token'],
                 'client_id'     => $config['client_id'],
@@ -207,8 +258,29 @@ class TwellerFlow2_Google_Contacts {
             ),
         ) );
 
-        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        // Every one of these paths used to `return null` with nothing written
+        // down, so a dead connection was indistinguishable from a misconfigured
+        // one — and the studio was told only "check Client ID/Secret", which is
+        // the wrong advice for by far the most common cause.
+        if ( is_wp_error( $response ) ) {
+            $msg = 'Could not reach Google to refresh the connection: ' . $response->get_error_message();
+            self::set_auth_error( $msg );
+            error_log( '[Tweller Bookings] ' . $msg );
+            return null;
+        }
+
+        $code = intval( wp_remote_retrieve_response_code( $response ) );
+        $raw  = wp_remote_retrieve_body( $response );
+        $body = json_decode( $raw, true );
+
         if ( empty( $body['access_token'] ) ) {
+            $msg = self::explain_token_error(
+                (string) ( $body['error'] ?? '' ),
+                (string) ( $body['error_description'] ?? '' ),
+                $code
+            );
+            self::set_auth_error( $msg );
+            error_log( '[Tweller Bookings] Google token refresh failed (HTTP ' . $code . '): ' . mb_substr( $raw, 0, 300 ) );
             return null;
         }
 
@@ -218,6 +290,7 @@ class TwellerFlow2_Google_Contacts {
             $auth['scopes'] = sanitize_text_field( $body['scope'] );
         }
         update_option( self::OPT_AUTH, $auth );
+        self::clear_auth_error();
 
         return $auth['access_token'];
     }

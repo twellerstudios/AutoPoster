@@ -681,16 +681,23 @@ class TwellerFlow2_Notifications {
         $type = $session_types[$session->session_type] ?? array();
         $type_name = $type['name'] ?? ucfirst($session->session_type ?? '');
 
-        $timestamp = strtotime($session->session_date . ' ' . $session->session_time);
-        if (!$timestamp) return null;
+        // DTSTART/DTEND carry a trailing Z, so they are UTC instants — the
+        // booked time must be read as Trinidad wall-clock FIRST and converted.
+        // Previously this was strtotime() + gmdate(), and because WordPress
+        // pins PHP's default timezone to UTC that stamped the local time
+        // straight into a UTC field: a 2:00 PM booking went out as
+        // 20260905T140000Z, which every calendar client on the island then
+        // displayed as 10:00 AM. The body of the same email said 2:00 PM,
+        // because date() undid the error that gmdate() preserved — which is
+        // why the invite and the email disagreed.
+        $start = TwellerFlow2_Session::start_datetime( $session );
+        if ( ! $start ) return null;
 
-        $date_start = gmdate('Ymd\THis\Z', $timestamp);
+        $duration = TwellerFlow2_Session::duration_minutes( $session );
 
-        $duration = 60; // default 60 mins
-        if (!empty($pkg['duration'])) {
-            $duration = intval($pkg['duration']);
-        }
-        $date_end = gmdate('Ymd\THis\Z', $timestamp + ($duration * 60));
+        $utc        = new DateTimeZone( 'UTC' );
+        $date_start = $start->setTimezone( $utc )->format( 'Ymd\THis\Z' );
+        $date_end   = $start->modify( '+' . $duration . ' minutes' )->setTimezone( $utc )->format( 'Ymd\THis\Z' );
 
         $now = gmdate('Ymd\THis\Z');
         $uid = $session->tracking_code . '@twellerstudios.com';

@@ -235,6 +235,9 @@
                     $gb_synced    = intval( $_GET['gb_synced'] ?? 0 );
                     $gb_failed    = intval( $_GET['gb_failed'] ?? 0 );
                     $gb_remaining = intval( $_GET['gb_remaining'] ?? 0 );
+                    $gb_forced    = ! empty( $_GET['gb_forced'] ) && $_GET['gb_forced'] === '1';
+                    $gb_verb      = $gb_forced ? 'Re-pushed' : 'Added';
+                    $gb_again     = $gb_forced ? 'Re-sync every booking' : 'Sync all bookings to calendar';
                     ?>
                     <?php if ( $_GET['gcal_backfill'] === 'blocked' ) : ?>
                         <div class="tf2-alert" style="background:#FEF3C7; color:#92400E;">
@@ -242,12 +245,12 @@
                         </div>
                     <?php else : ?>
                         <div class="tf2-alert" style="background:#EFF6FF; color:#1E3A8A;">
-                            <strong>Added <?php echo esc_html( $gb_synced ); ?> booking<?php echo $gb_synced === 1 ? '' : 's'; ?> to your calendar.</strong>
+                            <strong><?php echo esc_html( $gb_verb ); ?> <?php echo esc_html( $gb_synced ); ?> booking<?php echo $gb_synced === 1 ? '' : 's'; ?> to your calendar.</strong>
                             <?php if ( $gb_failed > 0 ) : ?>
                                 <?php echo esc_html( $gb_failed ); ?> couldn't be synced &mdash; see the log below for why.
                             <?php endif; ?>
                             <?php if ( $gb_remaining > 0 ) : ?>
-                                <br><?php echo esc_html( $gb_remaining ); ?> more still to go &mdash; click <em>Sync all bookings to calendar</em> again to continue.
+                                <br><?php echo esc_html( $gb_remaining ); ?> more still to go &mdash; click <em><?php echo esc_html( $gb_again ); ?></em> again to continue.
                             <?php elseif ( $gb_synced === 0 && $gb_failed === 0 ) : ?>
                                 Every booking with a date is already on your calendar &mdash; you're all caught up.
                             <?php else : ?>
@@ -323,10 +326,11 @@
                         <button type="submit" name="tweller_flow_2_google_test_sync" value="1" class="tf2-btn tf2-btn--primary tf2-btn--sm">Save &amp; Test Sync Now</button>
                         <?php if ( $g_cal_ok ) : ?>
                             <button type="submit" name="tweller_flow_2_google_sync_all" value="1" class="tf2-btn tf2-btn--secondary tf2-btn--sm">Sync all bookings to calendar</button>
+                            <button type="submit" name="tweller_flow_2_google_resync_all" value="1" class="tf2-btn tf2-btn--secondary tf2-btn--sm">Re-sync every booking</button>
                         <?php endif; ?>
                         <a class="tf2-btn tf2-btn--secondary tf2-btn--sm"
                            href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=tweller-flow-2-settings&tf2_google=disconnect' ), 'tf2_google_disconnect' ) ); ?>">Disconnect</a>
-                        <div class="tf2-field__hint" style="margin-top:8px;">Test runs the contact + calendar sync for your most recent session. <strong>Sync all bookings</strong> back-fills every past booking onto your calendar (in batches — click again if it says more remain).</div>
+                        <div class="tf2-field__hint" style="margin-top:8px;">Test runs the contact + calendar sync for your most recent session. <strong>Sync all bookings</strong> back-fills bookings that aren't on the calendar yet. <strong>Re-sync every booking</strong> also rewrites the ones already there, which is what you want after a booking's length or time has been corrected &mdash; it updates events in place rather than duplicating them. Both run in batches; click again if it says more remain.</div>
                     <?php elseif ( ! empty( $g_config['client_id'] ) && ! empty( $g_config['client_secret'] ) ) : ?>
                         <a class="tf2-btn tf2-btn--primary" href="<?php echo esc_url( TwellerFlow2_Google_Contacts::connect_url() ); ?>">Connect Google Account</a>
                         <div class="tf2-field__hint" style="margin-top:8px;">Save settings first if you just entered the Client ID / Secret.</div>

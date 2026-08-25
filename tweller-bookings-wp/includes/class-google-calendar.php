@@ -100,10 +100,15 @@ class TwellerFlow2_Google_Calendar {
      * never hang the admin request on a large back-catalogue — click again
      * to continue.
      *
-     * @param int $limit Max bookings to push in this run.
+     * @param int  $limit Max bookings to push in this run.
+     * @param bool $force  Re-push bookings that already have an event, instead
+     *                     of skipping them. Needed whenever the event PAYLOAD
+     *                     changes — a corrected duration, say — because the
+     *                     skip below is keyed on "has an event id at all", not
+     *                     on whether that event is still right.
      * @return array{ ok:bool, reason:string, synced:int, failed:int, skipped:int, remaining:int, total:int }
      */
-    public static function sync_all( $limit = 25 ) {
+    public static function sync_all( $limit = 25, $force = false ) {
         $out = array( 'ok' => false, 'reason' => '', 'synced' => 0, 'failed' => 0, 'skipped' => 0, 'remaining' => 0, 'total' => 0 );
 
         if ( ! self::is_ready() ) {
@@ -133,8 +138,9 @@ class TwellerFlow2_Google_Calendar {
                 continue;
             }
 
-            // Already on the calendar — leave it (idempotent).
-            if ( get_option( self::EVENT_OPT_PREFIX . $session->id, '' ) !== '' ) {
+            // Already on the calendar — leave it (idempotent), unless we are
+            // deliberately re-pushing to correct events already up there.
+            if ( ! $force && get_option( self::EVENT_OPT_PREFIX . $session->id, '' ) !== '' ) {
                 continue;
             }
 

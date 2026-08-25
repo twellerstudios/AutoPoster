@@ -1,0 +1,580 @@
+<?php
+/**
+ * Tweller Flow — Email Templates & Studio Copy
+ *
+ * Two jobs, both driven from the admin "Emails" screen:
+ *
+ *   1. STUDIO COPY. Every email the plugin sends funnels through
+ *      TwellerFlow2_Notifications::send_raw(); this class supplies the Cc/Bcc
+ *      header lines it adds there, so the studio gets a copy of everything.
+ *      Defaults: Cc hello@twellerstudios.com, Bcc stephen.twellerstudios@gmail.com.
+ *
+ *   2. EDITABLE TEMPLATES. Each client email has a default subject + body
+ *      baked into the plugin. The studio can override either from the Emails
+ *      screen; the override is stored as text with {{merge_tags}} that get
+ *      substituted per send. CRUCIALLY, until a template is actually
+ *      customised, resolve() returns the code-supplied default byte-for-byte
+ *      — so this layer changes nothing about existing emails on its own.
+ */
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+class TwellerFlow2_Email_Templates {
+
+    const OPT_OVERRIDES = 'tweller_flow_2_email_overrides';
+    const OPT_COPY      = 'tweller_flow_2_email_copy';
+
+    const DEFAULT_CC  = 'hello@twellerstudios.com';
+    const DEFAULT_BCC = 'stephen.twellerstudios@gmail.com';
+
+    // ── Studio copy (Cc/Bcc on every plugin email) ─────────
+
+    public static function copy_settings() {
+        $saved = get_option( self::OPT_COPY, array() );
+        if ( ! is_array( $saved ) ) $saved = array();
+        return array(
+            'enabled' => array_key_exists( 'enabled', $saved ) ? (bool) $saved['enabled'] : true,
+            'cc'      => array_key_exists( 'cc', $saved )  ? (string) $saved['cc']  : self::DEFAULT_CC,
+            'bcc'     => array_key_exists( 'bcc', $saved ) ? (string) $saved['bcc'] : self::DEFAULT_BCC,
+        );
+    }
+
+    public static function save_copy_settings( $enabled, $cc, $bcc ) {
+        update_option( self::OPT_COPY, array(
+            'enabled' => (bool) $enabled,
+            'cc'      => self::clean_addresses( $cc ),
+            'bcc'     => self::clean_addresses( $bcc ),
+        ) );
+    }
+
+    /** Keep only valid emails from a comma-separated list, re-joined. */
+    private static function clean_addresses( $csv ) {
+        $out = array();
+        foreach ( preg_split( '/\s*,\s*/', (string) $csv ) as $addr ) {
+            $addr = sanitize_email( trim( $addr ) );
+            if ( $addr !== '' && is_email( $addr ) && ! in_array( $addr, $out, true ) ) {
+                $out[] = $addr;
+            }
+        }
+        return implode( ', ', $out );
+    }
+
+    /**
+     * Cc/Bcc header lines to append to EVERY plugin email. $existing is the
+     * list of addresses already on the message (its To + any extra direct
+     * recipients), so the studio is never copied on an address that is
+     * already a direct recipient.
+     *
+     * @param array $existing Direct recipient addresses.
+     * @return array<int,string> Header lines, e.g. ['Cc: a@b', 'Bcc: c@d'].
+     */
+    public static function studio_headers( $existing = array() ) {
+        $c = self::copy_settings();
+        if ( ! $c['enabled'] ) return array();
+
+        $seen = array();
+        foreach ( (array) $existing as $addr ) {
+            $addr = strtolower( trim( (string) $addr ) );
+            if ( $addr !== '' ) $seen[ $addr ] = true;
+        }
+
+        $headers = array();
+        foreach ( array( 'Cc' => $c['cc'], 'Bcc' => $c['bcc'] ) as $label => $csv ) {
+            $addrs = array();
+            foreach ( preg_split( '/\s*,\s*/', (string) $csv ) as $addr ) {
+                $addr = trim( $addr );
+                if ( $addr === '' || ! is_email( $addr ) ) continue;
+                $key = strtolower( $addr );
+                if ( isset( $seen[ $key ] ) ) continue; // already a recipient / already copied
+                $seen[ $key ] = true;
+                $addrs[] = $addr;
+            }
+            if ( $addrs ) $headers[] = $label . ': ' . implode( ', ', $addrs );
+        }
+        return $headers;
+    }
+
+    // ── Editable templates ─────────────────────────────────
+
+    public static function overrides() {
+        $o = get_option( self::OPT_OVERRIDES, array() );
+        return is_array( $o ) ? $o : array();
+    }
+
+    public static function get_override( $key ) {
+        $o = self::overrides();
+        return ( isset( $o[ $key ] ) && is_array( $o[ $key ] ) ) ? $o[ $key ] : null;
+    }
+
+    public static function is_customised( $key ) {
+        $ov = self::get_override( $key );
+        return $ov && ! empty( $ov['enabled'] );
+    }
+
+    public static function save_override( $key, $subject, $body ) {
+        if ( ! isset( self::registry()[ $key ] ) ) return false;
+        $o = self::overrides();
+        $o[ $key ] = array(
+            'enabled' => true,
+            'subject' => (string) $subject,
+            'body'    => (string) $body,
+        );
+        update_option( self::OPT_OVERRIDES, $o );
+        return true;
+    }
+
+    /** Reset a template to its built-in default (removes the override). */
+    public static function reset_override( $key ) {
+        $o = self::overrides();
+        if ( isset( $o[ $key ] ) ) {
+            unset( $o[ $key ] );
+            update_option( self::OPT_OVERRIDES, $o );
+        }
+    }
+
+    /**
+     * Resolve an email's final subject + body.
+     *
+     * With no active override this returns ($default_subject, $default_body)
+     * UNCHANGED — the exact strings the plugin's own code produced — so a
+     * template nobody has touched behaves precisely as before. With an
+     * override, the stored subject/body are used and their {{tokens}} are
+     * filled from $tokens.
+     *
+     * @return array{0:string,1:string}
+     */
+    public static function resolve( $key, $default_subject, $default_body, $tokens = array() ) {
+        $ov = self::get_override( $key );
+        if ( ! $ov || empty( $ov['enabled'] ) ) {
+            return array( $default_subject, $default_body );
+        }
+        return array(
+            self::apply_tokens( isset( $ov['subject'] ) ? (string) $ov['subject'] : $default_subject, $tokens ),
+            self::apply_tokens( isset( $ov['body'] ) ? (string) $ov['body'] : $default_body, $tokens ),
+        );
+    }
+
+    public static function apply_tokens( $text, $tokens ) {
+        foreach ( (array) $tokens as $k => $v ) {
+            $text = str_replace( '{{' . $k . '}}', (string) $v, $text );
+        }
+        return $text;
+    }
+
+    /**
+     * The merge-tag values for one session — plain values plus a few
+     * pre-rendered branded blocks (buttons, cards) so an edited template can
+     * still drop in a real gold CTA or the session-details panel without the
+     * studio hand-writing email HTML.
+     */
+    public static function session_tokens( $session ) {
+        $N = 'TwellerFlow2_Notifications';
+
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $pkg      = isset( $packages[ $session->package_type ] ) ? $packages[ $session->package_type ] : array();
+        $pkg_name = isset( $pkg['name'] ) ? $pkg['name'] : ucfirst( (string) $session->package_type );
+
+        $tracker = $N::get_tracker_url( $session->tracking_code );
+        $prints  = $tracker . ( strpos( $tracker, '?' ) !== false ? '&' : '?' ) . 'prints=1';
+        $review  = get_option( 'tweller_flow_2_review_url', 'https://g.page/r/CbntSRvzXVrSEBM/review' );
+        $banking = (string) get_option( 'tweller_flow_2_banking', '' );
+        $first   = trim( explode( ' ', trim( (string) $session->client_name ) )[0] );
+
+        $total   = (float) $session->total_amount;
+        $paid    = (float) $session->deposit_amount;
+        $balance = max( 0, round( $total - $paid, 2 ) );
+
+        return array(
+            'client_name'     => esc_html( $session->client_name ),
+            'first_name'      => esc_html( $first ),
+            'package'         => esc_html( $pkg_name ),
+            'shoot_code'      => esc_html( $session->tracking_code ),
+            'tracker_url'     => esc_url( $tracker ),
+            'prints_url'      => esc_url( $prints ),
+            'review_url'      => esc_url( $review ),
+            'total'           => 'TTD $' . number_format( $total, 2 ),
+            'deposit'         => 'TTD $' . number_format( $total / 2, 2 ),
+            'balance'         => 'TTD $' . number_format( $balance, 2 ),
+            'banking_details' => nl2br( esc_html( trim( $banking ) ) ),
+            // Branded blocks (already HTML — do not escape when inserted)
+            'portal_button'   => $N::email_button_row( $tracker, 'Open My Client Portal' ),
+            'track_button'    => $N::email_button_row( $tracker, 'Track My Session' ),
+            'gallery_button'  => $N::email_button_row( $tracker, 'View Your Album', true, 32 ),
+            'prints_button'   => $N::email_button_row( $prints, 'Order Prints', true, 6 ),
+            'review_button'   => $N::email_button_row( $review, 'Leave Us a Review', false, 6 ),
+            'session_details' => $N::session_details_card( $session, $pkg_name ),
+            'payment_summary' => $N::payment_summary_card( $session ),
+        );
+    }
+
+    /**
+     * Every editable template: its group, label, the merge tags it can use,
+     * and its default subject + body (the starting point shown in the editor
+     * and restored by "Reset to default"). Keys for lifecycle emails match
+     * the pipeline stage so on_stage_change can look them up directly.
+     */
+    public static function registry() {
+        $common = array( 'client_name', 'first_name', 'package', 'shoot_code', 'tracker_url' );
+
+        return array(
+            'booked' => array(
+                'group'   => 'Client — booking',
+                'label'   => 'Booking welcome (spot reserved)',
+                'desc'    => 'Sent the moment a session is booked: warm welcome, session summary and the deposit instructions.',
+                'tokens'  => array_merge( $common, array( 'deposit', 'banking_details', 'session_details', 'portal_button' ) ),
+                'subject' => "Thanks for booking, {{first_name}} — we've reserved your spot ✨",
+                'body'    => "<h2>Your spot is reserved</h2>\n"
+                    . "<p>Hi {{client_name}},</p>\n"
+                    . "<p>Thank you for choosing Tweller Studios — we're delighted to be capturing this for you. Your <strong>{{package}}</strong> has been reserved, and a tentative calendar hold is attached to this email.</p>\n"
+                    . "{{session_details}}\n"
+                    . "<p>To confirm your session, kindly make a deposit of <strong>{{deposit}}</strong> (50%) by bank transfer:</p>\n"
+                    . "<p>{{banking_details}}</p>\n"
+                    . "<p>Then upload a screenshot of your receipt through your client portal — we'll verify it and confirm your booking right away. Until then, your date is held for you.</p>\n"
+                    . "{{portal_button}}\n"
+                    . "<p style='text-align:center;'>Your shoot code: <strong>{{shoot_code}}</strong></p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'confirmed' => array(
+                'group'   => 'Client — booking',
+                'label'   => 'Booking confirmed (payment verified)',
+                'desc'    => 'Sent when the deposit is verified and the session is officially confirmed. The confirmed calendar invite is attached.',
+                'tokens'  => array_merge( $common, array( 'session_details', 'payment_summary', 'track_button' ) ),
+                'subject' => "You're all set, {{first_name}} — your booking is confirmed 🎉",
+                'body'    => "<h2>Your booking is confirmed</h2>\n"
+                    . "<p>Hi {{client_name}},</p>\n"
+                    . "<p>Lovely news — we've verified your payment and your session is now <strong>officially confirmed</strong>. Thank you for trusting Tweller Studios.</p>\n"
+                    . "{{session_details}}\n"
+                    . "{{payment_summary}}\n"
+                    . "<p>The confirmed calendar event is attached — if you use Gmail or Apple Calendar it will update automatically.</p>\n"
+                    . "{{track_button}}\n"
+                    . "<p style='text-align:center;'>Your shoot code: <strong>{{shoot_code}}</strong></p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'edited' => array(
+                'group'   => 'Client — gallery',
+                'label'   => 'Editing complete (almost ready)',
+                'desc'    => 'A short heads-up that editing is done and the gallery is coming soon.',
+                'tokens'  => array_merge( $common, array( 'track_button' ) ),
+                'subject' => "Your photos are almost ready, {{first_name}}",
+                'body'    => "<h2>Editing complete</h2>\n"
+                    . "<p>Hi {{client_name}},</p>\n"
+                    . "<p>Wonderful news — we've finished editing your photos and your gallery will be ready very soon. We can't wait for you to see them.</p>\n"
+                    . "{{track_button}}",
+            ),
+            'delivered' => array(
+                'group'   => 'Client — gallery',
+                'label'   => 'Gallery delivered (photos ready)',
+                'desc'    => 'The big one: the client\'s gallery is ready to view and download, with prints and review prompts.',
+                'tokens'  => array_merge( $common, array( 'gallery_button', 'prints_button', 'review_button' ) ),
+                'subject' => "Your gallery is ready, {{first_name}} — {{package}}",
+                'body'    => "<h2>Your photos have arrived</h2>\n"
+                    . "<p>Hi {{client_name}},</p>\n"
+                    . "<p>The moment you've been waiting for — your <strong>{{package}}</strong> photos are ready to view and download.</p>\n"
+                    . "{{gallery_button}}\n"
+                    . "<p>Love them in print? Turn your favourites into professional prints, canvases and photobooks:</p>\n"
+                    . "{{prints_button}}\n"
+                    . "<p>If you enjoyed your experience, a review would mean the world to us:</p>\n"
+                    . "{{review_button}}\n"
+                    . "<p style='text-align:center;'>Shoot code: <strong>{{shoot_code}}</strong></p>",
+            ),
+            'receipt_rejected' => array(
+                'group'   => 'Client — booking',
+                'label'   => 'Receipt could not be verified',
+                'desc'    => 'Asks the client to re-upload their bank-transfer receipt when the first one could not be verified.',
+                'tokens'  => array_merge( $common, array( 'portal_button' ) ),
+                'subject' => "Quick fix needed — we couldn't verify your receipt",
+                'body'    => "<h2>We couldn't verify your receipt</h2>\n"
+                    . "<p>Hi {{client_name}},</p>\n"
+                    . "<p>We ran into a problem verifying the bank transfer receipt you uploaded — it may have been the wrong image, or the amount didn't match. No worries at all; these things happen.</p>\n"
+                    . "<p>Please re-upload the correct receipt through your client portal and we'll take another look right away. Your date is still being held for you.</p>\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+
+            // ── Culling (photo selection) ───────────────────
+            'culling_ready' => array(
+                'group'   => 'Client — photo selection',
+                'label'   => 'Proofs ready (choose your photos)',
+                'desc'    => 'Invites the client to browse their proofs and pick the photos to retouch.',
+                'tokens'  => array( 'client_name', 'first_name', 'package', 'package_details', 'choose_button' ),
+                'subject' => "Time to choose your photos, {{first_name}} ✨",
+                'body'    => "<h2>Your proofs are ready</h2>\n"
+                    . "<p>Hi {{client_name}},</p>\n"
+                    . "<p>The exciting part — your photo proofs are ready for viewing. Take your time browsing, and pick the ones you'd love us to retouch and finish for you.</p>\n"
+                    . "{{package_details}}\n"
+                    . "{{choose_button}}\n"
+                    . "<p>Once you submit your selections they can't be changed, so take your time — there's no rush.</p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'culling_selection' => array(
+                'group'   => 'Client — photo selection',
+                'label'   => 'Selections received',
+                'desc'    => "Confirms the client's photo picks were received. The extra-photo cost breakdown ({{extra_cost_section}}) only appears when they chose more than their package includes.",
+                'tokens'  => array( 'client_name', 'total_selected', 'package', 'included', 'extra_cost_section', 'next_steps', 'track_button' ),
+                'subject' => "We've Received Your Photo Selections! 📸",
+                'body'    => "<h2>Thank you, {{client_name}}! 🎉</h2>\n"
+                    . "<p>We've received your photo selections and we're excited to start editing!</p>\n"
+                    . "<p><strong>{{total_selected}} photos selected</strong> — {{package}} package, {{included}} included.</p>\n"
+                    . "{{extra_cost_section}}\n"
+                    . "{{next_steps}}\n"
+                    . "{{track_button}}",
+            ),
+
+            // ── Print store — customer ──────────────────────
+            'prints_order_received' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Order received',
+                'desc'    => 'Confirms a new print order to the customer with the items, amount due and payment options.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'pickup_note', 'order_items', 'payment_block', 'portal_button' ),
+                'subject' => "We've received your print order, {{first_name}} — {{order_ref}}",
+                'body'    => "<h2>Your print order is in</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Thank you for your order — we can't wait to see these in print. Your order reference is <strong>{{order_ref}}</strong>.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{payment_block}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>{{pickup_note}}</p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_confirmed' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: payment confirmed / in production',
+                'desc'    => 'Sent when a print order\'s payment is confirmed and it enters production.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Payment confirmed — your print order is in production, {{first_name}}",
+                'body'    => "<h2>Payment confirmed</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Lovely news — we've confirmed your payment and your print order <strong>{{order_ref}}</strong> is now in the production queue.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_printing' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: in production',
+                'desc'    => 'Sent while a print order is being printed.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Your prints are in production, {{first_name}}",
+                'body'    => "<h2>In production</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> is being printed right now. We'll let you know the moment it's ready.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_ready' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: ready',
+                'desc'    => "Sent when a print order is printed and ready. {{ready_line}} adapts to pickup, delivery or meet-up.",
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'ready_line', 'pickup_note', 'order_items', 'portal_button' ),
+                'subject' => "Your prints are ready, {{first_name}} ✨",
+                'body'    => "<h2>Ready</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>The moment you've been waiting for — your order <strong>{{order_ref}}</strong> is done. {{ready_line}}<br><br>{{pickup_note}}</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_completed' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: completed',
+                'desc'    => 'A thank-you once a print order is fully complete.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Enjoy your prints, {{first_name}}!",
+                'body'    => "<h2>Order completed</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> is complete. Thank you for printing with Tweller Studios — we hope they look beautiful on your walls.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_status_cancelled' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Status: cancelled',
+                'desc'    => 'Notifies the customer that a print order was cancelled.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'order_items', 'portal_button' ),
+                'subject' => "Your print order has been cancelled — {{order_ref}}",
+                'body'    => "<h2>Order cancelled</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> has been cancelled. If this is unexpected, just reply to this email and we'll sort it out.</p>\n"
+                    . "{{order_items}}\n"
+                    . "{{portal_button}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'prints_delivered' => array(
+                'group'   => 'Print store — customer',
+                'label'   => 'Prints delivered',
+                'desc'    => 'Confirms a print order has been delivered to the customer.',
+                'tokens'  => array( 'customer_name', 'first_name', 'order_ref', 'delivery_card' ),
+                'subject' => "Your prints have been delivered, {{first_name}}",
+                'body'    => "<h2>Delivered</h2>\n"
+                    . "<p>Hi {{customer_name}},</p>\n"
+                    . "<p>Your order <strong>{{order_ref}}</strong> has been delivered. We hope they look beautiful.</p>\n"
+                    . "{{delivery_card}}\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+
+            // ── Studio alerts (go to you, not the client) ───
+            'studio_gallery_uploaded' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Gallery uploaded from Lightroom',
+                'desc'    => 'Your own backend alert when a gallery is uploaded & sent from Lightroom — who it is, how many photos, and links to view it. Goes to your studio inbox, not the client.',
+                'tokens'  => array( 'client_name', 'client_email', 'package', 'photo_count', 'shoot_code', 'gallery_details', 'view_button', 'admin_button' ),
+                'subject' => "Gallery uploaded — {{client_name}} ({{photo_count}} photos)",
+                'body'    => "<h2>A gallery just went up</h2>\n"
+                    . "<p><strong>{{client_name}}</strong>'s gallery has been uploaded from Lightroom and is ready — {{photo_count}} photos.</p>\n"
+                    . "{{gallery_details}}\n"
+                    . "{{view_button}}\n"
+                    . "{{admin_button}}",
+            ),
+            'new_booking' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'New booking received',
+                'desc'    => 'Your alert when a new booking comes in, with the booking details and a link to open it.',
+                'tokens'  => array( 'client_name', 'booking_details', 'review_button' ),
+                'subject' => "New booking — {{client_name}}",
+                'body'    => "<h2>A new booking just came in</h2>\n"
+                    . "<p><strong>{{client_name}}</strong> just booked a session. Their welcome email with payment details has already gone out.</p>\n"
+                    . "{{booking_details}}\n"
+                    . "{{review_button}}",
+            ),
+            'prints_new_order' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'New print order',
+                'desc'    => 'Your alert when a customer places a print order.',
+                'tokens'  => array( 'order_ref', 'customer_name', 'order_details', 'order_items', 'admin_button' ),
+                'subject' => "New print order {{order_ref}} — {{customer_name}}",
+                'body'    => "<h2>New print order</h2>\n"
+                    . "<p>A new print order just came in: <strong>{{order_ref}}</strong>.</p>\n"
+                    . "{{order_details}}\n"
+                    . "{{order_items}}\n"
+                    . "{{admin_button}}",
+            ),
+            'prints_receipt_review' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print receipt to verify',
+                'desc'    => 'Your alert when a customer uploads a bank-transfer receipt for a print order that needs verifying.',
+                'tokens'  => array( 'order_ref', 'customer_name', 'payment_details', 'admin_button' ),
+                'subject' => "Receipt uploaded — verify payment · {{order_ref}} · {{customer_name}}",
+                'body'    => "<h2>Receipt uploaded — verify payment</h2>\n"
+                    . "<p><strong>{{customer_name}}</strong> uploaded a bank-transfer receipt for print order <strong>{{order_ref}}</strong>. Once the transfer checks out, press “Confirm payment” on the order.</p>\n"
+                    . "{{payment_details}}\n"
+                    . "{{admin_button}}",
+            ),
+            'prints_payment' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print card payment received',
+                'desc'    => 'Your alert when a WiPay card payment is confirmed for a print order.',
+                'tokens'  => array( 'order_ref', 'customer_name', 'payment_details', 'admin_button' ),
+                'subject' => "Card payment received · {{order_ref}} · {{customer_name}}",
+                'body'    => "<h2>Card payment received</h2>\n"
+                    . "<p>WiPay confirmed the card payment for print order <strong>{{order_ref}}</strong>. The order has moved to <strong>Payment confirmed</strong> and is ready for production.</p>\n"
+                    . "{{payment_details}}\n"
+                    . "{{admin_button}}",
+            ),
+            'prints_assigned' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print order sent to a lab',
+                'desc'    => 'Your alert when a print order is assigned/moved to a print lab.',
+                'tokens'  => array( 'heading', 'intro', 'job_details', 'cta_button' ),
+                'subject' => "Print order sent to a lab",
+                'body'    => "<h2>{{heading}}</h2>\n<p>{{intro}}</p>\n{{job_details}}\n{{cta_button}}",
+            ),
+            'prints_build_failed' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print files failed to build',
+                'desc'    => 'Your alert when a print job\'s files could not be prepared, so the lab never received them.',
+                'tokens'  => array( 'heading', 'intro', 'job_details', 'cta_button' ),
+                'subject' => "Print files failed to build",
+                'body'    => "<h2>{{heading}}</h2>\n<p>{{intro}}</p>\n{{job_details}}\n{{cta_button}}",
+            ),
+            'prints_provider_update' => array(
+                'group'   => 'Studio alerts (to you)',
+                'label'   => 'Print lab moved a job',
+                'desc'    => 'Your alert when a print partner marks a job in production, ready, shipped or delivered.',
+                'tokens'  => array( 'heading', 'intro', 'job_details', 'cta_button' ),
+                'subject' => "A print lab updated a job",
+                'body'    => "<h2>{{heading}}</h2>\n<p>{{intro}}</p>\n{{job_details}}\n{{cta_button}}",
+            ),
+
+            // ── Print partners ──────────────────────────────
+            'partner_application_received' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Application received (to applicant)',
+                'desc'    => 'Confirms to a would-be print partner that their application was received.',
+                'tokens'  => array( 'first_name', 'business_name' ),
+                'subject' => "We received your print partner application",
+                'body'    => "<h2>We have your application</h2>\n"
+                    . "<p>Hi {{first_name}},</p>\n"
+                    . "<p>Thanks for putting <strong>{{business_name}}</strong> forward as a Tweller Studios print partner. A real person will read it — we will write back either way.</p>\n"
+                    . "<p>Warm regards,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'partner_approved' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Approved / welcome (to partner)',
+                'desc'    => 'Welcomes a newly-approved print partner. A dashboard button is always appended automatically.',
+                'tokens'  => array( 'first_name', 'provider_name', 'account_details' ),
+                'subject' => "You are in — welcome to the Tweller Studios print partners",
+                'body'    => "<h2>Welcome aboard</h2>\n"
+                    . "<p>Hi {{first_name}},</p>\n"
+                    . "<p><strong>{{provider_name}}</strong> is approved as a Tweller Studios print partner — your dashboard is ready for your first job.</p>\n"
+                    . "{{account_details}}\n"
+                    . "<p>A separate email carries your password-set link — use <em>Forgot your password?</em> on the sign-in screen if it hasn't arrived.</p>\n"
+                    . "<p>Welcome to the team,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'partner_rejected' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Application declined (to applicant)',
+                'desc'    => 'A gracious decline to a print-partner applicant. The optional studio note appears as {{note_block}}.',
+                'tokens'  => array( 'first_name', 'business_name', 'note_block' ),
+                'subject' => "Your print partner application",
+                'body'    => "<h2>Thank you for applying</h2>\n"
+                    . "<p>Hi {{first_name}},</p>\n"
+                    . "<p>Thanks for offering to print for Tweller Studios. We are not able to take on <strong>{{business_name}}</strong> right now — we keep the partner list deliberately small, so this isn't a reflection on your work.</p>\n"
+                    . "{{note_block}}\n"
+                    . "<p>Please do reach out again if things change.</p>\n"
+                    . "<p>With thanks,<br><strong>The Tweller Studios Team</strong></p>",
+            ),
+            'partner_application_studio' => array(
+                'group'   => 'Print partners',
+                'label'   => 'New application (to you)',
+                'desc'    => 'Your alert when someone applies to become a print partner.',
+                'tokens'  => array( 'business_name', 'applicant_details', 'review_button' ),
+                'subject' => "New print partner application — {{business_name}}",
+                'body'    => "<h2>New print partner application</h2>\n"
+                    . "<p><strong>{{business_name}}</strong> has applied to print for Tweller Studios.</p>\n"
+                    . "{{applicant_details}}\n"
+                    . "{{review_button}}",
+            ),
+            'partner_approved_studio' => array(
+                'group'   => 'Print partners',
+                'label'   => 'Partner approved (to you)',
+                'desc'    => 'Your alert when a print partner is approved and their login is created.',
+                'tokens'  => array( 'provider_name', 'partner_details', 'pricing_button' ),
+                'subject' => "Print partner approved — {{provider_name}}",
+                'body'    => "<h2>Print partner approved</h2>\n"
+                    . "<p><strong>{{provider_name}}</strong> is now a Tweller Studios print partner. Their dashboard login has been created and the welcome email is on its way to them.</p>\n"
+                    . "{{partner_details}}\n"
+                    . "{{pricing_button}}",
+            ),
+        );
+    }
+
+    public static function registry_entry( $key ) {
+        $r = self::registry();
+        return isset( $r[ $key ] ) ? $r[ $key ] : null;
+    }
+
+    /**
+     * The subject/body to show in the editor for a template: the studio's
+     * saved override if there is one, otherwise the built-in default.
+     */
+    public static function editable( $key ) {
+        $entry = self::registry_entry( $key );
+        if ( ! $entry ) return null;
+        $ov = self::get_override( $key );
+        return array(
+            'subject' => ( $ov && isset( $ov['subject'] ) ) ? (string) $ov['subject'] : $entry['subject'],
+            'body'    => ( $ov && isset( $ov['body'] ) ) ? (string) $ov['body'] : $entry['body'],
+        );
+    }
+}

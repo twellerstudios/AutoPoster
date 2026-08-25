@@ -1,0 +1,535 @@
+<?php
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+class TwellerFlow2_Session {
+
+    /**
+     * The studio's wall-clock timezone.
+     *
+     * Every session_date/session_time in the database is a LOCAL Trinidad
+     * wall-clock value — literally what the client picked on the booking
+     * form. WordPress forces PHP's default timezone to UTC, so parsing those
+     * strings with a bare strtotime() silently reads them as UTC. That stays
+     * invisible while the value is only formatted straight back with date()
+     * (the two shifts cancel), and turns four hours wrong the moment a real
+     * instant is needed — which is exactly how the .ics invites came to say
+     * 10:00 AM for a 2:00 PM booking.
+     *
+     * Filterable so the studio can move without a code change.
+     */
+    public static function timezone() {
+        $tz = apply_filters( 'tweller_flow_2_studio_timezone', 'America/Port_of_Spain' );
+        try {
+            return new DateTimeZone( $tz );
+        } catch ( Exception $e ) {
+            return new DateTimeZone( 'America/Port_of_Spain' );
+        }
+    }
+
+    /**
+     * A session's start as a real instant, anchored to the studio timezone.
+     * Returns null when there is no date, or the stored values won't parse.
+     * A session with a date but no time yields midnight local — callers that
+     * care about the difference should check session_time themselves.
+     */
+    public static function start_datetime( $session ) {
+        $date = is_object( $session ) ? ( $session->session_date ?? '' ) : ( $session['session_date'] ?? '' );
+        $time = is_object( $session ) ? ( $session->session_time ?? '' ) : ( $session['session_time'] ?? '' );
+        if ( empty( $date ) ) return null;
+        try {
+            return new DateTimeImmutable( trim( $date . ' ' . $time ), self::timezone() );
+        } catch ( Exception $e ) {
+            return null;
+        }
+    }
+
+    /**
+     * Booked length in minutes, taken from the package the client chose so
+     * the calendar block matches what they actually paid for. Falls back to
+     * an hour when a package carries no duration.
+     */
+    public static function duration_minutes( $session ) {
+        $packages = get_option( 'tweller_flow_2_packages', array() );
+        $key      = is_object( $session ) ? ( $session->package_type ?? '' ) : ( $session['package_type'] ?? '' );
+        $mins     = intval( $packages[ $key ]['duration'] ?? 0 );
+        return $mins > 0 ? $mins : 60;
+    }
+
+    /**
+     * Generate a human-readable "Shoot Code" for a session.
+     * Format: 04-July-2024-JohnDoe-Mini (date-ClientName-Package).
+     * Falls back to a random code only when no client data is available.
+     */
+    public static function generate_tracking_code( $data = array() ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        $date_ts  = ! empty( $data['session_date'] ) ? strtotime( $data['session_date'] ) : current_time( 'timestamp' );
+        $date_str = date( 'd-F-Y', $date_ts );
+
+        $name = preg_replace( '/[^A-Za-z0-9]/', '', ucwords( strtolower( trim( $data['client_name'] ?? '' ) ) ) );
+        if ( $name === '' ) {
+            $name = strtoupper( substr( md5( uniqid( mt_rand(), true ) ), 0, 6 ) );
+        }
+
+        $pkg = preg_replace( '/[^A-Za-z0-9]/', '', ucwords( str_replace( '_', ' ', strtolower( $data['package_type'] ?? '' ) ) ) );
+
+        $base = substr( $date_str . '-' . $name . ( $pkg ? '-' . $pkg : '' ), 0, 110 );
+
+        $code = $base;
+        $i = 2;
+        while ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE tracking_code = %s", $code ) ) > 0 ) {
+            $code = $base . '-' . $i;
+            $i++;
+        }
+        return $code;
+    }
+
+    public static function create( $data ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        $tracking_code = self::generate_tracking_code( $data );
+        $delivery_days = get_option( 'tweller_flow_2_delivery_days', 14 );
+
+        $session_date = ! empty( $data['session_date'] ) ? $data['session_date'] : null;
+        $estimated_delivery = null;
+        if ( $session_date ) {
+            $estimated_delivery = date( 'Y-m-d', strtotime( $session_date . " + $delivery_days days" ) );
+        }
+
+        $insert_data = array(
+            'tracking_code'      => $tracking_code,
+            'client_name'        => sanitize_text_field( $data['client_name'] ?? '' ),
+            'client_email'       => sanitize_email( $data['client_email'] ?? '' ),
+            'client_phone'       => sanitize_text_field( $data['client_phone'] ?? '' ),
+            'package_type'       => sanitize_text_field( $data['package_type'] ?? 'mini' ),
+            'session_date'       => $session_date,
+            'session_time'       => ! empty( $data['session_time'] ) ? $data['session_time'] : null,
+            'location'           => sanitize_text_field( $data['location'] ?? '' ),
+            'members_count'      => intval( $data['members_count'] ?? 1 ),
+            'payment_status'     => sanitize_text_field( $data['payment_status'] ?? 'pending' ),
+            'deposit_amount'     => floatval( $data['deposit_amount'] ?? 0 ),
+            'total_amount'       => floatval( $data['total_amount'] ?? 0 ),
+            'payment_method'     => sanitize_text_field( $data['payment_method'] ?? '' ),
+            'current_stage'      => 'booked',
+            'current_stage_index'=> 0,
+            'estimated_delivery' => $estimated_delivery,
+            'gallery_url'        => '',
+            'folder_name'        => '',
+            'photo_count'        => 0,
+            'notes'              => sanitize_textarea_field( $data['notes'] ?? '' ),
+            'surecart_order_id'  => sanitize_text_field( $data['surecart_order_id'] ?? '' ),
+            'created_at'         => current_time( 'mysql' ),
+            'updated_at'         => current_time( 'mysql' ),
+        );
+
+        $wpdb->insert( $table, $insert_data );
+        $session_id = $wpdb->insert_id;
+
+        if ( $session_id ) {
+            self::record_stage_history( $session_id, 'booked', 0, 'Session created' );
+
+            // One welcome email to the client — it includes the payment
+            // details and carries the tentative calendar hold as an
+            // attachment — PLUS a separate alert to the studio inbox so the
+            // owner actually hears a booking came in. This is the single
+            // choke point for every create path (public /book, the mobile
+            // app, Lightroom), so both fire everywhere, and both respect
+            // the skip_notifications flag.
+            if ( empty( $data['skip_notifications'] ) ) {
+                TwellerFlow2_Notifications::on_stage_change( $session_id, 'booked' );
+                TwellerFlow2_Notifications::notify_studio_new_booking( $session_id );
+            }
+            do_action( 'tweller_flow_2_session_created', $session_id, $data );
+        }
+
+        return $session_id;
+    }
+
+    /**
+     * Verify (approve or reject) a client's bank-transfer receipt.
+     *
+     * THE single source of truth for receipt verification — wp-admin and
+     * the mobile app both call this, so the two can never diverge on what
+     * "approve" does. Mirrors the behaviour that used to live inline in the
+     * admin POST handler.
+     *
+     * On approve: the confirmed amount decides deposit vs paid-in-full,
+     * the booking moves to the Confirmed stage, the receipt is stamped
+     * approved, and the client is emailed a confirmation that now states
+     * their remaining balance. On reject: the payment is reset to pending,
+     * the receipt is stamped rejected, and the client is asked to re-upload.
+     * Either way the calendar event recolours (yellow ↔ blue).
+     *
+     * @param int    $id     Session id.
+     * @param string $action approve|reject (approve_paid / approve_deposit accepted as legacy aliases).
+     * @param float  $amount Amount confirmed received (approve only).
+     * @return array|WP_Error { ok, status, deposit, balance } or an error.
+     */
+    public static function verify_receipt( $id, $action, $amount = 0 ) {
+        $id      = (int) $id;
+        $session = self::get( $id );
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found.', array( 'status' => 404 ) );
+        }
+
+        $approve = in_array( $action, array( 'approve', 'approve_paid', 'approve_deposit' ), true );
+        $reject  = ( $action === 'reject' );
+        if ( ! $approve && ! $reject ) {
+            return new WP_Error( 'bad_action', 'Unknown verification action.', array( 'status' => 400 ) );
+        }
+
+        if ( $approve ) {
+            $amt    = round( (float) $amount, 2 );
+            $total  = (float) $session->total_amount;
+            $status = ( $total > 0 && $amt >= $total ) ? 'paid' : 'deposit';
+
+            self::update( $id, array(
+                'payment_status' => $status,
+                'deposit_amount' => $amt,
+            ) );
+
+            // Lock into Confirmed without the generic stage email — the
+            // custom confirmation below is the one the client should get.
+            self::set_stage( $id, 'confirmed', 'Payment verified and booking confirmed.', false );
+
+            $receipt = get_option( 'tf_receipt_' . $id );
+            if ( $receipt ) {
+                $receipt['status']       = 'approved';
+                $receipt['amount']       = $amt;
+                $receipt['processed_at'] = current_time( 'mysql' );
+                update_option( 'tf_receipt_' . $id, $receipt );
+            }
+
+            // Re-read so the email/calendar see the updated amount & status —
+            // the caller's $session is now stale.
+            $fresh = self::get( $id );
+            TwellerFlow2_Notifications::send_confirmed_email( $fresh );
+
+            do_action( 'tweller_flow_2_payment_updated', $id );
+
+            $balance = max( 0, round( $total - $amt, 2 ) );
+            return array( 'ok' => true, 'status' => $status, 'deposit' => $amt, 'balance' => $balance );
+        }
+
+        // Reject.
+        self::update( $id, array( 'payment_status' => 'pending' ) );
+
+        $receipt = get_option( 'tf_receipt_' . $id );
+        if ( $receipt ) {
+            $receipt['status']       = 'rejected';
+            $receipt['processed_at'] = current_time( 'mysql' );
+            update_option( 'tf_receipt_' . $id, $receipt );
+        }
+
+        if ( ! empty( $session->client_email ) ) {
+            TwellerFlow2_Notifications::send_receipt_rejected_email( $session );
+        }
+
+        do_action( 'tweller_flow_2_payment_updated', $id );
+
+        return array( 'ok' => true, 'status' => 'pending', 'deposit' => 0.0, 'balance' => (float) $session->total_amount );
+    }
+
+    public static function get( $id ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $id ) );
+    }
+
+    public static function get_by_code( $code ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE tracking_code = %s", $code ) );
+    }
+
+    public static function get_all( $args = array() ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        $where   = '1=1';
+        $values  = array();
+        $orderby = 'created_at';
+        $order   = 'DESC';
+
+        if ( ! empty( $args['stage'] ) ) {
+            $where .= ' AND current_stage = %s';
+            $values[] = $args['stage'];
+        }
+        if ( ! empty( $args['payment_status'] ) ) {
+            $where .= ' AND payment_status = %s';
+            $values[] = $args['payment_status'];
+        }
+        if ( ! empty( $args['search'] ) ) {
+            $search = '%' . $wpdb->esc_like( $args['search'] ) . '%';
+            $where .= ' AND (client_name LIKE %s OR client_email LIKE %s OR tracking_code LIKE %s)';
+            $values[] = $search;
+            $values[] = $search;
+            $values[] = $search;
+        }
+        if ( ! empty( $args['orderby'] ) ) {
+            $allowed = array( 'created_at', 'session_date', 'client_name', 'current_stage_index', 'updated_at' );
+            if ( in_array( $args['orderby'], $allowed ) ) {
+                $orderby = $args['orderby'];
+            }
+        }
+        if ( ! empty( $args['order'] ) && in_array( strtoupper( $args['order'] ), array( 'ASC', 'DESC' ) ) ) {
+            $order = strtoupper( $args['order'] );
+        }
+
+        $limit  = intval( $args['per_page'] ?? 20 );
+        $offset = intval( $args['offset'] ?? 0 );
+
+        $sql = "SELECT * FROM $table WHERE $where ORDER BY $orderby $order LIMIT %d OFFSET %d";
+        $values[] = $limit;
+        $values[] = $offset;
+
+        if ( ! empty( $values ) ) {
+            $sql = $wpdb->prepare( $sql, $values );
+        }
+
+        return $wpdb->get_results( $sql );
+    }
+
+    public static function count( $args = array() ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        $where  = '1=1';
+        $values = array();
+
+        if ( ! empty( $args['stage'] ) ) {
+            $where .= ' AND current_stage = %s';
+            $values[] = $args['stage'];
+        }
+
+        $sql = "SELECT COUNT(*) FROM $table WHERE $where";
+        if ( ! empty( $values ) ) {
+            $sql = $wpdb->prepare( $sql, $values );
+        }
+
+        return (int) $wpdb->get_var( $sql );
+    }
+
+    /**
+     * Fields that decide what a calendar event should say. Changing any of
+     * them has to push the change outward; changing anything else does not.
+     */
+    const CALENDAR_FIELDS = array(
+        'session_date', 'session_time', 'package_type', 'location',
+        'client_name', 'client_phone', 'payment_status', 'current_stage',
+    );
+
+    public static function update( $id, $data ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        // Rescheduling a client used to change the row and nothing else — no
+        // hook fired here at all, so the Google Calendar event kept the time
+        // it was first created with, forever. Read the row first, but only
+        // when a field worth watching is actually in this write.
+        $before = null;
+        foreach ( self::CALENDAR_FIELDS as $field ) {
+            if ( array_key_exists( $field, $data ) ) { $before = self::get( $id ); break; }
+        }
+
+        $data['updated_at'] = current_time( 'mysql' );
+        $result = $wpdb->update( $table, $data, array( 'id' => $id ) );
+
+        // Fire only on a real change, so the many callers that rewrite a field
+        // with the value it already held don't each cost a Google API round
+        // trip on an admin request.
+        if ( $before && $result !== false ) {
+            foreach ( self::CALENDAR_FIELDS as $field ) {
+                if ( ! array_key_exists( $field, $data ) ) continue;
+                if ( (string) $data[ $field ] !== (string) ( $before->$field ?? '' ) ) {
+                    do_action( 'tweller_flow_2_session_updated', $id, $data, $before );
+                    break;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    public static function delete( $id ) {
+        global $wpdb;
+        $sessions_table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        $history_table  = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
+        $notif_table    = $wpdb->prefix . TWELLER_FLOW_2_TABLE_NOTIFICATIONS;
+
+        // Let integrations clean up (e.g. Google Calendar event removal)
+        do_action( 'tweller_flow_2_session_deleted', $id );
+
+        $wpdb->delete( $history_table, array( 'session_id' => $id ) );
+        $wpdb->delete( $notif_table, array( 'session_id' => $id ) );
+        return $wpdb->delete( $sessions_table, array( 'id' => $id ) );
+    }
+
+    public static function advance_stage( $id, $notes = '', $notify = true ) {
+        $session = self::get( $id );
+        if ( ! $session ) return false;
+
+        $stage_keys   = TwellerFlow2_Database::get_stage_keys();
+        $current_idx  = $session->current_stage_index;
+        $next_idx     = $current_idx + 1;
+
+        if ( $next_idx >= count( $stage_keys ) ) {
+            return false;
+        }
+
+        $next_stage = $stage_keys[ $next_idx ];
+
+        self::update( $id, array(
+            'current_stage'       => $next_stage,
+            'current_stage_index' => $next_idx,
+        ));
+
+        self::record_stage_history( $id, $next_stage, $next_idx, $notes );
+
+        $stages = TwellerFlow2_Database::get_stages();
+        if ( $notify && ! empty( $stages[ $next_stage ]['notify'] ) ) {
+            TwellerFlow2_Notifications::on_stage_change( $id, $next_stage );
+        }
+
+        return $next_stage;
+    }
+
+    public static function set_stage( $id, $stage, $notes = '', $notify = true ) {
+        $stage_keys = TwellerFlow2_Database::get_stage_keys();
+        $idx = array_search( $stage, $stage_keys );
+        if ( $idx === false ) return false;
+
+        self::update( $id, array(
+            'current_stage'       => $stage,
+            'current_stage_index' => $idx,
+        ));
+
+        self::record_stage_history( $id, $stage, $idx, $notes );
+
+        $stages = TwellerFlow2_Database::get_stages();
+        if ( $notify && ! empty( $stages[ $stage ]['notify'] ) ) {
+            TwellerFlow2_Notifications::on_stage_change( $id, $stage );
+        }
+
+        return $stage;
+    }
+
+    public static function record_stage_history( $id, $stage, $stage_index, $notes = '' ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
+        $wpdb->insert( $table, array(
+            'session_id'  => $id,
+            'stage'       => $stage,
+            'stage_index' => $stage_index,
+            'timestamp'   => current_time( 'mysql' ),
+            'notes'       => $notes,
+            'notified'    => 0,
+        ));
+    }
+
+    public static function get_history( $id ) {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_STAGE_HISTORY;
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM $table WHERE session_id = %d ORDER BY timestamp ASC",
+            $id
+        ));
+    }
+
+    public static function rest_track( $request ) {
+        $code    = sanitize_text_field( $request['code'] );
+        $session = self::get_by_code( $code );
+
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+        }
+
+        $client_stages   = TwellerFlow2_Database::get_client_stages();
+        $client_stage    = TwellerFlow2_Database::get_client_stage( $session->current_stage );
+        $client_stage_idx = TwellerFlow2_Database::get_client_stage_index( $session->current_stage );
+
+        $history = self::get_history( $session->id );
+        $client_history = array();
+        $seen = array();
+        foreach ( $history as $entry ) {
+            $cl = TwellerFlow2_Database::get_client_stage( $entry->stage );
+            if ( ! in_array( $cl, $seen ) ) {
+                $seen[] = $cl;
+                $client_history[] = array(
+                    'stage'     => $cl,
+                    'timestamp' => $entry->timestamp,
+                );
+            }
+        }
+
+        return rest_ensure_response( array(
+            'tracking_code'      => $session->tracking_code,
+            'client_name'        => $session->client_name,
+            'package_type'       => $session->package_type,
+            'session_date'       => $session->session_date,
+            'current_stage'      => $client_stage,
+            'current_stage_index'=> $client_stage_idx,
+            'internal_stage'     => $session->current_stage,
+            'stages'             => $client_stages,
+            'estimated_delivery' => $session->estimated_delivery,
+            'gallery_url'        => in_array( $session->current_stage, array( 'uploaded', 'delivered' ), true ) ? $session->gallery_url : '',
+            'history'            => $client_history,
+        ));
+    }
+
+    public static function rest_list( $request ) {
+        $sessions = self::get_all( array(
+            'search'   => $request->get_param( 'search' ),
+            'stage'    => $request->get_param( 'stage' ),
+            'per_page' => $request->get_param( 'per_page' ) ?: 20,
+            'offset'   => $request->get_param( 'offset' ) ?: 0,
+        ));
+        return rest_ensure_response( $sessions );
+    }
+
+    public static function rest_advance( $request ) {
+        $id    = intval( $request['id'] );
+        $notes = sanitize_text_field( $request->get_param( 'notes' ) ?? '' );
+        $result = self::advance_stage( $id, $notes );
+        if ( ! $result ) {
+            return new WP_Error( 'advance_failed', 'Could not advance stage', array( 'status' => 400 ) );
+        }
+        return rest_ensure_response( array( 'new_stage' => $result ) );
+    }
+
+    public static function count_active() {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        return (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE current_stage != 'delivered'" );
+    }
+
+    public static function get_stage_counts() {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+        $results = $wpdb->get_results( "SELECT current_stage, COUNT(*) as count FROM $table GROUP BY current_stage" );
+        $counts = array();
+        foreach ( $results as $row ) {
+            $counts[ $row->current_stage ] = (int) $row->count;
+        }
+        return $counts;
+    }
+
+    public static function get_revenue_stats() {
+        global $wpdb;
+        $table = $wpdb->prefix . TWELLER_FLOW_2_TABLE_SESSIONS;
+
+        $this_month = date( 'Y-m-01' );
+        $total = $wpdb->get_var( "SELECT SUM(total_amount) FROM $table" );
+        $month = $wpdb->get_var( $wpdb->prepare(
+            "SELECT SUM(total_amount) FROM $table WHERE created_at >= %s",
+            $this_month
+        ));
+
+        return array(
+            'total_revenue' => floatval( $total ?? 0 ),
+            'month_revenue' => floatval( $month ?? 0 ),
+        );
+    }
+}

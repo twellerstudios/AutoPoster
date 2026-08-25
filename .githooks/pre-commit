@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#
+# Archive the plugin automatically whenever its version is bumped.
+#
+# Fires only when tweller-bookings-wp.php is part of the commit AND its
+# Version header differs from the committed one. That means a normal code
+# commit costs nothing, and a release commit carries its own zip — so
+# releases/ ends up with a rollback-ready copy of every version that ever
+# shipped, without anyone having to remember a build step.
+#
+# Enabled by: git config core.hooksPath .githooks
+set -euo pipefail
+
+PLUGIN_FILE="tweller-bookings-wp/tweller-bookings-wp.php"
+
+# Nothing to do unless the plugin's main file is in this commit.
+if ! git diff --cached --name-only | grep -qx "$PLUGIN_FILE"; then
+    exit 0
+fi
+
+read_version() { grep -m1 '^ \* Version:' | sed 's/.*Version:[[:space:]]*//'; }
+
+# The version being committed (staged content, not the working tree — the
+# zip must match what this commit actually records).
+NEW_VERSION="$(git show ":$PLUGIN_FILE" 2>/dev/null | read_version || true)"
+[ -z "$NEW_VERSION" ] && exit 0
+
+# The version already in history. Empty on the very first commit of the file.
+OLD_VERSION="$(git show "HEAD:$PLUGIN_FILE" 2>/dev/null | read_version || true)"
+
+if [ "$NEW_VERSION" = "$OLD_VERSION" ]; then
+    exit 0
+fi
+
+ZIP="releases/tweller-bookings-wp-${NEW_VERSION}.zip"
+if [ -f "$ZIP" ]; then
+    git add "$ZIP" 2>/dev/null || true
+    exit 0
+fi
+
+echo "Plugin version ${OLD_VERSION:-none} -> $NEW_VERSION — archiving $ZIP"
+if ! bash scripts/build-plugin.sh >/dev/null; then
+    echo "Warning: could not build the plugin zip; committing without it." >&2
+    exit 0
+fi
+
+# build-plugin.sh names the zip from the working tree. If that somehow
+# disagrees with the staged version (a partially staged bump), don't attach
+# a mislabelled archive to this commit.
+if [ ! -f "$ZIP" ]; then
+    echo "Warning: expected $ZIP but the build produced a different version; skipping." >&2
+    exit 0
+fi
+
+git add "$ZIP"
+echo "Archived $ZIP"

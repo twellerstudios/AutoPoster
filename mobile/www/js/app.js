@@ -1,0 +1,3477 @@
+/**
+ * Tweller Bookings Mobile — app shell (v0.2).
+ *
+ * Screens:
+ *   Home     — pipeline dashboard: stats, up-next shoots, needs-attention
+ *   Clients  — every session, searchable, filterable by stage
+ *   Session  — full detail: info, payment, culling, gallery, timeline, notes
+ *            → Upload for Culling (watermarked proofs, resized on-device)
+ *            → Deliver to Gallery (finished photos, full resolution)
+ *   Uploads  — persistent queue with exact data estimates + Wi-Fi guard
+ *   Settings — site URL + API key (same as the Lightroom plugin)
+ */
+(function () {
+    'use strict';
+
+    var view = document.getElementById('view');
+    var state = {
+        settings: {
+            siteUrl: localStorage.getItem('tb_site') || 'https://www.twellerstudios.com',
+            apiKey: localStorage.getItem('tb_key') || '',
+            wifiOnly: localStorage.getItem('tb_wifi_only') !== '0'
+        },
+        clients: [],          // cached full session list
+        clientFilter: { search: '', stage: '' },
+        uploading: false,
+        pendingApps: 0        // print-partner applications waiting on a decision
+    };
+
+    TwellerApi.configure(state.settings.siteUrl, state.settings.apiKey);
+
+    // ── Stage + payment presentation ─────────────────────────────
+
+    var STAGE_META = {
+        booked:    { label: 'Reserved',        pill: 'gray' },
+        confirmed: { label: 'Confirmed',       pill: 'blue' },
+        imported:  { label: 'Imported',        pill: 'purple' },
+        culling:   { label: 'Client choosing', pill: 'gold' },
+        culled:    { label: 'Selections in',   pill: 'gold' },
+        editing:   { label: 'Editing',         pill: 'purple' },
+        edited:    { label: 'Edited',          pill: 'purple' },
+        exporting: { label: 'Exporting',       pill: 'blue' },
+        exported:  { label: 'Exported',        pill: 'blue' },
+        uploading: { label: 'Uploading',       pill: 'blue' },
+        uploaded:  { label: 'Gallery ready',   pill: 'blue' },
+        delivered: { label: 'Delivered',       pill: 'green' }
+    };
+    var PAY_META = {
+        pending:   { label: 'Unpaid',        pill: 'red' },
+        verifying: { label: 'Verify receipt',pill: 'gold' },
+        deposit:   { label: 'Deposit paid',  pill: 'blue' },
+        paid:      { label: 'Paid in full',  pill: 'green' }
+    };
+    function stageMeta(key) { return STAGE_META[key] || { label: key || '—', pill: 'gray' }; }
+    function payMeta(key)   { return PAY_META[key]   || { label: key || '—', pill: 'gray' }; }
+
+    function stagePill(key) {
+        var m = stageMeta(key);
+        return '<span class="pill pill--' + m.pill + '"><span class="pill__dot"></span>' + esc(m.label) + '</span>';
+    }
+    function payPill(key) {
+        var m = payMeta(key);
+        return '<span class="pill pill--' + m.pill + '">' + esc(m.label) + '</span>';
+    }
+
+    // ── Tiny IndexedDB queue (blobs survive app restarts) ────────
+
+    var DB;
+    function db() {
+        if (DB) return Promise.resolve(DB);
+        return new Promise(function (resolve, reject) {
+            var req = indexedDB.open('tweller-queue', 1);
+            req.onupgradeneeded = function () {
+                req.result.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+            };
+            req.onsuccess = function () { DB = req.result; resolve(DB); };
+            req.onerror = function () { reject(req.error); };
+        });
+    }
+    function qAll() {
+        return db().then(function (d) {
+            return new Promise(function (resolve) {
+                var out = [];
+                d.transaction('queue').objectStore('queue').openCursor().onsuccess = function (e) {
+                    var c = e.target.result;
+                    if (c) { out.push(c.value); c.continue(); } else resolve(out);
+                };
+            });
+        });
+    }
+    function qPut(item) {
+        return db().then(function (d) {
+            return new Promise(function (resolve) {
+                var tx = d.transaction('queue', 'readwrite');
+                tx.objectStore('queue').put(item).onsuccess = function (e) { resolve(e.target.result); };
+            });
+        });
+    }
+    function qDelete(id) {
+        return db().then(function (d) {
+            d.transaction('queue', 'readwrite').objectStore('queue').delete(id);
+        });
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    function el(html) {
+        var t = document.createElement('template');
+        t.innerHTML = html.trim();
+        return t.content.firstChild;
+    }
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function toast(msg, ms) {
+        var t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.display = 'block';
+        clearTimeout(t._h);
+        t._h = setTimeout(function () { t.style.display = 'none'; }, ms || 3200);
+    }
+    function fmtMB(bytes) {
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+    function initials(name) {
+        var parts = String(name || '?').trim().split(/\s+/);
+        return ((parts[0] || '')[0] || '?').toUpperCase() + ((parts[1] || '')[0] || '').toUpperCase();
+    }
+    function money(n) {
+        n = parseFloat(n || 0);
+        if (!n) return '—';
+        return 'TT$' + n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+    function fmtDate(ymd) {
+        if (!ymd) return 'No date';
+        var d = new Date(ymd + 'T12:00:00');
+        if (isNaN(d)) return ymd;
+        return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    function fmtDateShort(ymd) {
+        if (!ymd) return 'No date';
+        var d = new Date(ymd + 'T12:00:00');
+        if (isNaN(d)) return ymd;
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+    function fmtClock(hms) {
+        if (!hms) return '';
+        var d = new Date('2000-01-01T' + hms);
+        if (isNaN(d)) return hms;
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    function fmtStamp(mysql) {
+        if (!mysql) return '';
+        var d = new Date(mysql.replace(' ', 'T'));
+        if (isNaN(d)) return mysql;
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' · ' +
+               d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    function fmtTime(d) {
+        return d ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '?';
+    }
+    function openExternal(url) {
+        if (url) window.open(url, '_blank');
+    }
+    async function connectionType() {
+        try {
+            if (window.Capacitor && window.Capacitor.Plugins.Network) {
+                var s = await window.Capacitor.Plugins.Network.getStatus();
+                return s.connectionType; // 'wifi' | 'cellular' | 'none' | 'unknown'
+            }
+        } catch (e) {}
+        if (navigator.connection && navigator.connection.type) return navigator.connection.type;
+        return navigator.onLine ? 'unknown' : 'none';
+    }
+
+    async function refreshBadge() {
+        var items = await qAll();
+        var pending = items.filter(function (i) { return i.status !== 'done'; }).length;
+        var badge = document.getElementById('queue-badge');
+        badge.style.display = pending ? '' : 'none';
+        badge.textContent = pending;
+    }
+
+    var ICONS = {
+        chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+        back: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
+        search: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+        filter: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>',
+        gallery: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+        phone: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+        mail: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+        pin: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+        cal: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+        users: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>',
+        upload: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+        star: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+        link: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+        scan: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>'
+    };
+
+    // ── Navigation (tab roots + pushed sub-screens) ──────────────
+
+    var navStack = [];
+
+    function setActiveTab(name) {
+        document.querySelectorAll('.tab').forEach(function (b) {
+            b.classList.toggle('tab--active', b.getAttribute('data-tab') === name);
+        });
+    }
+
+    function renderRoot(name) {
+        navStack = [];
+        setActiveTab(name);
+        ({ home: renderHome, clients: renderClients, prints: renderPrints, queue: renderQueue, settings: renderSettings })[name]();
+        window.scrollTo(0, 0);
+    }
+
+    function push(renderFn) {
+        navStack.push(renderFn);
+        history.pushState({ depth: navStack.length }, '');
+        renderFn();
+        window.scrollTo(0, 0);
+    }
+
+    function currentScreen() {
+        return navStack.length ? navStack[navStack.length - 1] : null;
+    }
+
+    window.addEventListener('popstate', function () {
+        if (navStack.length) {
+            navStack.pop();
+            var s = currentScreen();
+            if (s) s(); else renderRoot(activeTabName());
+            window.scrollTo(0, 0);
+        }
+    });
+
+    function activeTabName() {
+        var t = document.querySelector('.tab--active');
+        return t ? t.getAttribute('data-tab') : 'home';
+    }
+
+    function back() { history.back(); }
+
+    document.querySelectorAll('.tab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            // Collapse any pushed sub-screens without replaying them
+            var depth = navStack.length;
+            navStack = [];
+            if (depth) history.go(-depth);
+            renderRoot(btn.getAttribute('data-tab'));
+        });
+    });
+
+    function topbar(title) {
+        var bar = el(
+            '<div class="topbar">' +
+                '<button class="topbar__back">' + ICONS.back + '</button>' +
+                '<div class="topbar__title">' + esc(title) + '</div>' +
+            '</div>'
+        );
+        bar.querySelector('.topbar__back').addEventListener('click', back);
+        return bar;
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  HOME — dashboard
+    // ═════════════════════════════════════════════════════════════
+
+    async function renderHome() {
+        // Cache-first: paint instantly from the last snapshot, refresh behind
+        var cache = TwellerApi.cachedOverview();
+        if (cache && cache.data) {
+            paintHome(cache.data, true);
+        } else {
+            view.innerHTML =
+                '<div class="screen">' +
+                    '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div>' +
+                    '<div class="hdr__title">Bookings</div>' +
+                    '<div class="hdr__sub">' + new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) + '</div></header>' +
+                    '<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>' +
+                '</div>';
+        }
+
+        try {
+            var data = await TwellerApi.fetchOverview();
+            state.overview = data;
+            if (activeTabName() === 'home' && !navStack.length) paintHome(data, false);
+        } catch (e) {
+            if (!cache) {
+                view.innerHTML = '';
+                var screen = el(
+                    '<div class="screen"><header class="hdr"><div class="hdr__kicker">Tweller Studios</div>' +
+                    '<div class="hdr__title">Bookings</div></header>' +
+                    '<div class="wrap"><div class="card"><p class="empty">Couldn\'t reach the studio website.<br>' +
+                    'Check <strong>Settings</strong> (site URL + API key) and your connection.</p></div></div></div>'
+                );
+                view.appendChild(screen);
+            }
+        }
+    }
+
+    function paintHome(data, isStale) {
+        state.overview = data;
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(el(
+            '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div>' +
+            '<div class="hdr__title">Bookings</div>' +
+            '<div class="hdr__sub">' + new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) +
+            (isStale ? ' · refreshing…' : '') + '</div></header>'
+        ));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        // Quick actions
+        var qa = el(
+            '<div class="btn-row">' +
+                '<button class="btn btn--dark" id="qa-new">＋ New booking</button>' +
+                '<button class="btn btn--ghost" id="qa-share">Share booking link</button>' +
+            '</div>'
+        );
+        qa.querySelector('#qa-new').addEventListener('click', function () {
+            push(function () { renderNewBooking(); });
+        });
+        qa.querySelector('#qa-share').addEventListener('click', shareBookingLink);
+        wrap.appendChild(qa);
+
+        var counts = data.stage_counts || {};
+        function sum(keys) {
+            return keys.reduce(function (a, k) { return a + (counts[k] || 0); }, 0);
+        }
+        var stats = el(
+            '<div class="stats">' +
+                '<button class="stat stat--accent" data-filter="_active"><div class="stat__num">' + (data.active_count || 0) + '</div><div class="stat__label">Active sessions</div></button>' +
+                '<button class="stat" data-filter="culling"><div class="stat__num">' + sum(['culling']) + '</div><div class="stat__label">Clients choosing</div></button>' +
+                '<button class="stat" data-filter="_editing"><div class="stat__num">' + sum(['imported', 'culled', 'editing', 'edited', 'exporting', 'exported', 'uploading']) + '</div><div class="stat__label">In editing</div></button>' +
+                '<button class="stat" data-filter="delivered"><div class="stat__num">' + (counts.delivered || 0) + '</div><div class="stat__label">Delivered</div></button>' +
+            '</div>'
+        );
+        stats.querySelectorAll('.stat').forEach(function (tile) {
+            tile.addEventListener('click', function () {
+                state.clientFilter.stage = tile.getAttribute('data-filter');
+                state.clientFilter.search = '';
+                renderRoot('clients');
+            });
+        });
+        wrap.appendChild(stats);
+
+        // Needs attention
+        if ((data.attention || []).length) {
+            var att = el('<div class="card"><div class="card__title">Needs your attention</div></div>');
+            data.attention.slice(0, 6).forEach(function (s) {
+                var row = el(
+                    '<div class="row">' +
+                        '<span class="avatar avatar--sm">' + esc(initials(s.client_name)) + '</span>' +
+                        '<span class="row__body"><div class="row__name">' + esc(s.client_name) + '</div>' +
+                        '<div class="row__meta">' + esc((s.reasons || []).join(' · ')) + '</div></span>' +
+                        '<span class="row__chev">' + ICONS.chev + '</span>' +
+                    '</div>'
+                );
+                row.addEventListener('click', function () { openSession(s.tracking_code); });
+                att.appendChild(row);
+            });
+            wrap.appendChild(att);
+        }
+
+        // Up next
+        var up = el('<div class="card"><div class="card__title">Up next</div></div>');
+        if ((data.upcoming || []).length) {
+            data.upcoming.forEach(function (s) {
+                var when = fmtDateShort(s.session_date) + (s.session_time ? ' · ' + fmtClock(s.session_time) : '');
+                var row = el(
+                    '<div class="row">' +
+                        '<span class="avatar avatar--sm">' + esc(initials(s.client_name)) + '</span>' +
+                        '<span class="row__body"><div class="row__name">' + esc(s.client_name) + '</div>' +
+                        '<div class="row__meta">' + esc(when) + (s.location ? ' · ' + esc(s.location) : '') + '</div></span>' +
+                        '<span class="row__end">' + stagePill(s.current_stage) + '</span>' +
+                    '</div>'
+                );
+                row.addEventListener('click', function () { openSession(s.tracking_code); });
+                up.appendChild(row);
+            });
+        } else {
+            up.appendChild(el('<p class="empty">No upcoming shoots on the calendar.</p>'));
+        }
+        wrap.appendChild(up);
+
+        var all = el('<button class="btn btn--ghost">View all clients</button>');
+        all.addEventListener('click', function () { renderRoot('clients'); });
+        wrap.appendChild(all);
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    function shareBookingLink() {
+        var url = (state.overview && state.overview.booking_url) || '';
+        if (!url) {
+            var cache = TwellerApi.cachedOverview();
+            url = (cache && cache.data && cache.data.booking_url) || '';
+        }
+        if (!url) { toast('No booking page found on the website yet.', 4500); return; }
+
+        if (navigator.share) {
+            navigator.share({
+                title: 'Book a session with Tweller Studios',
+                text: 'Book your photo session with Tweller Studios here:',
+                url: url
+            }).catch(function () {});
+        } else if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(function () {
+                toast('Booking link copied — paste it to your client.');
+            });
+        } else {
+            prompt('Booking link (copy it):', url);
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  CLIENTS — searchable session list
+    // ═════════════════════════════════════════════════════════════
+
+    var STAGE_FILTERS = [
+        { key: '',          label: 'All' },
+        { key: '_active',   label: 'Active' },
+        { key: 'booked',    label: 'Reserved' },
+        { key: 'confirmed', label: 'Confirmed' },
+        { key: 'culling',   label: 'Choosing' },
+        { key: '_editing',  label: 'Editing' },
+        { key: 'uploaded',  label: 'Gallery ready' },
+        { key: 'delivered', label: 'Delivered' }
+    ];
+    var EDITING_KEYS = ['imported', 'culled', 'editing', 'edited', 'exporting', 'exported', 'uploading'];
+
+    async function renderClients() {
+        // Cache-first: show the last list instantly, refresh behind
+        var cache = TwellerApi.cachedSessions();
+        if (cache && (cache.sessions || []).length) {
+            state.clients = cache.sessions;
+            paintClients(true);
+        } else {
+            view.innerHTML =
+                '<div class="screen">' +
+                    '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Clients</div></header>' +
+                    '<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>' +
+                '</div>';
+        }
+
+        try {
+            state.clients = await TwellerApi.fetchSessions({ range: 'all' });
+            var searchFocused = document.activeElement && document.activeElement.type === 'search';
+            if (activeTabName() === 'clients' && !navStack.length && !searchFocused) paintClients(false);
+        } catch (e) {
+            if (!cache) { state.clients = []; paintClients(false); }
+        }
+    }
+
+    function paintClients(isStale) {
+        var f = state.clientFilter;
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(el(
+            '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Clients</div>' +
+            '<div class="hdr__sub">' + state.clients.length + ' sessions' + (isStale ? ' · refreshing…' : '') + '</div></header>'
+        ));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var newBtn = el('<button class="btn btn--dark">＋ New booking</button>');
+        newBtn.addEventListener('click', function () {
+            push(function () { renderNewBooking(); });
+        });
+        wrap.appendChild(newBtn);
+
+        var search = el(
+            '<div class="search">' + ICONS.search +
+            '<input type="search" placeholder="Search name, email or shoot code" value="' + esc(f.search) + '"></div>'
+        );
+        search.querySelector('input').addEventListener('input', function () {
+            f.search = this.value;
+            paintList();
+        });
+        wrap.appendChild(search);
+
+        var chips = el('<div class="chips"></div>');
+        STAGE_FILTERS.forEach(function (sf) {
+            var c = el('<button class="chip' + (f.stage === sf.key ? ' chip--on' : '') + '">' + esc(sf.label) + '</button>');
+            c.addEventListener('click', function () {
+                f.stage = sf.key;
+                chips.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('chip--on'); });
+                c.classList.add('chip--on');
+                paintList();
+            });
+            chips.appendChild(c);
+        });
+        wrap.appendChild(chips);
+
+        var listCard = el('<div class="card" id="client-list"></div>');
+        wrap.appendChild(listCard);
+
+        function paintList() {
+            var q = (f.search || '').toLowerCase();
+            var rows = state.clients.filter(function (s) {
+                if (f.stage === '_editing') {
+                    if (EDITING_KEYS.indexOf(s.current_stage) === -1) return false;
+                } else if (f.stage === '_active') {
+                    if (s.current_stage === 'delivered') return false;
+                } else if (f.stage && s.current_stage !== f.stage) return false;
+                if (!q) return true;
+                return (s.client_name || '').toLowerCase().indexOf(q) !== -1 ||
+                       (s.client_email || '').toLowerCase().indexOf(q) !== -1 ||
+                       (s.tracking_code || '').toLowerCase().indexOf(q) !== -1;
+            });
+
+            listCard.innerHTML = '';
+            if (!rows.length) {
+                listCard.appendChild(el('<p class="empty">No sessions match.</p>'));
+                return;
+            }
+            rows.forEach(function (s) {
+                var row = el(
+                    '<div class="row">' +
+                        '<span class="avatar">' + esc(initials(s.client_name)) + '</span>' +
+                        '<span class="row__body"><div class="row__name">' + esc(s.client_name) + '</div>' +
+                        '<div class="row__meta">' + esc(fmtDateShort(s.session_date)) +
+                        (s.package_type ? ' · ' + esc(s.package_type) : '') + '</div></span>' +
+                        '<span class="row__end">' + stagePill(s.current_stage) + '</span>' +
+                        '<span class="row__chev">' + ICONS.chev + '</span>' +
+                    '</div>'
+                );
+                row.addEventListener('click', function () { openSession(s.tracking_code); });
+                listCard.appendChild(row);
+            });
+        }
+        paintList();
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  SESSION DETAIL
+    // ═════════════════════════════════════════════════════════════
+
+    function openSession(code) {
+        push(function () { renderSession(code); });
+    }
+
+    async function renderSession(code) {
+        var myScreen = currentScreen();
+
+        // Cache-first: show the last snapshot instantly, refresh behind
+        var cached = TwellerApi.cachedSessionDetail(code);
+        if (cached && cached.data) {
+            paintSession(cached.data, code);
+        } else {
+            view.innerHTML = '';
+            view.appendChild(topbar('Session'));
+            view.appendChild(el('<div class="wrap"><div class="skeleton" style="height:130px;"></div><div class="skeleton"></div></div>'));
+        }
+
+        try {
+            var d = await TwellerApi.fetchSessionDetail(code);
+            // Only repaint if this screen is still the one on top
+            if (currentScreen() === myScreen) paintSession(d, code);
+        } catch (e) {
+            if (!cached && currentScreen() === myScreen) {
+                view.innerHTML = '';
+                view.appendChild(topbar('Session'));
+                view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load this session.<br>' + esc(e.message) + '</p></div></div>'));
+            }
+        }
+    }
+
+    function paintSession(d, code) {
+        var s = d.session;
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar(s.client_name));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        // Hero
+        var when = fmtDate(s.session_date) + (s.session_time ? ' · ' + fmtClock(s.session_time) : '');
+        wrap.appendChild(el(
+            '<div class="hero">' +
+                '<div class="hero__top">' +
+                    '<span class="avatar">' + esc(initials(s.client_name)) + '</span>' +
+                    '<div><div class="hero__name">' + esc(s.client_name) + '</div>' +
+                    '<div class="hero__meta">' + esc((s.package_type || 'Session') + ' · ' + when) + '</div></div>' +
+                '</div>' +
+                '<div class="hero__pills">' +
+                    '<span class="pill pill--stage"><span class="pill__dot"></span>' + esc(stageMeta(s.current_stage).label) + '</span>' +
+                    '<span class="pill pill--onblack">' + esc(payMeta(s.payment_status).label) + '</span>' +
+                    '<span class="pill pill--onblack">' + esc(s.tracking_code) + '</span>' +
+                '</div>' +
+            '</div>'
+        ));
+
+        // Primary actions
+        var actions = el(
+            '<div class="actions">' +
+                '<button class="action" id="act-cull">' +
+                    '<span class="action__icon action__icon--gold">' + ICONS.filter + '</span>' +
+                    '<div class="action__name">Upload for Culling</div>' +
+                    '<div class="action__sub">Watermarked proofs for selection</div>' +
+                '</button>' +
+                '<button class="action" id="act-deliver">' +
+                    '<span class="action__icon action__icon--dark">' + ICONS.gallery + '</span>' +
+                    '<div class="action__name">Upload to Gallery</div>' +
+                    '<div class="action__sub">Finished photos · full quality</div>' +
+                '</button>' +
+            '</div>'
+        );
+        actions.querySelector('#act-cull').addEventListener('click', function () {
+            push(function () { renderCullingUpload(d); });
+        });
+        actions.querySelector('#act-deliver').addEventListener('click', function () {
+            push(function () { renderGalleryUpload(d); });
+        });
+        wrap.appendChild(actions);
+
+        // Contact & logistics
+        var contact = el('<div class="card"><div class="card__title">Contact &amp; shoot</div></div>');
+        function infoRow(icon, label, value, href) {
+            if (!value) return null;
+            var tag = href ? 'a' : 'div';
+            var r = el(
+                '<' + tag + ' class="info"' + (href ? ' href="' + esc(href) + '"' : '') + '>' +
+                    '<span class="info__icon">' + icon + '</span>' +
+                    '<span><div class="info__label">' + esc(label) + '</div>' +
+                    '<div class="info__value">' + esc(value) + '</div></span>' +
+                '</' + tag + '>'
+            );
+            return r;
+        }
+        [
+            infoRow(ICONS.cal, 'Date & time', when),
+            infoRow(ICONS.pin, 'Location', s.location),
+            infoRow(ICONS.phone, 'Phone', s.client_phone, s.client_phone ? 'tel:' + s.client_phone : null),
+            infoRow(ICONS.mail, 'Email', s.client_email, s.client_email ? 'mailto:' + s.client_email : null),
+            infoRow(ICONS.users, 'People', s.members_count > 1 ? s.members_count + ' people' : null)
+        ].forEach(function (r) { if (r) contact.appendChild(r); });
+        wrap.appendChild(contact);
+
+        // Payment — figures come from the server so the app never recomputes.
+        var payInfo = d.payment || {
+            total: s.total_amount || 0,
+            deposit: s.deposit_amount || 0,
+            balance: Math.max(0, (s.total_amount || 0) - (s.deposit_amount || 0))
+        };
+        var pay = el(
+            '<div class="card"><div class="card__title">Payment</div>' +
+                '<div class="kv"><span class="kv__k">Package total</span><span class="kv__v kv__v--big">' + esc(money(payInfo.total)) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Received</span><span class="kv__v">' + esc(money(payInfo.deposit)) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Balance due</span><span class="kv__v">' + (payInfo.balance > 0 ? esc(money(payInfo.balance)) : 'Paid in full') + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Status</span><span class="kv__v">' + payPill(s.payment_status) + '</span></div>' +
+            '</div>'
+        );
+
+        var receipt = d.receipt;
+        var receiptStatus = receipt && receipt.status ? receipt.status : 'pending';
+
+        // The receipt itself, shown inline — no more hunting a bare link.
+        if (receipt && receipt.url) {
+            var rc = el('<div style="margin-top:12px;"></div>');
+            rc.appendChild(el(
+                '<div class="kv"><span class="kv__k">Bank transfer receipt' +
+                (receiptStatus !== 'pending' ? ' · ' + esc(receiptStatus) : '') +
+                '</span><span class="kv__v"><a href="' + esc(receipt.url) + '" target="_blank">Open ↗</a></span></div>'
+            ));
+            rc.appendChild(el(
+                '<a href="' + esc(receipt.url) + '" target="_blank">' +
+                '<img src="' + esc(receipt.url) + '" alt="Receipt" style="width:100%; border-radius:10px; margin-top:8px; border:1px solid var(--line);"></a>'
+            ));
+            pay.appendChild(rc);
+        }
+
+        // Awaiting verification → the real approve/reject flow, in-app.
+        if (s.payment_status === 'verifying' || (receipt && receipt.url && receiptStatus === 'pending')) {
+            var approve = el('<div class="card card--warn" style="margin-top:12px;"><div class="card__title">Verify this payment</div></div>');
+            approve.appendChild(el('<p class="hint" style="margin-top:0;">' +
+                (receipt && receipt.ocr
+                    ? 'Detected on the receipt: <strong>' + esc(receipt.ocr) + '</strong>. '
+                    : '') +
+                'Enter the amount actually received.</p>'));
+
+            var amtVal = payInfo.total ? parseFloat(payInfo.total).toFixed(2) : '';
+            approve.appendChild(el('<div class="field"><label>Amount received (TT$)</label>' +
+                '<input type="number" id="verify-amt" min="0" step="0.01" inputmode="decimal" value="' + amtVal + '"></div>'));
+            approve.appendChild(el('<p class="hint" style="margin-top:0;">The full ' + esc(money(payInfo.total)) +
+                ' marks the booking paid; anything less is a deposit, and the client is emailed their balance.</p>'));
+
+            var actions = el('<div style="display:flex; gap:10px; margin-top:4px;"></div>');
+            var approveBtn = el('<button class="btn btn--dark" style="flex:1;">Approve &amp; confirm</button>');
+            var rejectBtn = el('<button class="btn btn--danger" style="flex:1;">Reject</button>');
+            actions.appendChild(approveBtn);
+            actions.appendChild(rejectBtn);
+            approve.appendChild(actions);
+
+            approveBtn.addEventListener('click', async function () {
+                var amt = parseFloat((document.getElementById('verify-amt') || {}).value);
+                if (isNaN(amt) || amt <= 0) { toast('Enter the amount received.'); return; }
+                approveBtn.disabled = true; rejectBtn.disabled = true;
+                try {
+                    var r = await TwellerApi.verifyReceipt(code, 'approve', amt);
+                    toast(r && r.status === 'paid'
+                        ? 'Confirmed — marked paid in full.'
+                        : 'Confirmed — deposit recorded, balance emailed to the client.');
+                    renderSession(code);
+                } catch (e) {
+                    approveBtn.disabled = false; rejectBtn.disabled = false;
+                    toast('Could not approve: ' + e.message, 5000);
+                }
+            });
+            rejectBtn.addEventListener('click', async function () {
+                if (!confirm('Reject this receipt? The client will be asked to re-upload.')) return;
+                approveBtn.disabled = true; rejectBtn.disabled = true;
+                try {
+                    await TwellerApi.verifyReceipt(code, 'reject', 0);
+                    toast('Receipt rejected — client asked to re-upload.');
+                    renderSession(code);
+                } catch (e) {
+                    approveBtn.disabled = false; rejectBtn.disabled = false;
+                    toast('Could not reject: ' + e.message, 5000);
+                }
+            });
+            pay.appendChild(approve);
+        } else if (s.payment_status !== 'paid') {
+            // Nothing to verify — keep a simple manual "mark paid".
+            var markPaid = el('<button class="btn btn--sm btn--ghost" style="margin-top:12px;">Mark as fully paid</button>');
+            markPaid.addEventListener('click', async function () {
+                if (!confirm('Mark ' + s.client_name + ' as fully paid?')) return;
+                markPaid.disabled = true;
+                try {
+                    await TwellerApi.updateSession(code, { payment_status: 'paid' });
+                    toast('Payment marked as paid.');
+                    renderSession(code);
+                } catch (e) {
+                    markPaid.disabled = false;
+                    toast('Could not update: ' + e.message, 5000);
+                }
+            });
+            pay.appendChild(markPaid);
+        }
+        wrap.appendChild(pay);
+
+        // Culling status
+        var cul = el('<div class="card"><div class="card__title">Photo selection (culling)</div></div>');
+        if (d.culling && d.culling.enabled) {
+            cul.appendChild(el(
+                '<div class="kv"><span class="kv__k">Proofs online</span><span class="kv__v">' + (d.culling.proof_count || 0) + '</span></div>'
+            ));
+            if (d.culling.submitted) {
+                cul.appendChild(el(
+                    '<div class="kv"><span class="kv__k">Client selected</span><span class="kv__v">' +
+                    (d.selections || []).length + ' photos · ' + esc(fmtStamp(String(d.culling.submitted))) + '</span></div>'
+                ));
+                if ((d.selections || []).length) {
+                    var selBtn = el('<button class="btn btn--sm btn--ghost" style="margin-top:12px;">View selected filenames</button>');
+                    var selList = el('<div style="display:none; margin-top:10px; font-size:12.5px; color:var(--ink-2); line-height:1.8;"></div>');
+                    selList.innerHTML = d.selections.map(function (x) {
+                        return (x.star >= 2 ? '★★ ' : '★ ') + esc(x.filename);
+                    }).join('<br>');
+                    selBtn.addEventListener('click', function () {
+                        var show = selList.style.display === 'none';
+                        selList.style.display = show ? 'block' : 'none';
+                        selBtn.textContent = show ? 'Hide selected filenames' : 'View selected filenames';
+                    });
+                    cul.appendChild(selBtn);
+                    cul.appendChild(selList);
+                }
+            } else if (d.culling.ready) {
+                cul.appendChild(el('<p class="hint" style="margin-bottom:0;">Gallery is live — waiting on the client\'s picks.</p>'));
+            } else if (d.culling.proof_count > 0) {
+                var notifyBtn = el('<button class="btn btn--dark btn--sm" style="margin-top:12px;">✉ Notify client — proofs are ready</button>');
+                notifyBtn.addEventListener('click', async function () {
+                    notifyBtn.disabled = true;
+                    try {
+                        await TwellerApi.markCullingReady(code);
+                        toast('Client notified — selection gallery is live.');
+                        renderSession(code);
+                    } catch (e) {
+                        notifyBtn.disabled = false;
+                        toast('Could not notify: ' + e.message, 5000);
+                    }
+                });
+                cul.appendChild(notifyBtn);
+            }
+            if (d.links && d.links.culling) {
+                var openCul = el('<button class="btn btn--sm btn--ghost" style="margin-top:8px;">Open selection portal ' + ICONS.link + '</button>');
+                openCul.addEventListener('click', function () { openExternal(d.links.culling); });
+                cul.appendChild(openCul);
+            }
+        } else {
+            cul.appendChild(el('<p class="empty" style="padding:10px 0;">No proofs yet.<br>Use <strong>Upload for Culling</strong> above to start.</p>'));
+        }
+        wrap.appendChild(cul);
+
+        // Gallery status
+        var gal = el('<div class="card"><div class="card__title">Delivery gallery</div></div>');
+        if (d.gallery && d.gallery.photo_count > 0) {
+            gal.appendChild(el(
+                '<div class="kv"><span class="kv__k">Photos</span><span class="kv__v">' + d.gallery.photo_count + '</span></div>' +
+                ''
+            ));
+            gal.appendChild(el(
+                '<div class="kv"><span class="kv__k">Size on site</span><span class="kv__v">' + esc(String(d.gallery.total_size_mb)) + ' MB</span></div>'
+            ));
+            var manageBtn = el('<button class="btn btn--sm" style="margin-top:12px;">' + ICONS.gallery + ' Manage gallery — view, cover, delete</button>');
+            manageBtn.addEventListener('click', function () {
+                push(function () { renderGalleryManage(code, s.client_name); });
+            });
+            gal.appendChild(manageBtn);
+
+            var labBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:8px;">🖨 Send album to print lab</button>');
+            labBtn.addEventListener('click', function () {
+                push(function () { renderSendToLab(d); });
+            });
+            gal.appendChild(labBtn);
+
+            if (s.current_stage !== 'delivered') {
+                var deliverBtn = el('<button class="btn btn--dark btn--sm" style="margin-top:12px;">✉ Mark delivered &amp; send gallery email</button>');
+                deliverBtn.addEventListener('click', async function () {
+                    if (!confirm('Send ' + s.client_name + ' the delivery email with their gallery link?')) return;
+                    deliverBtn.disabled = true;
+                    try {
+                        await TwellerApi.advanceStage(code, 'delivered', 'Delivered from mobile app');
+                        toast('Delivered — client has the gallery email.');
+                        renderSession(code);
+                    } catch (e) {
+                        deliverBtn.disabled = false;
+                        toast('Could not mark delivered: ' + e.message, 5000);
+                    }
+                });
+                gal.appendChild(deliverBtn);
+            }
+            if (d.links && d.links.tracker) {
+                var openGal = el('<button class="btn btn--sm btn--ghost" style="margin-top:8px;">Open client gallery ' + ICONS.link + '</button>');
+                openGal.addEventListener('click', function () { openExternal(d.links.tracker); });
+                gal.appendChild(openGal);
+            }
+        } else {
+            gal.appendChild(el('<p class="empty" style="padding:10px 0;">Nothing delivered yet.<br>Use <strong>Deliver to Gallery</strong> when the edit is done.</p>'));
+        }
+        wrap.appendChild(gal);
+
+        // Timeline
+        wrap.appendChild(buildTimeline(d));
+
+        // Pipeline control
+        var stageCard = el('<div class="card"><div class="card__title">Move stage</div><p class="hint" style="margin-top:0;">Stages marked ✉ email the client automatically.</p></div>');
+        var sel = el('<select id="stage-select"></select>');
+        (d.stages || []).forEach(function (st) {
+            var opt = document.createElement('option');
+            opt.value = st.key;
+            opt.textContent = st.label + (st.notify ? '  ✉' : '');
+            if (st.key === s.current_stage) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        var selWrap = el('<div class="field"></div>');
+        selWrap.appendChild(sel);
+        stageCard.appendChild(selWrap);
+        var moveBtn = el('<button class="btn btn--ghost btn--sm">Set stage</button>');
+        moveBtn.addEventListener('click', async function () {
+            var target = sel.value;
+            if (target === s.current_stage) { toast('Already at that stage.'); return; }
+            var st = (d.stages || []).filter(function (x) { return x.key === target; })[0];
+            if (st && st.notify && !confirm('"' + st.label + '" sends the client an email. Continue?')) return;
+            moveBtn.disabled = true;
+            try {
+                await TwellerApi.advanceStage(code, target, 'Set from mobile app');
+                toast('Stage updated.');
+                renderSession(code);
+            } catch (e) {
+                moveBtn.disabled = false;
+                toast('Could not move stage: ' + e.message, 5000);
+            }
+        });
+        stageCard.appendChild(moveBtn);
+        wrap.appendChild(stageCard);
+
+        // Notes
+        var notes = el(
+            '<div class="card"><div class="card__title">Notes</div>' +
+                '<div class="field"><textarea id="notes-input" placeholder="Shoot notes, requests, reminders...">' + esc(s.notes || '') + '</textarea></div>' +
+                '<button class="btn btn--ghost btn--sm" id="notes-save">Save notes</button>' +
+            '</div>'
+        );
+        notes.querySelector('#notes-save').addEventListener('click', async function () {
+            var btn = this;
+            btn.disabled = true;
+            try {
+                await TwellerApi.updateSession(code, { notes: notes.querySelector('#notes-input').value });
+                toast('Notes saved.');
+            } catch (e) {
+                toast('Could not save: ' + e.message, 5000);
+            }
+            btn.disabled = false;
+        });
+        wrap.appendChild(notes);
+
+        // Danger zone
+        var danger = el('<button class="btn btn--danger">Delete this session…</button>');
+        danger.addEventListener('click', async function () {
+            if (!confirm('Delete ' + s.client_name + '\'s session (' + code + ')?\n\nThis removes the session, its proofs AND its delivery gallery from the website. This cannot be undone.')) return;
+            if (!confirm('Really delete EVERYTHING for ' + s.client_name + '? Last chance.')) return;
+            danger.disabled = true;
+            danger.textContent = 'Deleting…';
+            try {
+                await TwellerApi.deleteSession(code);
+                toast(s.client_name + '\'s session deleted.');
+                renderRoot('clients');
+            } catch (e) {
+                danger.disabled = false;
+                danger.textContent = 'Delete this session…';
+                toast('Could not delete: ' + e.message, 5000);
+            }
+        });
+        wrap.appendChild(danger);
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    function buildTimeline(d) {
+        var s = d.session;
+        var card = el('<div class="card"><div class="card__title">Timeline</div></div>');
+        var tl = el('<div class="tl"></div>');
+
+        // Latest history entry per stage (for timestamps + notes)
+        var hist = {};
+        (d.timeline || []).forEach(function (h) {
+            hist[h.stage] = h;
+        });
+
+        var currentIdx = parseInt(s.current_stage_index, 10) || 0;
+        (d.stages || []).forEach(function (st, idx) {
+            var h = hist[st.key];
+            var cls = idx < currentIdx ? 'tl__item--done' : (idx === currentIdx ? 'tl__item--current' : 'tl__item--future');
+            var note = h && h.notes && idx >= currentIdx - 1 ? h.notes : '';
+            tl.appendChild(el(
+                '<div class="tl__item ' + cls + '">' +
+                    '<div class="tl__rail"><div class="tl__dot"></div><div class="tl__line"></div></div>' +
+                    '<div class="tl__body">' +
+                        '<div class="tl__stage">' + esc(st.label) + '</div>' +
+                        (h ? '<div class="tl__time">' + esc(fmtStamp(h.timestamp)) + '</div>' : '') +
+                        (note ? '<div class="tl__note">' + esc(note) + '</div>' : '') +
+                    '</div>' +
+                '</div>'
+            ));
+        });
+        card.appendChild(tl);
+        return card;
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  UPLOAD FOR CULLING (proofs — resized, watermarked server-side)
+    // ═════════════════════════════════════════════════════════════
+
+    function renderCullingUpload(d) {
+        var s = d.session;
+        view.innerHTML = '';
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Upload for Culling — ' + s.client_name));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var card = el(
+            '<div class="card"><div class="card__title">Add proofs</div>' +
+                '<p class="hint" style="margin-top:0;">Photos are resized on this phone, then the website compresses further and adds the Tweller watermark. Grouped by capture time so a card with several shoots on it sorts itself out.</p>' +
+                '<button class="btn btn--dark" id="btn-phone">' + ICONS.gallery + ' Pick from this phone</button>' +
+                '<button class="btn btn--ghost" id="btn-wd">Scan WD Wireless Pro (192.168.60.1)</button>' +
+                '<input type="file" id="file-input" accept="image/jpeg,image/jpg" multiple style="display:none;">' +
+                '<div class="field" style="margin-top:14px; margin-bottom:0;"><label>Or jump to a WD folder path</label>' +
+                    '<div style="display:flex; gap:8px;">' +
+                        '<input type="text" id="wd-path-input" placeholder="/DCIM/100MSDCF" style="flex:1;">' +
+                        '<button class="btn btn--ghost btn--sm" id="wd-path-go" style="margin-top:0; flex-shrink:0;">Go</button>' +
+                    '</div>' +
+                '</div>' +
+                '<button class="btn btn--ghost btn--sm" id="btn-wd-diag" style="margin-top:10px;">Diagnose WD connection</button>' +
+            '</div>'
+        );
+        wrap.appendChild(card);
+        var host = el('<div></div>');
+        wrap.appendChild(host);
+
+        card.querySelector('#btn-phone').addEventListener('click', function () {
+            card.querySelector('#file-input').click();
+        });
+        card.querySelector('#file-input').addEventListener('change', async function () {
+            var files = Array.from(this.files || []);
+            if (!files.length) return;
+            toast('Reading capture times from ' + files.length + ' photos...');
+            var items = [];
+            for (var i = 0; i < files.length; i++) {
+                items.push({ name: files[i].name, date: await TwellerExif.fromFile(files[i]), file: files[i] });
+            }
+            renderGroups(host, TwellerExif.groupByGap(items, 120), s);
+        });
+
+        card.querySelector('#btn-wd').addEventListener('click', async function () {
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Looking for the WD box...';
+            var found = await TwellerWD.detect();
+            btn.disabled = false;
+            btn.textContent = 'Scan WD Wireless Pro (192.168.60.1)';
+            if (!found) {
+                toast('WD not reachable. Join the WD’s Wi-Fi first. (Browser builds can’t reach it — use the installed app.)', 5000);
+                return;
+            }
+            try {
+                await renderWdBrowser(host, '/', s);
+            } catch (e) {
+                toast('Could not list WD files: ' + e.message, 5000);
+            }
+        });
+
+        card.querySelector('#wd-path-go').addEventListener('click', async function () {
+            var p = card.querySelector('#wd-path-input').value.trim();
+            if (!p) return;
+            if (p.charAt(0) !== '/') p = '/' + p;
+            try {
+                await renderWdBrowser(host, p, s);
+            } catch (e) {
+                toast('Could not open that path: ' + e.message, 5000);
+            }
+        });
+
+        card.querySelector('#btn-wd-diag').addEventListener('click', async function () {
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Probing WD endpoints...';
+            var results = await TwellerWD.diagnose();
+            btn.disabled = false;
+            btn.textContent = 'Diagnose WD connection';
+            renderWdDiagnostics(host, results);
+        });
+
+        view.appendChild(screen);
+    }
+
+    function renderWdDiagnostics(host, results) {
+        host.innerHTML = '';
+        var card = el(
+            '<div class="card"><div class="card__title">WD diagnostics</div>' +
+            '<p class="hint" style="margin-top:0;">Raw response from each candidate endpoint. Screenshot this and send it over so the right one can be wired up for good.</p></div>'
+        );
+        results.forEach(function (r) {
+            var statusLabel = r.error ? 'ERROR' : (r.status + '');
+            var ok = !r.error && r.status >= 200 && r.status < 300;
+            card.appendChild(el(
+                '<div class="grp">' +
+                    '<div class="grp__head"><span class="grp__title" style="font-size:12.5px;">' + esc(r.path) + '</span>' +
+                        '<span class="grp__time" style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';">' + esc(statusLabel) + '</span></div>' +
+                    '<div style="font-size:11px; color:var(--ink-3); word-break:break-all; white-space:pre-wrap; max-height:80px; overflow:auto;">' +
+                        esc(r.error || r.snippet || '(empty body)') +
+                    '</div>' +
+                '</div>'
+            ));
+        });
+        host.appendChild(card);
+    }
+
+    async function renderWdBrowser(host, path, session) {
+        host.innerHTML = '<div class="card"><div class="spin"></div></div>';
+        var listing = await TwellerWD.list(path);
+
+        var card = el('<div class="card"><div class="card__title">WD: ' + esc(path) + '</div></div>');
+        if (path !== '/') {
+            var up = el('<div class="row"><span class="row__body"><div class="row__name">.. (up)</div></span></div>');
+            up.addEventListener('click', function () {
+                renderWdBrowser(host, path.replace(/\/[^/]+\/?$/, '') || '/', session);
+            });
+            card.appendChild(up);
+        }
+        listing.dirs.forEach(function (dname) {
+            var row = el('<div class="row"><span class="row__body"><div class="row__name">📁 ' + esc(dname) + '</div></span><span class="row__chev">' + ICONS.chev + '</span></div>');
+            row.addEventListener('click', function () { renderWdBrowser(host, (path.replace(/\/+$/, '') || '') + '/' + dname, session); });
+            card.appendChild(row);
+        });
+
+        if (!listing.dirs.length && !listing.files.length) {
+            card.appendChild(el(
+                '<p class="empty">Nothing found at this path via the endpoints this app knows.<br>' +
+                'Try a specific folder path, or run <strong>Diagnose WD connection</strong>.</p>'
+            ));
+        }
+
+        var jpegs = listing.files.filter(function (f) { return TwellerWD.isJpeg(f.name); });
+        if (jpegs.length) {
+            var btn = el('<button class="btn">Import ' + jpegs.length + ' JPEG(s) from this folder</button>');
+            btn.addEventListener('click', async function () {
+                btn.disabled = true;
+                var items = [];
+                for (var i = 0; i < jpegs.length; i++) {
+                    btn.textContent = 'Reading EXIF ' + (i + 1) + '/' + jpegs.length + '...';
+                    var dt = null;
+                    try {
+                        dt = TwellerExif.dateTimeOriginal(await TwellerWD.fetchHead(jpegs[i].path, 131072));
+                    } catch (e) {}
+                    items.push({ name: jpegs[i].name, date: dt, wdPath: jpegs[i].path });
+                }
+                renderGroups(host, TwellerExif.groupByGap(items, 120), session);
+            });
+            card.appendChild(btn);
+        }
+        host.innerHTML = '';
+        host.appendChild(card);
+    }
+
+    function matchLabel(group, session) {
+        if (!session || !group.start) return '';
+        var d = group.start;
+        var dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (session.session_date === dateStr) {
+            return '<div class="grp__match">✓ Matches <strong>' + esc(session.client_name) + '</strong> (' + esc(session.session_date) + ')</div>';
+        }
+        return '<div class="grp__match">⚠ Taken ' + esc(dateStr) + ' but this shoot is ' + esc(session.session_date || '?') + ' — double-check before queueing.</div>';
+    }
+
+    function renderGroups(host, groups, session) {
+        host.innerHTML = '';
+        var card = el('<div class="card"><div class="card__title">Detected shoots</div><p class="hint" style="margin-top:0;">Photos are grouped when there’s more than a 2-hour gap between captures.</p></div>');
+
+        groups.forEach(function (g, gi) {
+            var grp = el(
+                '<div class="grp">' +
+                    '<div class="grp__head">' +
+                        '<span class="grp__title">Group ' + (gi + 1) + ' — ' + g.items.length + ' photos</span>' +
+                        '<span class="grp__time">' + fmtTime(g.start) + '–' + fmtTime(g.end) + '</span>' +
+                    '</div>' +
+                    matchLabel(g, session) +
+                    '<button class="btn btn--sm" style="margin-top:10px;">Queue these ' + g.items.length + ' as proofs</button>' +
+                '</div>'
+            );
+            grp.querySelector('button').addEventListener('click', function () {
+                queueProofGroup(g, this, session);
+            });
+            card.appendChild(grp);
+        });
+        host.appendChild(card);
+    }
+
+    async function queueProofGroup(group, btn, session) {
+        var code = session.tracking_code;
+        btn.disabled = true;
+
+        var existing = [];
+        try { existing = await TwellerApi.proofFilenames(code); } catch (e) {}
+
+        var added = 0, skipped = 0;
+        for (var i = 0; i < group.items.length; i++) {
+            var item = group.items[i];
+            btn.textContent = 'Preparing ' + (i + 1) + '/' + group.items.length + '...';
+
+            if (existing.indexOf(item.name) !== -1) { skipped++; continue; }
+
+            var source = item.file || (item.wdPath ? await TwellerWD.fetchFile(item.wdPath) : null);
+            if (!source) continue;
+
+            var proof = await TwellerApi.resizeForProof(source);
+            await qPut({
+                type: 'proof',
+                code: code,
+                client: session.client_name,
+                filename: item.name,
+                blob: proof,
+                size: proof.size,
+                status: 'pending',
+                addedAt: Date.now()
+            });
+            added++;
+        }
+
+        btn.textContent = added + ' queued' + (skipped ? ' (' + skipped + ' already on site)' : '');
+        refreshBadge();
+        toast(added + ' proofs queued — open Uploads to send them.');
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  DELIVER TO GALLERY (finished photos — untouched bytes)
+    // ═════════════════════════════════════════════════════════════
+
+    function renderGalleryUpload(d) {
+        var s = d.session;
+        view.innerHTML = '';
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Upload to Gallery — ' + s.client_name));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var card = el(
+            '<div class="card"><div class="card__title">Finished photos</div>' +
+                '<p class="hint" style="margin-top:0;">For the final delivery gallery. Files upload <strong>exactly as exported — no compression</strong>, so export from Lightroom Mobile at full quality first. Photos are saved to the queue the moment you pick them — nothing is lost if you leave this screen.</p>' +
+                '<button class="btn btn--dark" id="btn-pick">' + ICONS.gallery + ' Pick finished photos</button>' +
+                '<input type="file" id="gal-input" accept="image/jpeg,image/jpg,image/png,image/webp" multiple style="display:none;">' +
+            '</div>'
+        );
+        wrap.appendChild(card);
+        var host = el('<div></div>');
+        wrap.appendChild(host);
+
+        card.querySelector('#btn-pick').addEventListener('click', function () {
+            card.querySelector('#gal-input').click();
+        });
+        card.querySelector('#gal-input').addEventListener('change', async function () {
+            var files = Array.from(this.files || []);
+            if (!files.length) return;
+
+            var pickBtn = card.querySelector('#btn-pick');
+            pickBtn.disabled = true;
+
+            var existing = [];
+            try { existing = await TwellerApi.galleryFilenames(s.tracking_code); } catch (e) {}
+
+            var fresh = files.filter(function (f) { return existing.indexOf(f.name) === -1; });
+            var skipped = files.length - fresh.length;
+            var totalBytes = fresh.reduce(function (a, f) { return a + f.size; }, 0);
+
+            // Queue immediately — the photos survive app restarts and navigation
+            for (var i = 0; i < fresh.length; i++) {
+                pickBtn.textContent = 'Saving to queue ' + (i + 1) + '/' + fresh.length + '…';
+                await qPut({
+                    type: 'gallery',
+                    code: s.tracking_code,
+                    client: s.client_name,
+                    filename: fresh[i].name,
+                    blob: fresh[i],
+                    size: fresh[i].size,
+                    status: 'pending',
+                    addedAt: Date.now()
+                });
+            }
+            pickBtn.disabled = false;
+            pickBtn.innerHTML = ICONS.gallery + ' Pick more photos';
+            refreshBadge();
+
+            host.innerHTML = '';
+            var sum = el(
+                '<div class="card"><div class="card__title">Queued ✓</div>' +
+                    '<div class="kv"><span class="kv__k">Photos queued</span><span class="kv__v">' + fresh.length +
+                        (skipped ? ' <span style="color:var(--ink-3); font-weight:600;">(' + skipped + ' already delivered)</span>' : '') + '</span></div>' +
+                    '<div class="kv"><span class="kv__k">Exact upload size</span><span class="kv__v kv__v--big">' + fmtMB(totalBytes) + '</span></div>' +
+                '</div>'
+            );
+            if (fresh.length) {
+                var goBtn = el('<button class="btn">Go to Uploads — send ' + fresh.length + ' now</button>');
+                goBtn.addEventListener('click', function () { renderRoot('queue'); });
+                sum.appendChild(goBtn);
+            } else if (skipped) {
+                sum.appendChild(el('<p class="hint" style="margin-bottom:0;">All the photos you picked are already in the gallery.</p>'));
+            }
+            host.appendChild(sum);
+        });
+
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  GALLERY MANAGER — view, cover, delete (before the client sees it)
+    // ═════════════════════════════════════════════════════════════
+
+    function sheet(title, buttons) {
+        var veil = el('<div class="sheet-veil"></div>');
+        var sh = el('<div class="sheet"><div class="sheet__grip"></div>' +
+            (title ? '<div class="sheet__title">' + esc(title) + '</div>' : '') + '</div>');
+        function close() { veil.remove(); sh.remove(); }
+        veil.addEventListener('click', close);
+        buttons.forEach(function (b) {
+            var btn = el('<button class="btn ' + (b.cls || 'btn--ghost') + '">' + b.label + '</button>');
+            btn.addEventListener('click', function () { close(); if (b.fn) b.fn(); });
+            sh.appendChild(btn);
+        });
+        document.body.appendChild(veil);
+        document.body.appendChild(sh);
+    }
+
+    async function renderGalleryManage(code, clientName) {
+        var myScreen = currentScreen();
+        view.innerHTML = '';
+        view.appendChild(topbar('Gallery — ' + clientName));
+        view.appendChild(el('<div class="wrap"><div class="skeleton" style="height:180px;"></div><div class="skeleton"></div></div>'));
+
+        var g;
+        try {
+            g = await TwellerApi.fetchGallery(code);
+        } catch (e) {
+            if (currentScreen() !== myScreen) return;
+            view.innerHTML = '';
+            view.appendChild(topbar('Gallery — ' + clientName));
+            view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load the gallery.<br>' + esc(e.message) + '</p></div></div>'));
+            return;
+        }
+        if (currentScreen() !== myScreen) return;
+        paintGalleryManage(code, clientName, g);
+    }
+
+    function paintGalleryManage(code, clientName, g) {
+        var photos = g.photos || [];
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Gallery — ' + clientName));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        // ── Cover editor ──
+        var coverCard = el('<div class="card"><div class="card__title">Cover photo</div></div>');
+        if (g.cover && g.cover.url) {
+            coverCard.appendChild(el('<p class="hint" style="margin-top:0;">Tap the photo where the focus should sit — that point stays visible however the cover is cropped.</p>'));
+            var ed = el(
+                '<div class="cover-editor">' +
+                    '<img src="' + esc(g.cover.url) + '" alt="">' +
+                    '<div class="cover-editor__dot" style="left:' + (g.cover.pos_x || 50) + '%; top:' + (g.cover.pos_y || 50) + '%;"></div>' +
+                '</div>'
+            );
+            var pos = { x: g.cover.pos_x || 50, y: g.cover.pos_y || 50 };
+            var saveBtn = el('<button class="btn btn--sm" style="margin-top:10px; display:none;">Save focus point</button>');
+            ed.addEventListener('click', function (e) {
+                var r = ed.getBoundingClientRect();
+                pos.x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10;
+                pos.y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10;
+                var dot = ed.querySelector('.cover-editor__dot');
+                dot.style.left = pos.x + '%';
+                dot.style.top = pos.y + '%';
+                saveBtn.style.display = '';
+            });
+            saveBtn.addEventListener('click', async function () {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving…';
+                try {
+                    await TwellerApi.setGalleryCover(code, g.cover.photo_id, pos.x, pos.y);
+                    saveBtn.textContent = '✓ Saved';
+                    setTimeout(function () { saveBtn.style.display = 'none'; saveBtn.disabled = false; saveBtn.textContent = 'Save focus point'; }, 1200);
+                } catch (e) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save focus point';
+                    toast('Could not save: ' + e.message, 5000);
+                }
+            });
+            coverCard.appendChild(ed);
+            coverCard.appendChild(saveBtn);
+        } else {
+            coverCard.appendChild(el('<p class="empty" style="padding:10px 0;">No photos yet — the first upload becomes the cover.</p>'));
+        }
+        wrap.appendChild(coverCard);
+
+        // ── Photo grid ──
+        var selMode = false;
+        var selected = {};
+        var gridCard = el(
+            '<div class="card"><div class="card__title"><span>Photos (' + photos.length + ')</span>' +
+            '<button class="link" id="sel-toggle">Select</button></div><div class="gal-grid"></div></div>'
+        );
+        var grid = gridCard.querySelector('.gal-grid');
+        var delBar = el('<button class="btn btn--danger" style="display:none;">Delete selected</button>');
+
+        function refreshDelBar() {
+            var n = Object.keys(selected).length;
+            delBar.style.display = (selMode && n) ? '' : 'none';
+            delBar.textContent = 'Delete ' + n + ' selected photo' + (n === 1 ? '' : 's');
+        }
+
+        photos.forEach(function (p) {
+            var isCover = g.cover && g.cover.photo_id === p.id;
+            var t = el(
+                '<div class="gal-thumb' + (isCover ? ' gal-thumb--cover' : '') + '">' +
+                    '<img src="' + esc(p.thumb_url) + '" loading="lazy" alt="">' +
+                    '<span class="gal-thumb__check">✓</span>' +
+                '</div>'
+            );
+            t.addEventListener('click', function () {
+                if (selMode) {
+                    if (selected[p.id]) { delete selected[p.id]; t.classList.remove('gal-thumb--selected'); }
+                    else { selected[p.id] = p; t.classList.add('gal-thumb--selected'); }
+                    refreshDelBar();
+                    return;
+                }
+                sheet(p.filename, [
+                    { label: 'Set as cover photo', cls: '', fn: async function () {
+                        try {
+                            await TwellerApi.setGalleryCover(code, p.id);
+                            toast('Cover updated.');
+                            renderGalleryManage(code, clientName);
+                        } catch (e) { toast('Could not set cover: ' + e.message, 5000); }
+                    } },
+                    { label: 'Delete this photo', cls: 'btn--danger', fn: async function () {
+                        if (!confirm('Delete ' + p.filename + ' from the gallery?')) return;
+                        try {
+                            await TwellerApi.deleteGalleryPhotos(code, [p.id]);
+                            toast('Photo deleted.');
+                            renderGalleryManage(code, clientName);
+                        } catch (e) { toast('Could not delete: ' + e.message, 5000); }
+                    } },
+                    { label: 'Cancel', cls: 'btn--ghost', fn: null }
+                ]);
+            });
+            grid.appendChild(t);
+        });
+
+        gridCard.querySelector('#sel-toggle').addEventListener('click', function () {
+            selMode = !selMode;
+            selected = {};
+            this.textContent = selMode ? 'Done' : 'Select';
+            grid.querySelectorAll('.gal-thumb').forEach(function (x) { x.classList.remove('gal-thumb--selected'); });
+            grid.classList.toggle('gal-grid--select', selMode);
+            refreshDelBar();
+        });
+
+        delBar.addEventListener('click', async function () {
+            var ids = Object.keys(selected);
+            if (!ids.length) return;
+            if (!confirm('Delete ' + ids.length + ' photo' + (ids.length === 1 ? '' : 's') + ' from the gallery? This cannot be undone.')) return;
+            delBar.disabled = true;
+            delBar.textContent = 'Deleting…';
+            try {
+                await TwellerApi.deleteGalleryPhotos(code, ids);
+                toast(ids.length + ' deleted.');
+                renderGalleryManage(code, clientName);
+            } catch (e) {
+                delBar.disabled = false;
+                toast('Could not delete: ' + e.message, 5000);
+            }
+        });
+
+        if (!photos.length) {
+            gridCard.appendChild(el('<p class="empty">Nothing in the gallery yet.</p>'));
+        }
+        wrap.appendChild(gridCard);
+        wrap.appendChild(delBar);
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  SEND ALBUM TO PRINT LAB
+    // ═════════════════════════════════════════════════════════════
+
+    async function renderSendToLab(d) {
+        var s = d.session;
+        var myScreen = currentScreen();
+
+        view.innerHTML = '';
+        view.appendChild(topbar('Send to print lab'));
+        view.appendChild(el('<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>'));
+
+        var opts;
+        try {
+            opts = await TwellerApi.fetchStudioPrintOptions();
+        } catch (e) {
+            if (currentScreen() !== myScreen) return;
+            view.innerHTML = '';
+            view.appendChild(topbar('Send to print lab'));
+            view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load print options.<br>' + esc(e.message) + '</p></div></div>'));
+            return;
+        }
+        if (currentScreen() !== myScreen) return;
+
+        var photoCount = (d.gallery && d.gallery.photo_count) || 0;
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Send to print lab'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var prodOptions = (opts.products || []).map(function (p) {
+            return '<option value="' + esc(p.id) + '" data-price="' + (p.price || 0) + '">' +
+                esc(p.name) + ' — ' + money(p.price || 0) + '</option>';
+        }).join('');
+        if (!prodOptions) prodOptions = '<option value="">No active products</option>';
+
+        var provOptions = '<option value="">Don\u2019t send yet — just create the order</option>' +
+            (opts.providers || []).map(function (pv) {
+                return '<option value="' + esc(pv.id) + '"' + (pv.default ? ' selected' : '') + '>' + esc(pv.name) + '</option>';
+            }).join('');
+
+        var meetOptions = (opts.meetup_points || []).map(function (m) {
+            return '<option value="' + esc(m) + '">' + esc(m) + '</option>';
+        }).join('');
+
+        var card = el(
+            '<div class="card">' +
+                '<div class="card__title">' + esc(s.client_name) + ' · ' + photoCount + ' photo' + (photoCount === 1 ? '' : 's') + '</div>' +
+                '<p class="hint" style="margin-top:0;">Creates a real print order for this album, priced from your catalog and linked to the client\u2019s portal.</p>' +
+                '<div class="field"><label>Size / product</label><select id="lab-product">' + prodOptions + '</select></div>' +
+                '<div class="field"><label>Copies of each photo</label><input type="number" id="lab-qty" min="1" max="50" value="1"></div>' +
+                '<div class="field"><label>How it reaches the client</label><select id="lab-fulfil">' +
+                    '<option value="meetup">Meet-up (free)</option>' +
+                    '<option value="delivery">Delivery — ' + money(opts.delivery_fee || 0) + '</option>' +
+                '</select></div>' +
+                '<div class="field" id="lab-meet-wrap"><label>Meet-up point</label><select id="lab-meet">' + meetOptions + '</select></div>' +
+                '<div class="field"><label>Print lab</label><select id="lab-provider">' + provOptions + '</select></div>' +
+                '<div class="field"><label>Note for the lab (optional)</label><textarea id="lab-notes" rows="2"></textarea></div>' +
+                '<label class="toggle"><input type="checkbox" id="lab-notify"><span>Email the client their order confirmation</span></label>' +
+                '<div class="kv" style="margin-top:10px;"><span class="kv__k">Estimated total</span><span class="kv__v kv__v--big" id="lab-total">—</span></div>' +
+                '<button class="btn" id="lab-send">Create print order</button>' +
+            '</div>'
+        );
+        wrap.appendChild(card);
+
+        var prodEl = card.querySelector('#lab-product');
+        var qtyEl = card.querySelector('#lab-qty');
+        var fulfilEl = card.querySelector('#lab-fulfil');
+        var meetWrap = card.querySelector('#lab-meet-wrap');
+        var totalEl = card.querySelector('#lab-total');
+
+        // Mirrors the server's arithmetic so the number shown here is the
+        // number the order is actually created with.
+        function recalc() {
+            var opt = prodEl.options[prodEl.selectedIndex];
+            var unit = opt ? parseFloat(opt.getAttribute('data-price') || 0) : 0;
+            var qty = Math.max(1, Math.min(50, parseInt(qtyEl.value, 10) || 1));
+            var total = unit * qty * photoCount;
+            if (fulfilEl.value === 'delivery') total += parseFloat(opts.delivery_fee || 0);
+            totalEl.textContent = money(total);
+            meetWrap.style.display = fulfilEl.value === 'delivery' ? 'none' : '';
+        }
+        prodEl.addEventListener('change', recalc);
+        qtyEl.addEventListener('input', recalc);
+        fulfilEl.addEventListener('change', recalc);
+        recalc();
+
+        card.querySelector('#lab-send').addEventListener('click', async function () {
+            var btn = this;
+            if (!photoCount) { toast('This album has no photos yet.'); return; }
+            if (!prodEl.value) { toast('Pick a product first.'); return; }
+            if (!confirm('Create a print order for ' + photoCount + ' photo' + (photoCount === 1 ? '' : 's') +
+                         ' at ' + totalEl.textContent + '?')) return;
+
+            btn.disabled = true;
+            btn.textContent = 'Creating\u2026';
+            try {
+                var res = await TwellerApi.sendSessionToPrintLab({
+                    session_code: s.tracking_code,
+                    product_id: prodEl.value,
+                    qty: qtyEl.value || 1,
+                    fulfilment: fulfilEl.value,
+                    meetup_location: fulfilEl.value === 'meetup' ? card.querySelector('#lab-meet').value : '',
+                    provider_id: card.querySelector('#lab-provider').value,
+                    notes: card.querySelector('#lab-notes').value,
+                    notify_customer: card.querySelector('#lab-notify').checked ? '1' : ''
+                });
+                // The order being created is only half the story. The server
+                // reports what actually happened with the lab — assignment is
+                // instant, but the files may still be building, the package
+                // email may have failed, or no lab was picked at all. A bare
+                // "created" here is what hid a 116-photo hand-off that never
+                // reached a provider.
+                var ref = res.order_ref || '';
+                var state = res.provider_state || '';
+                var lab = res.provider_name || '';
+                var note = res.provider_note || '';
+
+                if (state === 'sent') {
+                    toast('Print order ' + ref + ' created and sent to ' + lab + '.', 5000);
+                    refreshPrintsBadge();
+                    renderRoot('prints');
+                    return;
+                }
+
+                // Anything other than a clean send stays on screen until the
+                // studio has actually read it.
+                btn.disabled = false;
+                btn.textContent = 'Create print order';
+
+                var tone = (state === 'assigned_building' || state === 'unassigned') ? 'gold' : 'red';
+                var headline;
+                if (state === 'assigned_building') {
+                    headline = 'Order ' + ref + ' created and assigned to ' + lab + ' — files still building';
+                } else if (state === 'unassigned') {
+                    headline = 'Order ' + ref + ' created — no print lab chosen';
+                } else if (state === 'assigned_build_failed') {
+                    headline = 'Order ' + ref + ' assigned to ' + lab + ', but the print files failed';
+                } else if (state === 'assigned_send_failed') {
+                    headline = 'Order ' + ref + ' assigned to ' + lab + ', but the email to them failed';
+                } else {
+                    headline = 'Order ' + ref + ' created — the hand-off did not complete';
+                }
+
+                var old = card.querySelector('.lab-result');
+                if (old && old.parentNode) old.parentNode.removeChild(old);
+
+                var msg = el(
+                    '<div class="lab-result" style="margin-top:14px; padding:12px 14px; border-radius:12px; ' +
+                    (tone === 'gold'
+                        ? 'background:var(--gold-soft); color:var(--gold-deep);'
+                        : 'background:var(--red-soft); color:var(--red);') + '">' +
+                    '<div style="font-weight:700; margin-bottom:4px;">' + esc(headline) + '</div>' +
+                    '<div style="font-size:13px; line-height:1.6;">' + esc(note) + '</div>' +
+                    '</div>'
+                );
+                var openBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:10px;">Open the Print Store</button>');
+                openBtn.addEventListener('click', function () {
+                    refreshPrintsBadge();
+                    renderRoot('prints');
+                });
+                msg.appendChild(openBtn);
+                card.appendChild(msg);
+
+                refreshPrintsBadge();
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = 'Create print order';
+                toast('Could not create: ' + e.message, 6000);
+            }
+        });
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  NEW BOOKING
+    // ═════════════════════════════════════════════════════════════
+
+    function renderNewBooking() {
+        var ov = state.overview || (TwellerApi.cachedOverview() || {}).data || {};
+        var packages = ov.packages || [];
+
+        view.innerHTML = '';
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('New booking'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var pkgOptions = packages.length
+            ? packages.map(function (p) {
+                return '<option value="' + esc(p.key) + '" data-price="' + (p.price || 0) + '">' +
+                    esc(p.name) + (p.price ? ' — TT$' + p.price : '') + '</option>';
+              }).join('')
+            : '<option value="mini">Mini</option><option value="family">Family</option><option value="portrait">Portrait</option>';
+
+        var form = el(
+            '<div class="card">' +
+                '<div class="field"><label>Client name *</label><input type="text" id="nb-name" autocomplete="name"></div>' +
+                '<div class="field"><label>Email</label><input type="email" id="nb-email" autocomplete="email"></div>' +
+                '<div class="field"><label>Phone</label><input type="tel" id="nb-phone" autocomplete="tel"></div>' +
+                '<div class="field"><label>Package</label><select id="nb-pkg">' + pkgOptions + '</select></div>' +
+                '<div class="field"><label>Date *</label><input type="date" id="nb-date" value="' + new Date().toISOString().slice(0, 10) + '"></div>' +
+                '<div class="field"><label>Time</label><input type="time" id="nb-time"></div>' +
+                '<div class="field"><label>Location</label><input type="text" id="nb-loc"></div>' +
+                '<div class="field"><label>People</label><input type="number" id="nb-members" min="1" value="1"></div>' +
+                '<div class="field"><label>Total (TT$)</label><input type="number" id="nb-total" min="0" step="0.01" value="0"></div>' +
+                '<div class="field"><label>Deposit received (TT$)</label><input type="number" id="nb-deposit" min="0" step="0.01" value="0"></div>' +
+                '<div class="field"><label>Payment status</label><select id="nb-pay">' +
+                    '<option value="pending">Unpaid</option><option value="deposit">Deposit paid</option><option value="paid">Paid in full</option>' +
+                '</select></div>' +
+                '<div class="field"><label>Notes</label><textarea id="nb-notes" placeholder="Anything worth remembering"></textarea></div>' +
+                '<label class="toggle"><input type="checkbox" id="nb-email-toggle" checked><span>Send the client the welcome email (with payment details + calendar hold)</span></label>' +
+                '<button class="btn" id="nb-save">Create booking</button>' +
+            '</div>'
+        );
+
+        // Auto-fill total from the chosen package
+        form.querySelector('#nb-pkg').addEventListener('change', function () {
+            var opt = this.options[this.selectedIndex];
+            var price = parseFloat(opt.getAttribute('data-price') || 0);
+            if (price > 0) form.querySelector('#nb-total').value = price;
+        });
+        var firstOpt = form.querySelector('#nb-pkg').options[0];
+        if (firstOpt && parseFloat(firstOpt.getAttribute('data-price') || 0) > 0) {
+            form.querySelector('#nb-total').value = parseFloat(firstOpt.getAttribute('data-price'));
+        }
+
+        form.querySelector('#nb-save').addEventListener('click', async function () {
+            var btn = this;
+            var name = form.querySelector('#nb-name').value.trim();
+            if (!name) { toast('Client name is required.'); return; }
+
+            btn.disabled = true;
+            btn.textContent = 'Creating…';
+            try {
+                var res = await TwellerApi.createSession({
+                    client_name: name,
+                    client_email: form.querySelector('#nb-email').value.trim(),
+                    client_phone: form.querySelector('#nb-phone').value.trim(),
+                    package_type: form.querySelector('#nb-pkg').value,
+                    session_date: form.querySelector('#nb-date').value,
+                    session_time: form.querySelector('#nb-time').value,
+                    location: form.querySelector('#nb-loc').value.trim(),
+                    members_count: form.querySelector('#nb-members').value || 1,
+                    total_amount: form.querySelector('#nb-total').value || 0,
+                    deposit_amount: form.querySelector('#nb-deposit').value || 0,
+                    payment_status: form.querySelector('#nb-pay').value,
+                    notes: form.querySelector('#nb-notes').value.trim(),
+                    send_email: form.querySelector('#nb-email-toggle').checked ? '1' : ''
+                });
+                toast(res.existing ? 'That client already has a session on that date — opening it.' : 'Booking created for ' + name + '.');
+                TwellerApi.fetchSessions({ range: 'all' }).catch(function () {});
+                TwellerApi.fetchOverview().catch(function () {});
+                openSession(res.tracking_code);
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = 'Create booking';
+                toast('Could not create: ' + e.message, 5000);
+            }
+        });
+
+        wrap.appendChild(form);
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  PRINT ORDERS
+    // ═════════════════════════════════════════════════════════════
+
+    // The order's life in the order it actually happens.
+    var ORDER_LADDER = ['new', 'confirmed', 'printing', 'ready', 'completed'];
+    var ORDER_STATUSES = ORDER_LADDER.concat(['cancelled']);
+    var ORDER_META = {
+        new:       { label: 'Order received',    pill: 'gold',   action: 'Confirm payment' },
+        confirmed: { label: 'Payment confirmed', pill: 'blue',   action: 'Start printing' },
+        printing:  { label: 'In printing',       pill: 'purple', action: 'Printing complete' },
+        ready:     { label: 'Printing complete', pill: 'green',  action: 'Mark delivered' },
+        completed: { label: 'Delivered',         pill: 'gray',   action: '' },
+        cancelled: { label: 'Cancelled',         pill: 'red',    action: '' }
+    };
+    function orderMeta(st) { return ORDER_META[st] || { label: st || '—', pill: 'gray', action: '' }; }
+    function ladderIndex(st) { return ORDER_LADDER.indexOf(st); }
+
+    function orderPill(status) {
+        var m = orderMeta(status);
+        return '<span class="pill pill--' + m.pill + '">' + esc(m.label) + '</span>';
+    }
+
+    /**
+     * Who a print job was sent to. The server puts the assigned lab on every
+     * order in the list payload, so this never costs an extra call — and an
+     * unassigned order says so plainly rather than looking finished.
+     */
+    function labName(o) {
+        if (!o) return '';
+        if (o.provider_name) return String(o.provider_name);
+        if (o.fulfillment_stage && o.fulfillment_stage.provider_name) {
+            return String(o.fulfillment_stage.provider_name);
+        }
+        return '';
+    }
+
+    /** Short "who has it" line for an order card. */
+    function labLine(o) {
+        var name = labName(o);
+        var st = o && o.fulfillment_stage;
+        if (!name) {
+            if (st && st.key === 'delivered') return '';
+            return '<div class="row__meta" style="color:var(--ink-3);">Not sent to a lab yet</div>';
+        }
+        var extra = '';
+        if (st && st.build_error) extra = ' · files failed to build';
+        else if (st && st.send_pending) extra = ' · files still building';
+        return '<div class="row__meta" style="color:var(--gold-deep);">Sent to ' + esc(name) + esc(extra) + '</div>';
+    }
+
+    function orderItems(order) {
+        var items = order.items;
+        if (typeof items === 'string') {
+            try { items = JSON.parse(items); } catch (e) { items = []; }
+        }
+        return Array.isArray(items) ? items : [];
+    }
+
+    async function refreshPrintsBadge(data) {
+        if (!data) {
+            var cache = TwellerApi.cachedPrintOrders();
+            data = cache && cache.data;
+            // Also refresh from the network quietly
+            TwellerApi.fetchPrintOrders().then(function (fresh) {
+                paintPrintsBadge(fresh);
+            }).catch(function () {});
+        }
+        paintPrintsBadge(data);
+        refreshApplicationsCount();
+    }
+
+    /**
+     * Pending print-partner applications ride on the same tab badge as
+     * orders awaiting payment, so a lab that applied overnight is visible
+     * without opening anything.
+     */
+    function refreshApplicationsCount() {
+        var cached = TwellerApi.cachedProviderRequests();
+        if (cached && cached.data && cached.data.counts) {
+            state.pendingApps = parseInt(cached.data.counts['new'], 10) || 0;
+            paintPrintsBadge();
+        }
+        TwellerApi.fetchProviderRequests().then(function (fresh) {
+            state.pendingApps = (fresh.counts && parseInt(fresh.counts['new'], 10)) || 0;
+            paintPrintsBadge();
+        }).catch(function () {});
+    }
+
+    function paintPrintsBadge(data) {
+        var badge = document.getElementById('prints-badge');
+        if (data) state.printsData = data;
+        data = data || state.printsData;
+        if (!badge) return;
+        var n = 0;
+        if (data) {
+            if (data.counts && data.counts.new !== undefined) n = parseInt(data.counts.new, 10) || 0;
+            else n = (data.orders || []).filter(function (o) { return o.status === 'new'; }).length;
+        }
+        n += state.pendingApps || 0;
+        badge.style.display = n ? '' : 'none';
+        badge.textContent = n;
+    }
+
+    async function renderPrints() {
+        // Cache-first: show the last orders instantly, refresh behind
+        var cache = TwellerApi.cachedPrintOrders();
+        if (cache && cache.data) {
+            paintPrints(cache.data, true);
+        } else {
+            view.innerHTML =
+                '<div class="screen">' +
+                    '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Print Store</div></header>' +
+                    '<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>' +
+                '</div>';
+        }
+
+        try {
+            var data = await TwellerApi.fetchPrintOrders();
+            paintPrintsBadge(data);
+            if (activeTabName() === 'prints' && !navStack.length) paintPrints(data, false);
+        } catch (e) {
+            if (!cache && activeTabName() === 'prints' && !navStack.length) {
+                view.innerHTML = '';
+                view.appendChild(el(
+                    '<div class="screen"><header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Print Store</div></header>' +
+                    '<div class="wrap"><div class="card"><p class="empty">Could not load print orders.<br>' + esc(e.message) +
+                    '<br><br>Make sure the website plugin is up to date.</p></div></div></div>'
+                ));
+            }
+        }
+    }
+
+    function paintPrints(data, isStale) {
+        var orders = data.orders || (Array.isArray(data) ? data : []);
+        var pendingNew = data.counts && data.counts.new !== undefined
+            ? parseInt(data.counts.new, 10) || 0
+            : orders.filter(function (o) { return o.status === 'new'; }).length;
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(el(
+            '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Print Store</div>' +
+            '<div class="hdr__sub">' + orders.length + ' orders' +
+            (pendingNew ? ' · <strong style="color:var(--gold-deep);">' + pendingNew + ' awaiting payment</strong>' : '') +
+            (isStale ? ' · refreshing…' : '') + '</div></header>'
+        ));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var scanBtn = el('<button class="btn btn--dark" style="margin-bottom:18px;">' + ICONS.scan + ' Scan delivery</button>');
+        scanBtn.addEventListener('click', function () {
+            push(function () { renderScanner(); });
+        });
+        wrap.appendChild(scanBtn);
+
+        wrap.appendChild(buildStudioNav());
+
+        var filter = '';
+        var chips = el('<div class="chips"></div>');
+        [''].concat(ORDER_STATUSES).forEach(function (st) {
+            var c = el('<button class="chip' + (st === '' ? ' chip--on' : '') + '">' + esc(st ? orderMeta(st).label : 'All') + '</button>');
+            c.addEventListener('click', function () {
+                filter = st;
+                chips.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('chip--on'); });
+                c.classList.add('chip--on');
+                paintList();
+            });
+            chips.appendChild(c);
+        });
+        wrap.appendChild(chips);
+
+        var listCard = el('<div class="card"></div>');
+        wrap.appendChild(listCard);
+
+        function paintList() {
+            var rows = orders.filter(function (o) { return !filter || o.status === filter; });
+            listCard.innerHTML = '';
+            if (!rows.length) {
+                listCard.appendChild(el('<p class="empty">No print orders here yet.<br>Orders from client galleries and the public print page land in this tab.</p>'));
+                return;
+            }
+            rows.forEach(function (o) {
+                var items = orderItems(o);
+                var hasReceipt = !!o.receipt_url;
+                var row = el(
+                    '<div class="row">' +
+                        '<span class="avatar avatar--sm">' + esc(initials(o.customer_name)) + '</span>' +
+                        '<span class="row__body"><div class="row__name">' + esc(o.customer_name || o.order_ref) +
+                        (hasReceipt && o.status === 'new' ? ' <span class="pill pill--red" style="font-size:10px;">Receipt in — verify</span>' : '') + '</div>' +
+                        '<div class="row__meta">' + esc(o.order_ref) + ' · ' + items.length + ' item' + (items.length === 1 ? '' : 's') +
+                        ' · ' + esc(money(o.subtotal)) + '</div>' +
+                        labLine(o) + '</span>' +
+                        '<span class="row__end">' + orderPill(o.status) + '</span>' +
+                    '</div>'
+                );
+                row.addEventListener('click', function () {
+                    push(function () { renderPrintOrderDetail(o); });
+                });
+                listCard.appendChild(row);
+            });
+        }
+        paintList();
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    function renderPrintOrderDetail(o) {
+        var items = orderItems(o);
+        view.innerHTML = '';
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar(o.order_ref));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        // Customer
+        var cust = el(
+            '<div class="card"><div class="card__title">Customer</div>' +
+                '<div class="kv"><span class="kv__k">Name</span><span class="kv__v">' + esc(o.customer_name || '—') + '</span></div>' +
+                (o.customer_phone ? '<div class="kv"><span class="kv__k">Phone</span><span class="kv__v"><a href="tel:' + esc(o.customer_phone) + '">' + esc(o.customer_phone) + '</a></span></div>' : '') +
+                (o.customer_email ? '<div class="kv"><span class="kv__k">Email</span><span class="kv__v"><a href="mailto:' + esc(o.customer_email) + '">' + esc(o.customer_email) + '</a></span></div>' : '') +
+                '<div class="kv"><span class="kv__k">Source</span><span class="kv__v">' + esc(o.source === 'public' ? 'Public print page' : 'Client gallery' + (o.session_code ? ' · ' + o.session_code : '')) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Placed</span><span class="kv__v">' + esc(fmtStamp(o.created_at)) + '</span></div>' +
+            '</div>'
+        );
+        wrap.appendChild(cust);
+
+        // Print lab — the same answer the orders list gives, spelled out.
+        wrap.appendChild(buildLabCard(o));
+
+        // Items — the grouped summary the server already sends, with the
+        // full per-photo list collapsed behind a toggle. A 116-photo order
+        // used to render 116 rows here.
+        var summary = o.summary && o.summary.groups ? o.summary : null;
+        var itemsCard = el('<div class="card"><div class="card__title">Order summary</div></div>');
+
+        if (summary) {
+            // Product rows, then service rows (delivery / cropping). The
+            // service lines already live in summary.groups, so the
+            // fulfilment block only adds the meet-up location — rendering
+            // it as its own money row showed delivery charged twice.
+            summary.groups.forEach(function (g) {
+                var label = g.label + (g.size && g.label.indexOf(g.size.replace(/"$/, '')) < 0 ? ' · ' + g.size : '');
+                if (g.service && o.fulfilment && o.fulfilment.mode === 'meetup' && o.fulfilment.location) {
+                    label += ' · ' + o.fulfilment.location;
+                }
+                var qtyNote = g.service ? '' : ' <span style="color:var(--ink-3);">×' + (g.qty || 0) + ' @ ' + esc(money(g.unit || 0)) + '</span>';
+                itemsCard.appendChild(el(
+                    '<div class="kv"><span class="kv__k">' + esc(label) + qtyNote + '</span>' +
+                    '<span class="kv__v">' + esc((g.line || 0) > 0 ? money(g.line) : 'Free') + '</span></div>'
+                ));
+            });
+        }
+
+        itemsCard.appendChild(el(
+            '<div class="kv" style="margin-top:8px;"><span class="kv__k">Total' +
+            (summary ? ' · ' + summary.pieces + ' print' + (summary.pieces === 1 ? '' : 's') +
+                       ' from ' + summary.photos + ' photo' + (summary.photos === 1 ? '' : 's') : '') +
+            '</span><span class="kv__v kv__v--big">' + esc(money(o.subtotal)) + '</span></div>'
+        ));
+
+        // Expandable full list — hidden by default.
+        if (items.length) {
+            var listHost = el('<div class="order-items" style="display:none;"></div>');
+            var built = false;
+            var toggle = el('<button class="btn btn--ghost btn--sm" style="margin-top:12px;">Show all ' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</button>');
+            toggle.addEventListener('click', function () {
+                var open = listHost.style.display !== 'none';
+                if (!open && !built) {
+                    // Built lazily — a long order should not cost anything
+                    // to render until it is actually asked for.
+                    items.forEach(function (it) {
+                        listHost.appendChild(el(
+                            '<div class="order-item">' +
+                                (it.thumb_url || it.photo_url ? '<img src="' + esc(it.thumb_url || it.photo_url) + '" loading="lazy" alt="">' : '') +
+                                '<span class="order-item__body">' +
+                                    '<div class="order-item__name">' + esc(it.product_name || '') + '</div>' +
+                                    '<div class="order-item__meta">' + esc(it.filename || '') + ' · ×' + (it.qty || 1) + '</div>' +
+                                '</span>' +
+                                '<span class="order-item__price">' + esc(money((it.price || 0) * (it.qty || 1))) + '</span>' +
+                            '</div>'
+                        ));
+                    });
+                    built = true;
+                }
+                listHost.style.display = open ? 'none' : '';
+                toggle.textContent = open
+                    ? 'Show all ' + items.length + ' item' + (items.length === 1 ? '' : 's')
+                    : 'Hide items';
+            });
+            itemsCard.appendChild(toggle);
+            itemsCard.appendChild(listHost);
+        }
+
+        // Copy the print list (for sending to the lab)
+        var copyBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:10px;">Copy print list</button>');
+        copyBtn.addEventListener('click', function () {
+            var text = 'Print order ' + o.order_ref + ' — ' + (o.customer_name || '') + '\n' +
+                items.map(function (it) {
+                    return (it.qty || 1) + '× ' + (it.product_name || '') + ' — ' + (it.filename || '');
+                }).join('\n');
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function () { toast('Print list copied.'); });
+            } else {
+                prompt('Copy the print list:', text);
+            }
+        });
+        itemsCard.appendChild(copyBtn);
+        wrap.appendChild(itemsCard);
+
+        // Payment
+        var payCard = el('<div class="card"><div class="card__title">Payment</div></div>');
+        var txnId = o.transaction_id || (o.payment && o.payment.transaction_id) || '';
+        if (txnId) {
+            payCard.appendChild(el(
+                '<div class="kv"><span class="kv__k">Paid by card (WiPay)</span><span class="kv__v" style="font-size:12px;">' + esc(txnId) + '</span></div>'
+            ));
+        }
+        if (o.receipt_url) {
+            payCard.appendChild(el(
+                '<div class="kv"><span class="kv__k">Bank transfer receipt</span><span class="kv__v"><a href="' + esc(o.receipt_url) + '" target="_blank">View ↗</a></span></div>'
+            ));
+            if (o.receipt_confirmed_amount || o.receipt_ocr) {
+                var claimed = parseFloat(o.receipt_confirmed_amount || 0) || 0;
+                var mismatch = claimed && Math.abs(claimed - parseFloat(o.subtotal || 0)) > 0.5;
+                payCard.appendChild(el(
+                    '<div class="kv"><span class="kv__k">Amount on receipt</span><span class="kv__v"' +
+                    (mismatch ? ' style="color:var(--red);"' : '') + '>' +
+                    esc(claimed ? money(claimed) : o.receipt_ocr || '') + (mismatch ? ' ≠ ' + esc(money(o.subtotal)) : '') + '</span></div>'
+                ));
+            }
+        }
+        if (!txnId && !o.receipt_url) {
+            payCard.appendChild(el('<p class="hint" style="margin:0;">Nothing received yet — the customer can pay by card or upload a transfer receipt from their order page.</p>'));
+        }
+        if (o.status === 'new') {
+            var confirmBtn = el('<button class="btn" style="margin-top:12px;">✓ Confirm payment</button>');
+            confirmBtn.addEventListener('click', async function () {
+                if (!confirm('Confirm you received ' + money(o.subtotal) + ' for ' + o.order_ref + '? The customer is emailed that printing starts.')) return;
+                confirmBtn.disabled = true;
+                try {
+                    await TwellerApi.setPrintOrderStatus(o.id, 'confirmed', true);
+                    o.status = 'confirmed';
+                    toast('Payment confirmed.');
+                    refreshPrintsBadge();
+                    renderPrintOrderDetail(o);
+                } catch (e) {
+                    confirmBtn.disabled = false;
+                    toast('Could not update: ' + e.message, 5000);
+                }
+            });
+            payCard.appendChild(confirmBtn);
+        }
+        if (o.status === 'ready' || o.status === 'printing') {
+            var scanThis = el('<button class="btn btn--dark btn--sm" style="margin-top:8px;">' + ICONS.scan + ' Scan / mark this delivered</button>');
+            scanThis.addEventListener('click', function () {
+                push(function () { renderScanner(o.order_ref); });
+            });
+            payCard.appendChild(scanThis);
+        }
+
+        if (o.portal_url) {
+            var portalBtn = el('<button class="btn btn--ghost btn--sm" style="margin-top:8px;">Open customer order page ' + ICONS.link + '</button>');
+            portalBtn.addEventListener('click', function () { openExternal(o.portal_url); });
+            payCard.appendChild(portalBtn);
+        }
+        wrap.appendChild(payCard);
+
+        // Progress — the order's life, in order
+        wrap.appendChild(buildOrderStepper(o));
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    /**
+     * "Who is this with?" on the order detail screen. Reads the stage the
+     * server derived — never a second opinion computed on the phone.
+     */
+    function buildLabCard(o) {
+        var card = el('<div class="card"><div class="card__title">Print lab</div></div>');
+        var name = labName(o);
+        var st = (o && o.fulfillment_stage) || null;
+
+        if (!name) {
+            card.appendChild(el('<p class="hint" style="margin:0;">This order has not been sent to a print lab yet.</p>'));
+            return card;
+        }
+
+        card.appendChild(el(
+            '<div class="kv"><span class="kv__k">Sent to</span><span class="kv__v">' + esc(name) + '</span></div>'
+        ));
+        if (o.assigned_at) {
+            card.appendChild(el(
+                '<div class="kv"><span class="kv__k">Since</span><span class="kv__v">' + esc(fmtStamp(o.assigned_at)) + '</span></div>'
+            ));
+        }
+        if (st && st.short) {
+            card.appendChild(el(
+                '<div class="kv"><span class="kv__k">Status</span><span class="kv__v">' + esc(st.short) + '</span></div>'
+            ));
+        }
+        if (st && st.build_error) {
+            card.appendChild(el(
+                '<p class="hint" style="margin:8px 0 0; color:var(--red);">Print files failed to build, so ' +
+                esc(name) + ' has not received the package yet. ' + esc(st.build_error) + '</p>'
+            ));
+        } else if (st && st.send_pending) {
+            card.appendChild(el(
+                '<p class="hint" style="margin:8px 0 0;">The print files are still being prepared — they are emailed to ' +
+                esc(name) + ' automatically as soon as they finish.</p>'
+            ));
+        }
+        return card;
+    }
+
+    /**
+     * The order ladder as a stepper: past steps ticked, the current step
+     * highlighted, and one primary button that advances exactly one step.
+     */
+    function buildOrderStepper(o) {
+        var card = el('<div class="card"><div class="card__title">Progress</div></div>');
+
+        if (o.status === 'cancelled') {
+            card.appendChild(el('<p class="empty" style="padding:10px 0;">This order was cancelled.</p>'));
+            return card;
+        }
+
+        var current = ladderIndex(o.status);
+        var tl = el('<div class="tl"></div>');
+        ORDER_LADDER.forEach(function (st, idx) {
+            var cls = idx < current ? 'tl__item--done' : (idx === current ? 'tl__item--current' : 'tl__item--future');
+            tl.appendChild(el(
+                '<div class="tl__item ' + cls + '">' +
+                    '<div class="tl__rail"><div class="tl__dot"></div><div class="tl__line"></div></div>' +
+                    '<div class="tl__body"><div class="tl__stage">' + esc(orderMeta(st).label) + '</div></div>' +
+                '</div>'
+            ));
+        });
+        card.appendChild(tl);
+
+        var notifyToggle = el('<label class="toggle"><input type="checkbox" checked><span>Email the customer about this update</span></label>');
+        card.appendChild(notifyToggle);
+
+        function advanceTo(target, label) {
+            return async function () {
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Updating…';
+                try {
+                    await TwellerApi.setPrintOrderStatus(o.id, target, notifyToggle.querySelector('input').checked);
+                    o.status = target;
+                    toast('Order updated: ' + label + '.');
+                    refreshPrintsBadge();
+                    renderPrintOrderDetail(o);
+                } catch (e) {
+                    btn.disabled = false;
+                    btn.textContent = label;
+                    toast('Could not update: ' + e.message, 5000);
+                }
+            };
+        }
+
+        // One forward step at a time — no jumping the queue.
+        var next = ORDER_LADDER[current + 1];
+        if (current >= 0 && next) {
+            var actionLabel = orderMeta(o.status).action || ('Mark ' + orderMeta(next).label.toLowerCase());
+            var nextBtn = el('<button class="btn">' + esc(actionLabel) + '</button>');
+            nextBtn.addEventListener('click', advanceTo(next, orderMeta(next).label));
+            card.appendChild(nextBtn);
+        }
+
+        // Step back one, for mistakes
+        var prev = current > 0 ? ORDER_LADDER[current - 1] : null;
+        if (prev) {
+            var backBtn = el('<button class="btn btn--ghost btn--sm" style="margin-right:8px;">← Back to ' + esc(orderMeta(prev).label.toLowerCase()) + '</button>');
+            backBtn.addEventListener('click', advanceTo(prev, orderMeta(prev).label));
+            card.appendChild(backBtn);
+        }
+
+        if (o.status !== 'completed') {
+            var cancelBtn = el('<button class="btn btn--danger btn--sm">Cancel order</button>');
+            cancelBtn.addEventListener('click', function () {
+                if (!confirm('Cancel ' + o.order_ref + '?')) return;
+                advanceTo('cancelled', 'Cancelled').call(this);
+            });
+            card.appendChild(cancelBtn);
+        }
+
+        return card;
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  PRINT OPERATION — labs, applications, economics
+    //  (studio-only screens: cost, payout and margin live here)
+    // ═════════════════════════════════════════════════════════════
+
+    /** The three studio screens, reached from the Prints tab root. */
+    function buildStudioNav() {
+        var card = el('<div class="card"><div class="card__title">Your print operation</div></div>');
+
+        var provCache = TwellerApi.cachedProviders();
+        var providers = (provCache && provCache.data && provCache.data.providers) || [];
+        var withLogin = providers.filter(function (p) { return p.account && p.account.linked; }).length;
+        var labMeta = providers.length
+            ? providers.length + ' lab' + (providers.length === 1 ? '' : 's') + ' · ' + withLogin + ' with a portal login'
+            : 'Add the labs you print with, and what they charge you';
+
+        var ecoCache = TwellerApi.cachedProviderSummary();
+        var eco = ecoCache && ecoCache.data && ecoCache.data.economics;
+        var ecoMeta = (eco && eco.month)
+            ? eco.month.orders + ' job' + (eco.month.orders === 1 ? '' : 's') + ' this month · ' + money(eco.month.margin) + ' margin'
+            : 'Revenue, lab payouts and margin';
+
+        var pending = state.pendingApps || 0;
+        var appMeta = pending
+            ? pending + ' waiting on your decision'
+            : 'Print labs applying to work with you';
+
+        function navRow(name, meta, badgeHtml, fn) {
+            var row = el(
+                '<div class="row">' +
+                    '<span class="row__body"><div class="row__name">' + esc(name) + (badgeHtml || '') + '</div>' +
+                    '<div class="row__meta">' + esc(meta) + '</div></span>' +
+                    '<span class="row__chev">' + ICONS.chev + '</span>' +
+                '</div>'
+            );
+            row.addEventListener('click', fn);
+            return row;
+        }
+
+        card.appendChild(navRow('Print labs', labMeta, '', function () {
+            push(function () { renderProviders(); });
+        }));
+        card.appendChild(navRow('Applications', appMeta,
+            pending ? ' <span class="pill pill--red" style="font-size:10px;">' + pending + ' new</span>' : '',
+            function () { push(function () { renderRequests(); }); }));
+        card.appendChild(navRow('Economics', ecoMeta, '', function () {
+            push(function () { renderEconomics(); });
+        }));
+
+        return card;
+    }
+
+    /** One-time credentials, shown once and never stored. */
+    function credentialsCard(creds) {
+        var card = el(
+            '<div class="card">' +
+                '<div class="card__title">Portal login created</div>' +
+                '<p class="hint" style="margin-top:0;">WordPress has emailed ' + esc(creds.email || 'the lab') +
+                ' a set-password link. <strong>These details are shown once</strong> — copy them now if you want to pass them on yourself.</p>' +
+                '<div class="creds">' +
+                    '<div class="creds__line"><span>Username</span><strong>' + esc(creds.login) + '</strong></div>' +
+                    '<div class="creds__line"><span>Password</span><strong>' + esc(creds.pass) + '</strong></div>' +
+                '</div>' +
+            '</div>'
+        );
+        var copy = el('<button class="btn btn--sm" style="margin-top:12px;">Copy username &amp; password</button>');
+        copy.addEventListener('click', function () {
+            var text = 'Username: ' + creds.login + '\nPassword: ' + creds.pass;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function () { toast('Login copied.'); });
+            } else {
+                prompt('Copy this login:', text);
+            }
+        });
+        card.appendChild(copy);
+        card.appendChild(el('<p class="hint" style="margin-bottom:0;">Ask them to change it after their first sign-in.</p>'));
+        return card;
+    }
+
+    // ── Print labs ───────────────────────────────────────────────
+
+    async function renderProviders() {
+        var myScreen = currentScreen();
+
+        var cache = TwellerApi.cachedProviders();
+        if (cache && cache.data) {
+            paintProviders(cache.data, true);
+        } else {
+            view.innerHTML = '';
+            view.appendChild(topbar('Print labs'));
+            view.appendChild(el('<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>'));
+        }
+
+        try {
+            var data = await TwellerApi.fetchProviders();
+            if (currentScreen() === myScreen) paintProviders(data, false);
+        } catch (e) {
+            if (!cache && currentScreen() === myScreen) {
+                view.innerHTML = '';
+                view.appendChild(topbar('Print labs'));
+                view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load your print labs.<br>' +
+                    esc(e.message) + '</p></div></div>'));
+            }
+        }
+    }
+
+    function paintProviders(data, isStale) {
+        var providers = data.providers || [];
+        var products = data.products || [];
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Print labs'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        wrap.appendChild(el(
+            '<p class="hint">Every lab you send work to, what they charge you per product, and whether they can sign in to their own job list.' +
+            (isStale ? ' <span style="color:var(--ink-3);">Refreshing…</span>' : '') + '</p>'
+        ));
+
+        var addBtn = el('<button class="btn btn--dark">＋ Add a print lab</button>');
+        addBtn.addEventListener('click', function () {
+            push(function () { renderProviderDetail(null, products); });
+        });
+        wrap.appendChild(addBtn);
+
+        var listCard = el('<div class="card"></div>');
+        if (!providers.length) {
+            listCard.appendChild(el('<p class="empty">No print labs yet.<br>Add one above, or approve an application.</p>'));
+        }
+        providers.forEach(function (p) {
+            var stats = p.stats || {};
+            var pills = p.active
+                ? '<span class="pill pill--green">Active</span>'
+                : '<span class="pill pill--gray">Paused</span>';
+            if (p.account && p.account.linked) pills += ' <span class="pill pill--gold">Portal login</span>';
+            if (p.default) pills += ' <span class="pill pill--blue">Default</span>';
+
+            var meta = p.contact_name || p.email || 'No contact yet';
+            var jobs = (stats.completed_month || 0) + ' job' + ((stats.completed_month || 0) === 1 ? '' : 's') +
+                ' this month · ' + money(stats.earned_month || 0) + ' payout';
+
+            var row = el(
+                '<div class="row">' +
+                    '<span class="avatar avatar--sm">' + esc(initials(p.name)) + '</span>' +
+                    '<span class="row__body"><div class="row__name">' + esc(p.name) + '</div>' +
+                    '<div class="row__meta">' + esc(meta) + '</div>' +
+                    '<div class="row__meta">' + esc(jobs) + '</div>' +
+                    '<div style="margin-top:5px;">' + pills + '</div></span>' +
+                    '<span class="row__chev">' + ICONS.chev + '</span>' +
+                '</div>'
+            );
+            row.addEventListener('click', function () {
+                push(function () { renderProviderDetail(p, products); });
+            });
+            listCard.appendChild(row);
+        });
+        wrap.appendChild(listCard);
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    /**
+     * One lab: details, delivery + active switches, the cost price list, the
+     * portal login, and delete behind a double confirm.
+     *
+     * @param {object|null} provider null creates a new lab.
+     * @param {array} products Active catalog, one cost row each.
+     * @param {object} [creds] One-time credentials to surface at the top.
+     */
+    /**
+     * One lab's dashboard, studio side: where every job they hold is, what
+     * they have earned and what we kept.
+     *
+     * Every figure is painted straight from the server's provider_dashboard
+     * payload — the phone does no arithmetic of its own, so this screen and
+     * wp-admin cannot disagree about a number.
+     */
+    async function renderProviderDashboard(provider) {
+        var myScreen = currentScreen();
+        var pid = provider.id;
+
+        var cache = TwellerApi.cachedProviderDashboard(pid);
+        if (cache && cache.data) {
+            paintProviderDashboard(cache.data, true);
+        } else {
+            view.innerHTML = '';
+            view.appendChild(topbar(provider.name));
+            view.appendChild(el('<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>'));
+        }
+
+        try {
+            var data = await TwellerApi.fetchProviderDashboard(pid);
+            if (currentScreen() === myScreen) paintProviderDashboard(data, false);
+        } catch (e) {
+            if (!(cache && cache.data) && currentScreen() === myScreen) {
+                view.innerHTML = '';
+                view.appendChild(topbar(provider.name));
+                view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load this lab\'s dashboard.<br>' +
+                    esc(e.message) + '</p></div></div>'));
+            }
+        }
+    }
+
+    function paintProviderDashboard(data, isStale) {
+        var p = data.provider || {};
+        var s = data.stats || {};
+        var t = data.totals || {};
+        var orders = data.orders || [];
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar(p.name || 'Print lab'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        if (isStale) wrap.appendChild(el('<p class="hint" style="color:var(--ink-3);">Refreshing…</p>'));
+
+        // Payout totals are only true once every product has a cost price
+        // for this lab. Say so rather than showing a number that quietly
+        // understates what we owe them.
+        if (data.unpriced_products && data.unpriced_products.length) {
+            wrap.appendChild(el(
+                '<div class="card card--warn"><p class="hint" style="margin:0;">' +
+                    '<strong>' + data.unpriced_products.length + ' product' +
+                    (data.unpriced_products.length === 1 ? ' has' : 's have') +
+                    ' no cost price for this lab</strong> (' + esc(data.unpriced_products.slice(0, 4).join(', ')) +
+                    (data.unpriced_products.length > 4 ? '…' : '') +
+                    '). Their earnings below leave those lines out. Set pricing on the lab screen.' +
+                '</p></div>'
+            ));
+        }
+
+        wrap.appendChild(el(
+            '<div class="stats">' +
+                '<div class="stat"><div class="stat__num">' + (t.open_jobs || 0) + '</div><div class="stat__label">Open jobs</div></div>' +
+                '<div class="stat"><div class="stat__num">' + (s.completed_month || 0) + '</div><div class="stat__label">Done ' + esc(data.month || 'this month') + '</div></div>' +
+                '<div class="stat"><div class="stat__num">' + esc(money(s.earned_month || 0)) + '</div><div class="stat__label">They earned this month</div></div>' +
+                '<div class="stat"><div class="stat__num">' + esc(money(s.earned_all_time || 0)) + '</div><div class="stat__label">They earned all time</div></div>' +
+                '<div class="stat"><div class="stat__num">' + esc(money(s.avg_per_job || 0)) + '</div><div class="stat__label">Average per job</div></div>' +
+                '<div class="stat stat--accent"><div class="stat__num">' + esc(money(t.margin || 0)) + '</div><div class="stat__label">Our margin</div></div>' +
+            '</div>'
+        ));
+
+        var card = el('<div class="card"><div class="card__title">Their jobs</div></div>');
+        if (!orders.length) {
+            card.appendChild(el('<p class="empty">No jobs have been sent to ' + esc(p.name || 'this lab') + ' yet.</p>'));
+        }
+        orders.forEach(function (o) {
+            var toneClass = o.tone === 'done' ? 'pill--green' : (o.tone === 'active' ? 'pill--gold' : 'pill--gray');
+            var flag = o.unpriced_items > 0
+                ? '<div class="row__meta" style="color:var(--red);">' + o.unpriced_items +
+                  ' line' + (o.unpriced_items === 1 ? '' : 's') + ' not priced</div>'
+                : '';
+            card.appendChild(el(
+                '<div class="row">' +
+                    '<span class="row__body">' +
+                        '<div class="row__name">' + esc(o.order_ref) + '</div>' +
+                        '<div class="row__meta"><span class="pill ' + toneClass + '">' + esc(o.stage) + '</span></div>' +
+                        '<div class="row__meta">' + esc(o.created_label) + ' · ' + (o.pieces || 0) + ' print' +
+                            ((o.pieces || 0) === 1 ? '' : 's') + '</div>' +
+                        flag +
+                    '</span>' +
+                    '<span class="row__end">' +
+                        '<span class="kv__v">' + esc(money(o.provider_cost || 0)) + '</span>' +
+                        '<div class="row__meta">they earn</div>' +
+                    '</span>' +
+                '</div>'
+            ));
+        });
+        wrap.appendChild(card);
+
+        if (orders.length) {
+            wrap.appendChild(el(
+                '<div class="card"><div class="card__title">Totals — cancelled jobs excluded</div>' +
+                    '<div class="kv"><span class="kv__k">Customers paid</span><span class="kv__v">' + esc(money(t.value || 0)) + '</span></div>' +
+                    '<div class="kv"><span class="kv__k">They earn</span><span class="kv__v">' + esc(money(t.provider_cost || 0)) + '</span></div>' +
+                    '<div class="kv"><span class="kv__k">We keep</span><span class="kv__v">' + esc(money(t.margin || 0)) + '</span></div>' +
+                '</div>'
+            ));
+        }
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    function renderProviderDetail(provider, products, creds) {
+        var rec = provider || {
+            id: '', name: '', contact_name: '', email: '', phone: '', address: '', notes: '',
+            active: 1, does_delivery: 0, prices: {}, account: { linked: 0 }, stats: {}
+        };
+        var prices = rec.prices || {};
+        var isNew = !rec.id;
+
+        view.innerHTML = '';
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar(isNew ? 'Add a print lab' : rec.name));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        if (creds) wrap.appendChild(credentialsCard(creds));
+
+        // Their dashboard sits above the edit form: "how is this lab
+        // doing" is the question you open a lab to ask far more often
+        // than "what is their phone number".
+        if (!isNew) {
+            var dashBtn = el('<button class="btn btn--dark">View their dashboard</button>');
+            dashBtn.addEventListener('click', function () {
+                push(function () { renderProviderDashboard(rec); });
+            });
+            wrap.appendChild(dashBtn);
+        }
+
+        // ── Details ──
+        var form = el(
+            '<div class="card"><div class="card__title">Lab details</div>' +
+                '<div class="field"><label>Lab name *</label><input type="text" id="pv-name" value="' + esc(rec.name) + '"></div>' +
+                '<div class="field"><label>Contact person</label><input type="text" id="pv-contact" value="' + esc(rec.contact_name) + '"></div>' +
+                '<div class="field"><label>Email</label><input type="email" id="pv-email" value="' + esc(rec.email) + '"></div>' +
+                '<div class="field"><label>Phone</label><input type="tel" id="pv-phone" value="' + esc(rec.phone) + '"></div>' +
+                '<div class="field"><label>Address</label><textarea id="pv-address">' + esc(rec.address) + '</textarea></div>' +
+                '<div class="field"><label>Notes</label><textarea id="pv-notes">' + esc(rec.notes) + '</textarea></div>' +
+                '<label class="toggle"><input type="checkbox" id="pv-delivery"' + (rec.does_delivery ? ' checked' : '') +
+                    '><span>This lab delivers finished orders to the client</span></label>' +
+                '<label class="toggle"><input type="checkbox" id="pv-active"' + (rec.active ? ' checked' : '') +
+                    '><span>Active — available for new jobs</span></label>' +
+            '</div>'
+        );
+        wrap.appendChild(form);
+
+        // ── Cost pricing ──
+        var priceCard = el(
+            '<div class="card"><div class="card__title">What they charge you</div>' +
+                '<p class="hint" style="margin-top:0;">Your cost per item from this lab, in TTD — separate from what customers pay. ' +
+                'Leave a row blank when they do not print that product; it shows as <strong>not priced</strong>, never a false TT$0.</p>' +
+            '</div>'
+        );
+        if (!products.length) {
+            priceCard.appendChild(el('<p class="empty">No active products in the catalog yet.</p>'));
+        }
+        products.forEach(function (prod) {
+            var val = (prices[prod.id] === undefined || prices[prod.id] === null) ? '' : parseFloat(prices[prod.id]).toFixed(2);
+            priceCard.appendChild(el(
+                '<div class="price-row">' +
+                    '<span class="price-row__name">' + esc(prod.name) +
+                        '<span class="price-row__sell">sells at ' + esc(money(prod.price)) + '</span></span>' +
+                    '<input class="price-row__in" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Not priced" ' +
+                        'data-product="' + esc(prod.id) + '" value="' + esc(val) + '">' +
+                '</div>'
+            ));
+        });
+        wrap.appendChild(priceCard);
+
+        var saveBtn = el('<button class="btn" id="pv-save">' + (isNew ? 'Add this lab' : 'Save changes') + '</button>');
+        saveBtn.addEventListener('click', async function () {
+            var name = form.querySelector('#pv-name').value.trim();
+            if (!name) { toast('The lab needs a name.'); return; }
+
+            var priceMap = {};
+            priceCard.querySelectorAll('.price-row__in').forEach(function (input) {
+                priceMap[input.getAttribute('data-product')] = input.value.trim();
+            });
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving…';
+            try {
+                var res = await TwellerApi.saveProvider({
+                    id: rec.id || '',
+                    name: name,
+                    contact_name: form.querySelector('#pv-contact').value.trim(),
+                    email: form.querySelector('#pv-email').value.trim(),
+                    phone: form.querySelector('#pv-phone').value.trim(),
+                    address: form.querySelector('#pv-address').value,
+                    notes: form.querySelector('#pv-notes').value,
+                    active: form.querySelector('#pv-active').checked ? 1 : 0,
+                    does_delivery: form.querySelector('#pv-delivery').checked ? 1 : 0,
+                    prices: priceMap
+                });
+                toast(name + ' saved.');
+                TwellerApi.fetchProviders().catch(function () {});
+                renderProviderDetail(res.provider || rec, products);
+            } catch (e) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = isNew ? 'Add this lab' : 'Save changes';
+                toast('Could not save: ' + e.message, 5000);
+            }
+        });
+        wrap.appendChild(saveBtn);
+
+        if (isNew) {
+            wrap.appendChild(el('<p class="hint">Save the lab first — the portal login comes after.</p>'));
+            view.appendChild(screen);
+            return;
+        }
+
+        // ── Portal account ──
+        var acct = rec.account || { linked: 0 };
+        var acctCard = el('<div class="card"><div class="card__title">Portal login</div></div>');
+        if (acct.linked) {
+            acctCard.appendChild(el(
+                '<div class="kv"><span class="kv__k">Username</span><span class="kv__v">' + esc(acct.login) + '</span></div>'
+            ));
+            acctCard.appendChild(el(
+                '<div class="kv"><span class="kv__k">Signs in with</span><span class="kv__v">' + esc(acct.email) + '</span></div>'
+            ));
+            acctCard.appendChild(el('<p class="hint" style="margin-bottom:0;">They see only the jobs you send them — never a customer name, email or price.</p>'));
+        } else {
+            acctCard.appendChild(el('<p class="hint" style="margin-top:0;">No login yet — this lab cannot open its own job list.</p>'));
+            var makeBtn = el('<button class="btn btn--dark btn--sm">Create portal login</button>');
+            makeBtn.addEventListener('click', async function () {
+                if (!rec.email) { toast('Add an email for this lab first — the login is created against it.', 5000); return; }
+                if (!confirm('Create a dashboard login for ' + rec.name + '? They are emailed a set-password link.')) return;
+                makeBtn.disabled = true;
+                makeBtn.textContent = 'Creating…';
+                try {
+                    var res = await TwellerApi.createProviderAccount(rec.id, { mode: 'create' });
+                    toast('Login created for ' + rec.name + '.');
+                    TwellerApi.fetchProviders().catch(function () {});
+                    renderProviderDetail(res.provider || rec, products, res.credentials);
+                } catch (e) {
+                    makeBtn.disabled = false;
+                    makeBtn.textContent = 'Create portal login';
+                    toast('Could not create the login: ' + e.message, 6000);
+                }
+            });
+            acctCard.appendChild(makeBtn);
+        }
+        wrap.appendChild(acctCard);
+
+        // ── This month ──
+        var st = rec.stats || {};
+        wrap.appendChild(el(
+            '<div class="card"><div class="card__title">This month</div>' +
+                '<div class="kv"><span class="kv__k">Jobs completed</span><span class="kv__v">' + (st.completed_month || 0) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Owed to this lab</span><span class="kv__v kv__v--big">' + esc(money(st.earned_month || 0)) + '</span></div>' +
+                '<div class="kv"><span class="kv__k">Open jobs</span><span class="kv__v">' +
+                    ((st.awaiting || 0) + (st.in_production || 0) + (st.ready || 0)) + '</span></div>' +
+            '</div>'
+        ));
+
+        // ── Danger zone ──
+        var del = el('<button class="btn btn--danger">Delete this lab…</button>');
+        del.addEventListener('click', async function () {
+            if (!confirm('Delete ' + rec.name + '? Jobs already sent to them keep their history.')) return;
+            if (!confirm('Really delete ' + rec.name + '? Last chance.')) return;
+            del.disabled = true;
+            del.textContent = 'Deleting…';
+            try {
+                await TwellerApi.deleteProvider(rec.id);
+                toast(rec.name + ' deleted.');
+                TwellerApi.fetchProviders().catch(function () {});
+                back();
+            } catch (e) {
+                del.disabled = false;
+                del.textContent = 'Delete this lab…';
+                toast('Could not delete: ' + e.message, 5000);
+            }
+        });
+        wrap.appendChild(del);
+
+        view.appendChild(screen);
+    }
+
+    // ── Applications ─────────────────────────────────────────────
+
+    var REQUEST_FILTERS = [
+        { key: 'new',      label: 'New' },
+        { key: 'approved', label: 'Approved' },
+        { key: 'rejected', label: 'Declined' }
+    ];
+
+    async function renderRequests() {
+        var myScreen = currentScreen();
+
+        var cache = TwellerApi.cachedProviderRequests();
+        if (cache && cache.data) {
+            paintRequests(cache.data, true);
+        } else {
+            view.innerHTML = '';
+            view.appendChild(topbar('Applications'));
+            view.appendChild(el('<div class="wrap"><div class="skeleton"></div><div class="skeleton"></div></div>'));
+        }
+
+        try {
+            var data = await TwellerApi.fetchProviderRequests();
+            state.pendingApps = (data.counts && parseInt(data.counts['new'], 10)) || 0;
+            paintPrintsBadge();
+            if (currentScreen() === myScreen) paintRequests(data, false);
+        } catch (e) {
+            if (!cache && currentScreen() === myScreen) {
+                view.innerHTML = '';
+                view.appendChild(topbar('Applications'));
+                view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load applications.<br>' +
+                    esc(e.message) + '</p></div></div>'));
+            }
+        }
+    }
+
+    function paintRequests(data, isStale) {
+        var rows = data.requests || [];
+        var counts = data.counts || {};
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Applications'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        wrap.appendChild(el(
+            '<p class="hint">Print labs who applied to work with Tweller Studios.' +
+            (isStale ? ' <span style="color:var(--ink-3);">Refreshing…</span>' : '') + '</p>'
+        ));
+
+        var filter = 'new';
+        var chips = el('<div class="chips"></div>');
+        REQUEST_FILTERS.forEach(function (rf) {
+            var n = parseInt(counts[rf.key], 10) || 0;
+            var c = el('<button class="chip' + (rf.key === filter ? ' chip--on' : '') + '" data-status="' + esc(rf.key) + '">' +
+                esc(rf.label) + ' (' + n + ')</button>');
+            c.addEventListener('click', function () {
+                filter = rf.key;
+                chips.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('chip--on'); });
+                c.classList.add('chip--on');
+                paintList();
+            });
+            chips.appendChild(c);
+        });
+        wrap.appendChild(chips);
+
+        var listCard = el('<div class="card" id="request-list"></div>');
+        wrap.appendChild(listCard);
+
+        function paintList() {
+            var shown = rows.filter(function (r) { return r.status === filter; });
+            listCard.innerHTML = '';
+            if (!shown.length) {
+                listCard.appendChild(el('<p class="empty">Nothing here right now.</p>'));
+                return;
+            }
+            shown.forEach(function (r) {
+                var row = el(
+                    '<div class="row">' +
+                        '<span class="avatar avatar--sm">' + esc(initials(r.business_name)) + '</span>' +
+                        '<span class="row__body"><div class="row__name">' + esc(r.business_name) + '</div>' +
+                        '<div class="row__meta">' + esc((r.contact_name || r.email || '—')) + '</div>' +
+                        '<div class="row__meta">Applied ' + esc(r.created_label) +
+                            (r.does_delivery ? ' · delivers' : '') + '</div></span>' +
+                        '<span class="row__chev">' + ICONS.chev + '</span>' +
+                    '</div>'
+                );
+                row.addEventListener('click', function () {
+                    push(function () { renderRequestDetail(r.id); });
+                });
+                listCard.appendChild(row);
+            });
+        }
+        paintList();
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    async function renderRequestDetail(id, creds) {
+        var myScreen = currentScreen();
+
+        view.innerHTML = '';
+        view.appendChild(topbar('Application'));
+        view.appendChild(el('<div class="wrap"><div class="skeleton" style="height:140px;"></div><div class="skeleton"></div></div>'));
+
+        var data;
+        try {
+            data = await TwellerApi.fetchProviderRequest(id);
+        } catch (e) {
+            if (currentScreen() !== myScreen) return;
+            view.innerHTML = '';
+            view.appendChild(topbar('Application'));
+            view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load this application.<br>' +
+                esc(e.message) + '</p></div></div>'));
+            return;
+        }
+        if (currentScreen() !== myScreen) return;
+        paintRequestDetail(data.request || {}, creds);
+    }
+
+    function paintRequestDetail(r, creds) {
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar(r.business_name || 'Application'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        if (creds) wrap.appendChild(credentialsCard(creds));
+
+        var statusPill = r.status === 'approved'
+            ? '<span class="pill pill--green">Approved</span>'
+            : (r.status === 'rejected' ? '<span class="pill pill--red">Declined</span>' : '<span class="pill pill--gold">Pending</span>');
+
+        wrap.appendChild(el(
+            '<div class="hero">' +
+                '<div class="hero__top">' +
+                    '<span class="avatar">' + esc(initials(r.business_name)) + '</span>' +
+                    '<div><div class="hero__name">' + esc(r.business_name || '—') + '</div>' +
+                    '<div class="hero__meta">Application #' + (r.id || 0) + ' · ' + esc(r.created_label || '') + '</div></div>' +
+                '</div>' +
+                '<div class="hero__pills">' + statusPill +
+                    (r.does_delivery ? '<span class="pill pill--onblack">Delivers to customers</span>' : '') +
+                    (r.color_managed ? '<span class="pill pill--onblack">Colour managed</span>' : '') +
+                '</div>' +
+            '</div>'
+        ));
+
+        // Contact — tappable links
+        var contact = el('<div class="card"><div class="card__title">Contact</div></div>');
+        function linkRow(label, value, href) {
+            if (!value) return;
+            contact.appendChild(el(
+                '<div class="kv"><span class="kv__k">' + esc(label) + '</span><span class="kv__v">' +
+                (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(value) + '</a>' : esc(value)) +
+                '</span></div>'
+            ));
+        }
+        linkRow('Contact person', r.contact_name);
+        linkRow('Email', r.email, r.email ? 'mailto:' + r.email : '');
+        linkRow('Phone', r.phone, r.phone ? 'tel:' + String(r.phone).replace(/[^0-9+]/g, '') : '');
+        linkRow('Website', r.website, r.website);
+        linkRow('Instagram', r.instagram ? '@' + r.instagram : '', r.instagram ? 'https://instagram.com/' + encodeURIComponent(r.instagram) : '');
+        linkRow('Facebook', r.facebook, r.facebook ? 'https://facebook.com/' + encodeURIComponent(r.facebook) : '');
+        linkRow('Other social', r.social_other);
+        linkRow('Address', r.address);
+        linkRow('Country / region', r.country);
+        wrap.appendChild(contact);
+
+        // The shop
+        var shop = el('<div class="card"><div class="card__title">The shop</div></div>');
+        function kvRow(label, value) {
+            if (!value) return;
+            shop.appendChild(el(
+                '<div class="kv"><span class="kv__k">' + esc(label) + '</span><span class="kv__v">' + esc(value) + '</span></div>'
+            ));
+        }
+        kvRow('Services offered', r.services_label);
+        kvRow('Years in business', r.years_in_business ? String(r.years_in_business) : '');
+        kvRow('Business registration', r.business_reg);
+        kvRow('Turnaround', r.turnaround);
+        kvRow('Capacity', r.capacity);
+        kvRow('Papers & finishes', r.papers);
+        kvRow('Colour managed', r.color_managed ? 'Yes' : 'Not stated');
+        kvRow('Delivers to customers', r.does_delivery ? 'Yes' : 'No — studio delivers');
+        kvRow('Heard about us via', r.referral);
+        kvRow('Submitted from', r.ip);
+        if (r.sample_url) {
+            shop.appendChild(el(
+                '<div class="kv"><span class="kv__k">Sample work</span><span class="kv__v">' +
+                '<a href="' + esc(r.sample_url) + '" target="_blank" rel="noopener">Open ↗</a></span></div>'
+            ));
+        }
+        if (r.equipment) {
+            shop.appendChild(el('<p class="hint" style="margin-bottom:0;"><strong>Equipment / lab notes</strong><br>' + esc(r.equipment) + '</p>'));
+        }
+        if (r.message) {
+            shop.appendChild(el('<p class="hint" style="margin-bottom:0;"><strong>What they told us</strong><br>' + esc(r.message) + '</p>'));
+        }
+        wrap.appendChild(shop);
+
+        if (r.status !== 'new') {
+            var done = el(
+                '<div class="card"><div class="card__title">Decision</div>' +
+                    '<div class="kv"><span class="kv__k">Outcome</span><span class="kv__v">' +
+                        esc(r.status === 'approved' ? 'Approved' : 'Declined') + '</span></div>' +
+                    (r.reviewed_at ? '<div class="kv"><span class="kv__k">Reviewed</span><span class="kv__v">' +
+                        esc(fmtStamp(r.reviewed_at)) + '</span></div>' : '') +
+                '</div>'
+            );
+            if (r.review_notes) done.appendChild(el('<p class="hint" style="margin-bottom:0;">' + esc(r.review_notes) + '</p>'));
+            wrap.appendChild(done);
+            view.innerHTML = '';
+            view.appendChild(screen);
+            return;
+        }
+
+        // ── Decision ──
+        var linkMode = r.approve_mode === 'link';
+        var decide = el(
+            '<div class="card"><div class="card__title">Decision</div>' +
+                (linkMode && r.existing_user
+                    ? '<p class="hint" style="margin-top:0;"><strong>' + esc(r.email) + '</strong> already belongs to the WordPress user <strong>' +
+                      esc(r.existing_user.login) + '</strong>. Approving links that account instead of creating a second login.</p>'
+                    : '<p class="hint" style="margin-top:0;">Approving creates the lab record <em>and</em> its dashboard login in one step.</p>') +
+                '<div class="field"><label>Note (optional — kept on the application)</label><textarea id="rq-notes" rows="2"></textarea></div>' +
+            '</div>'
+        );
+
+        var approve = el('<button class="btn">' + (linkMode ? 'Approve &amp; link existing login' : 'Approve &amp; create login') + '</button>');
+        approve.addEventListener('click', async function () {
+            if (!confirm(linkMode
+                ? 'Approve ' + r.business_name + ' and link their existing WordPress account?'
+                : 'Approve ' + r.business_name + '? A lab record and a new dashboard login are created and emailed.')) return;
+            approve.disabled = true;
+            approve.textContent = 'Approving…';
+            try {
+                var res = await TwellerApi.approveProviderRequest(r.id, decide.querySelector('#rq-notes').value, linkMode ? 'link' : 'create');
+                toast(r.business_name + ' approved.');
+                TwellerApi.fetchProviders().catch(function () {});
+                refreshApplicationsCount();
+                paintRequestDetail(res.request || r, res.credentials);
+            } catch (e) {
+                approve.disabled = false;
+                approve.innerHTML = linkMode ? 'Approve &amp; link existing login' : 'Approve &amp; create login';
+                toast('Could not approve: ' + e.message, 6000);
+            }
+        });
+        decide.appendChild(approve);
+
+        var decline = el('<button class="btn btn--danger btn--sm" style="margin-top:10px;">Decline application</button>');
+        decline.addEventListener('click', async function () {
+            if (!confirm('Decline ' + r.business_name + ' and email them?')) return;
+            decline.disabled = true;
+            decline.textContent = 'Declining…';
+            try {
+                var res = await TwellerApi.declineProviderRequest(r.id, decide.querySelector('#rq-notes').value);
+                toast(r.business_name + ' declined.');
+                refreshApplicationsCount();
+                paintRequestDetail(res.request || r);
+            } catch (e) {
+                decline.disabled = false;
+                decline.textContent = 'Decline application';
+                toast('Could not decline: ' + e.message, 6000);
+            }
+        });
+        decide.appendChild(decline);
+        wrap.appendChild(decide);
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    // ── Economics ────────────────────────────────────────────────
+
+    async function renderEconomics() {
+        var myScreen = currentScreen();
+
+        var cache = TwellerApi.cachedProviderSummary();
+        if (cache && cache.data) {
+            paintEconomics(cache.data, true);
+        } else {
+            view.innerHTML = '';
+            view.appendChild(topbar('Economics'));
+            view.appendChild(el('<div class="wrap"><div class="skeleton" style="height:120px;"></div><div class="skeleton"></div></div>'));
+        }
+
+        try {
+            var data = await TwellerApi.fetchProviderSummary();
+            if (currentScreen() === myScreen) paintEconomics(data, false);
+        } catch (e) {
+            if (!cache && currentScreen() === myScreen) {
+                view.innerHTML = '';
+                view.appendChild(topbar('Economics'));
+                view.appendChild(el('<div class="wrap"><div class="card"><p class="empty">Could not load your print economics.<br>' +
+                    esc(e.message) + '</p></div></div>'));
+            }
+        }
+    }
+
+    function paintEconomics(data, isStale) {
+        var eco = data.economics || {};
+        var period = 'month';
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Economics'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        wrap.appendChild(el(
+            '<p class="hint">What customers paid, what the labs are owed, and what stays with the studio. ' +
+            'Every figure comes straight from the website.' + (isStale ? ' <span style="color:var(--ink-3);">Refreshing…</span>' : '') + '</p>'
+        ));
+
+        var seg = el(
+            '<div class="seg">' +
+                '<button class="seg__opt seg__opt--on" data-period="month">' + esc(data.month || 'This month') + '</button>' +
+                '<button class="seg__opt" data-period="all_time">All time</button>' +
+            '</div>'
+        );
+        wrap.appendChild(seg);
+
+        var tiles = el('<div class="stats" id="eco-tiles"></div>');
+        wrap.appendChild(tiles);
+
+        var breakdown = el('<div class="card" id="eco-breakdown"><div class="card__title">By print lab</div></div>');
+        wrap.appendChild(breakdown);
+
+        function paint() {
+            // Straight from the server — nothing is recomputed on the phone.
+            var t = (period === 'month' ? eco.month : eco.all_time) || {};
+            tiles.innerHTML =
+                '<div class="stat"><div class="stat__num">' + (t.orders || 0) + '</div><div class="stat__label">Orders</div></div>' +
+                '<div class="stat"><div class="stat__num" id="eco-value">' + esc(money(t.value || 0)) + '</div><div class="stat__label">Customer revenue</div></div>' +
+                '<div class="stat"><div class="stat__num" id="eco-cost">' + esc(money(t.provider_cost || 0)) + '</div><div class="stat__label">Lab payouts</div></div>' +
+                '<div class="stat stat--accent"><div class="stat__num" id="eco-margin">' + esc(money(t.margin || 0)) + '</div><div class="stat__label">Studio margin</div></div>';
+
+            breakdown.innerHTML = '<div class="card__title">By print lab</div>';
+            var rows = (eco.providers || []).slice().sort(function (a, b) {
+                var pa = period === 'month' ? (a.month_payout || 0) : (a.all_payout || 0);
+                var pb = period === 'month' ? (b.month_payout || 0) : (b.all_payout || 0);
+                return pb - pa;
+            });
+            if (!rows.length) {
+                breakdown.appendChild(el('<p class="empty">No jobs have been sent to a lab yet.</p>'));
+                return;
+            }
+            rows.forEach(function (p) {
+                var jobs = period === 'month' ? (p.month_jobs || 0) : (p.all_jobs || 0);
+                var payout = period === 'month' ? (p.month_payout || 0) : (p.all_payout || 0);
+                breakdown.appendChild(el(
+                    '<div class="row">' +
+                        '<span class="avatar avatar--sm">' + esc(initials(p.name)) + '</span>' +
+                        '<span class="row__body"><div class="row__name">' + esc(p.name) + '</div>' +
+                        '<div class="row__meta">' + jobs + ' job' + (jobs === 1 ? '' : 's') + '</div></span>' +
+                        '<span class="row__end"><span class="kv__v">' + esc(money(payout)) + '</span></span>' +
+                    '</div>'
+                ));
+            });
+        }
+
+        seg.querySelectorAll('.seg__opt').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                period = opt.getAttribute('data-period');
+                seg.querySelectorAll('.seg__opt').forEach(function (x) { x.classList.remove('seg__opt--on'); });
+                opt.classList.add('seg__opt--on');
+                paint();
+            });
+        });
+        paint();
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  DELIVERY SCANNER — scan a shipping label to close an order
+    // ═════════════════════════════════════════════════════════════
+
+    function renderScanner(prefillRef) {
+        view.innerHTML = '';
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(topbar('Scan delivery'));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var card = el(
+            '<div class="card"><div class="card__title">Point at the QR code</div>' +
+                '<p class="hint" style="margin-top:0;">It scans on its own and marks the order delivered. If the live view struggles, tap <strong>Capture &amp; scan</strong> — a still photo reads far more reliably.</p>' +
+                '<div class="scanbox"><video id="scan-video" playsinline muted></video><div class="scanbox__frame"></div></div>' +
+                '<div id="scan-state" class="hint" style="text-align:center; margin:10px 0 0;">Starting camera…</div>' +
+                '<button class="btn btn--dark" id="scan-shot" style="margin-top:12px;">Capture &amp; scan</button>' +
+                '<button class="btn btn--ghost" id="scan-photo-btn" style="margin-top:8px;">Use a photo instead</button>' +
+                '<input type="file" id="scan-photo" accept="image/*" capture="environment" style="display:none;">' +
+            '</div>'
+        );
+        wrap.appendChild(card);
+
+        var manual = el(
+            '<div class="card"><div class="card__title">Or type the code</div>' +
+                '<p class="hint" style="margin-top:0;">Type the order reference (or the full code printed under the barcode).</p>' +
+                '<div class="field" style="margin-bottom:8px;"><input type="text" id="scan-manual" placeholder="TS-PRINT-XXXXXX" autocapitalize="characters"></div>' +
+                '<button class="btn btn--ghost" id="scan-submit">Mark delivered</button>' +
+            '</div>'
+        );
+        wrap.appendChild(manual);
+
+        var stateEl = card.querySelector('#scan-state');
+        var video = card.querySelector('#scan-video');
+        var stream = null;
+        var stopped = false;
+        var busy = false;
+        var sharedDetector = null;
+
+        /**
+         * Detect from a still image. Android WebViews often fail to read a
+         * live <video> frame yet decode a captured bitmap fine, so this is
+         * the reliable path — used by Capture & scan and by photo upload.
+         */
+        async function detectFromSource(src) {
+            if (!window.BarcodeDetector) return null;
+            if (!sharedDetector) {
+                try {
+                    var fmts = await window.BarcodeDetector.getSupportedFormats();
+                    var want = ['qr_code', 'code_128'].filter(function (f) { return fmts.indexOf(f) !== -1; });
+                    if (!want.length) return null;
+                    sharedDetector = new window.BarcodeDetector({ formats: want });
+                } catch (e) { return null; }
+            }
+            try {
+                var codes = await sharedDetector.detect(src);
+                if (codes && codes.length && codes[0].rawValue) return codes[0].rawValue;
+            } catch (e) {}
+            return null;
+        }
+
+        /** Grab the current video frame at full resolution and read it. */
+        async function captureAndScan() {
+            if (!stream || !video.videoWidth) {
+                stateEl.textContent = 'Camera isn’t ready yet — give it a moment.';
+                return;
+            }
+            stateEl.textContent = 'Reading the captured frame…';
+            var canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            var found = await detectFromSource(canvas);
+            if (!found) {
+                try {
+                    var bmp = await createImageBitmap(canvas);
+                    found = await detectFromSource(bmp);
+                    bmp.close && bmp.close();
+                } catch (e) {}
+            }
+            if (found) { submitCode(found); return; }
+            stateEl.textContent = 'No code found in that shot — fill the frame with the QR and try again.';
+        }
+
+        card.querySelector('#scan-shot').addEventListener('click', captureAndScan);
+
+        card.querySelector('#scan-photo-btn').addEventListener('click', function () {
+            card.querySelector('#scan-photo').click();
+        });
+        card.querySelector('#scan-photo').addEventListener('change', async function () {
+            var file = this.files && this.files[0];
+            if (!file) return;
+            stateEl.textContent = 'Reading the photo…';
+            var found = null;
+            try {
+                var bmp = await createImageBitmap(file);
+                found = await detectFromSource(bmp);
+                bmp.close && bmp.close();
+            } catch (e) {}
+            if (found) { submitCode(found); return; }
+            stateEl.textContent = 'No code found in that photo — make sure the QR is sharp and fills the frame.';
+        });
+
+        function stop() {
+            stopped = true;
+            if (stream) {
+                stream.getTracks().forEach(function (t) { t.stop(); });
+                stream = null;
+            }
+        }
+
+        // Leaving the screen must always release the camera.
+        window.addEventListener('popstate', stop, { once: true });
+        document.querySelectorAll('.tab').forEach(function (b) {
+            b.addEventListener('click', stop, { once: true });
+        });
+
+        async function submitCode(code) {
+            if (busy) return;
+            code = String(code || '').trim();
+            if (!code) return;
+            busy = true;
+            stateEl.textContent = 'Checking ' + code.split('|')[0] + '…';
+            try {
+                var res = await TwellerApi.scanPrintDelivery(code);
+                stop();
+                var ref = res.order_ref || code.split('|')[0];
+                if (res.already_delivered) {
+                    toast(ref + ' was already marked delivered.', 4500);
+                } else {
+                    toast('✓ ' + ref + ' delivered — customer emailed.', 4500);
+                }
+                refreshPrintsBadge();
+                stateEl.innerHTML = '<strong style="color:var(--green);">✓ ' + esc(ref) + ' — delivered</strong>';
+                busy = false;
+            } catch (e) {
+                busy = false;
+                stateEl.innerHTML = '<span style="color:var(--red);">' + esc(e.message) + '</span>';
+                toast('Could not mark delivered: ' + e.message, 5000);
+            }
+        }
+
+        if (prefillRef) {
+            manual.querySelector('#scan-manual').value = prefillRef;
+        }
+        manual.querySelector('#scan-submit').addEventListener('click', function () {
+            submitCode(manual.querySelector('#scan-manual').value);
+        });
+
+        // Camera + barcode detection (Chrome/Android WebView ships BarcodeDetector)
+        (async function startCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                stateEl.textContent = 'No camera available — type the code below.';
+                return;
+            }
+            var detector = null;
+            if (window.BarcodeDetector) {
+                try {
+                    var formats = await window.BarcodeDetector.getSupportedFormats();
+                    // QR first: phone cameras lock onto it far more
+                    // reliably than a thin 1-D barcode.
+                    var want = ['qr_code', 'code_128'].filter(function (f) { return formats.indexOf(f) !== -1; });
+                    if (want.length) detector = new window.BarcodeDetector({ formats: want });
+                } catch (e) {}
+            }
+            if (!detector) {
+                stateEl.textContent = 'This device can’t scan codes automatically — capture a photo or type the code below.';
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }, audio: false
+                });
+            } catch (e) {
+                // Name the actual cause — "blocked" sent people hunting in
+                // browser settings when the app itself lacked the permission.
+                var why = (e && e.name) || '';
+                if (why === 'NotAllowedError') {
+                    stateEl.textContent = 'Camera permission denied. Allow camera for Tweller Bookings in Android Settings → Apps → Permissions, then reopen this screen.';
+                } else if (why === 'NotFoundError' || why === 'OverconstrainedError') {
+                    stateEl.textContent = 'No back camera found — type the code below.';
+                } else if (why === 'NotReadableError') {
+                    stateEl.textContent = 'The camera is in use by another app. Close it and try again.';
+                } else {
+                    stateEl.textContent = 'Camera unavailable (' + (why || 'unknown') + ') — type the code below.';
+                }
+                return;
+            }
+            if (stopped) { stop(); return; }
+
+            video.srcObject = stream;
+            await video.play().catch(function () {});
+            stateEl.textContent = 'Looking for a QR code…';
+
+            (function tick() {
+                if (stopped || busy) {
+                    if (!stopped) setTimeout(tick, 400);
+                    return;
+                }
+                detector.detect(video).then(function (codes) {
+                    if (codes && codes.length && codes[0].rawValue) {
+                        submitCode(codes[0].rawValue);
+                    }
+                }).catch(function () {}).then(function () {
+                    if (!stopped) setTimeout(tick, 350);
+                });
+            })();
+        })();
+
+        view.appendChild(screen);
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  UPLOADS — persistent queue
+    // ═════════════════════════════════════════════════════════════
+
+    async function renderQueue() {
+        view.innerHTML =
+            '<div class="screen">' +
+                '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Uploads</div></header>' +
+                '<div class="wrap"><div class="skeleton"></div></div>' +
+            '</div>';
+
+        var items = await qAll();
+        var pending = items.filter(function (i) { return i.status !== 'done'; });
+        var proofBytes = pending.filter(function (i) { return i.type !== 'gallery'; }).reduce(function (a, i) { return a + (i.size || 0); }, 0);
+        var galleryBytes = pending.filter(function (i) { return i.type === 'gallery'; }).reduce(function (a, i) { return a + (i.size || 0); }, 0);
+        var conn = await connectionType();
+
+        var screen = el('<div class="screen"></div>');
+        screen.appendChild(el(
+            '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Uploads</div></header>'
+        ));
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        if (!items.length) {
+            wrap.appendChild(el(
+                '<div class="card"><p class="empty">Nothing queued.<br>Open a client and use <strong>Upload for Culling</strong> or <strong>Deliver to Gallery</strong>.</p></div>'
+            ));
+            view.innerHTML = '';
+            view.appendChild(screen);
+            return;
+        }
+
+        var connLabel = conn === 'wifi' ? 'Wi-Fi' : (conn === 'cellular' ? 'MOBILE DATA' : (conn === 'none' ? 'offline' : 'unknown'));
+        wrap.appendChild(el(
+            '<div class="q-summary">' +
+                '<strong>' + pending.length + '</strong> files waiting · exactly <strong>' + fmtMB(proofBytes + galleryBytes) + '</strong>' +
+                (proofBytes && galleryBytes ? '<br>' + fmtMB(proofBytes) + ' proofs · ' + fmtMB(galleryBytes) + ' full-quality gallery' : '') +
+                '<br>Connection: <strong>' + connLabel + '</strong>' +
+                (state.settings.wifiOnly ? ' · Wi-Fi-only is ON' : '') +
+            '</div>'
+        ));
+
+        // Group items by session + type
+        var groups = {};
+        items.forEach(function (i) {
+            var key = i.code + '|' + (i.type || 'proof');
+            (groups[key] = groups[key] || []).push(i);
+        });
+
+        var listCard = el('<div class="card"><div class="progress"><div class="progress__bar" id="q-bar"></div></div></div>');
+        Object.keys(groups).forEach(function (key) {
+            var arr = groups[key];
+            var first = arr[0];
+            var typeLabel = (first.type === 'gallery') ? 'Gallery · full quality' : 'Culling proofs';
+            listCard.appendChild(el(
+                '<div class="card__title" style="margin:10px 0 4px;">' + esc(first.client || first.code) +
+                ' — ' + esc(typeLabel) + ' (' + arr.length + ')</div>'
+            ));
+            arr.slice(0, 150).forEach(function (i) {
+                listCard.appendChild(el(
+                    '<div class="q-item">' +
+                        '<span class="q-item__name">' + esc(i.filename) + '<br><span class="q-item__size">' + fmtMB(i.size || 0) + '</span></span>' +
+                        '<span class="q-item__st q-item__st--' + i.status + '">' + i.status.toUpperCase() + '</span>' +
+                    '</div>'
+                ));
+            });
+        });
+        wrap.appendChild(listCard);
+
+        if (pending.length) {
+            var startBtn = el('<button class="btn" id="q-start">Upload ' + pending.length + ' files now</button>');
+            startBtn.addEventListener('click', function () { startUpload(pending, conn, proofBytes + galleryBytes, startBtn); });
+            wrap.appendChild(startBtn);
+        }
+
+        // Post-upload actions per finished batch
+        var doneProofs = items.filter(function (i) { return i.status === 'done' && (i.type || 'proof') === 'proof'; });
+        var doneGallery = items.filter(function (i) { return i.status === 'done' && i.type === 'gallery'; });
+
+        if (doneProofs.length && !pending.length) {
+            var readyBtn = el('<button class="btn btn--dark">✉ Notify ' + esc(doneProofs[0].client || 'client') + ' — proofs ready to choose</button>');
+            readyBtn.addEventListener('click', async function () {
+                readyBtn.disabled = true;
+                readyBtn.textContent = 'Sending...';
+                try {
+                    await TwellerApi.markCullingReady(doneProofs[0].code);
+                    readyBtn.textContent = '✓ Client notified — selection gallery live';
+                    for (var i = 0; i < doneProofs.length; i++) await qDelete(doneProofs[i].id);
+                    refreshBadge();
+                } catch (e) {
+                    readyBtn.disabled = false;
+                    readyBtn.textContent = 'Retry: notify client';
+                    toast('Could not mark ready: ' + e.message, 5000);
+                }
+            });
+            wrap.appendChild(readyBtn);
+        }
+
+        if (doneGallery.length && !pending.length) {
+            var viewBtn = el('<button class="btn btn--ghost">' + ICONS.gallery + ' View gallery before sending</button>');
+            viewBtn.addEventListener('click', function () {
+                push(function () { renderGalleryManage(doneGallery[0].code, doneGallery[0].client || 'Gallery'); });
+            });
+            wrap.appendChild(viewBtn);
+
+            var delivBtn = el('<button class="btn btn--dark">✉ Mark delivered — send ' + esc(doneGallery[0].client || 'client') + ' the gallery</button>');
+            delivBtn.addEventListener('click', async function () {
+                if (!confirm('Send the delivery email with the gallery link?')) return;
+                delivBtn.disabled = true;
+                delivBtn.textContent = 'Sending...';
+                try {
+                    await TwellerApi.advanceStage(doneGallery[0].code, 'delivered', 'Delivered from mobile app');
+                    delivBtn.textContent = '✓ Delivered — client emailed';
+                    for (var i = 0; i < doneGallery.length; i++) await qDelete(doneGallery[i].id);
+                    refreshBadge();
+                } catch (e) {
+                    delivBtn.disabled = false;
+                    delivBtn.textContent = 'Retry: mark delivered';
+                    toast('Could not mark delivered: ' + e.message, 5000);
+                }
+            });
+            wrap.appendChild(delivBtn);
+        }
+
+        var clearBtn = el('<button class="btn btn--danger">Clear queue</button>');
+        clearBtn.addEventListener('click', async function () {
+            if (!confirm('Remove everything from the queue? Files already uploaded stay on the website.')) return;
+            for (var i = 0; i < items.length; i++) await qDelete(items[i].id);
+            refreshBadge();
+            renderQueue();
+        });
+        wrap.appendChild(clearBtn);
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    async function startUpload(pending, conn, totalBytes, btn) {
+        if (state.uploading) return;
+
+        if (conn === 'none') { toast('No connection — connect to Wi-Fi or mobile data first.'); return; }
+        if (conn === 'cellular') {
+            var msg = state.settings.wifiOnly
+                ? 'Wi-Fi-only is ON and you are on MOBILE DATA.\n\nThis upload will use exactly ' + fmtMB(totalBytes) + ' of data. Upload anyway?'
+                : 'You are on MOBILE DATA. This upload will use exactly ' + fmtMB(totalBytes) + '. Continue?';
+            if (!confirm(msg)) return;
+        }
+
+        state.uploading = true;
+        btn.disabled = true;
+        var bar = document.getElementById('q-bar');
+        var ok = 0, failed = 0;
+
+        for (var i = 0; i < pending.length; i++) {
+            var item = pending[i];
+            btn.textContent = 'Uploading ' + (i + 1) + ' / ' + pending.length + '...';
+            if (bar) bar.style.width = Math.round((i / pending.length) * 100) + '%';
+            try {
+                if (item.type === 'gallery') {
+                    await TwellerApi.uploadGalleryPhoto(item.code, item.blob, item.filename);
+                } else {
+                    await TwellerApi.uploadProof(item.code, item.blob, item.filename, item.filename);
+                }
+                item.status = 'done';
+                ok++;
+            } catch (e) {
+                item.status = 'error';
+                item.error = e.message;
+                failed++;
+            }
+            await qPut(item);
+        }
+
+        if (bar) bar.style.width = '100%';
+        state.uploading = false;
+        refreshBadge();
+        toast(ok + ' uploaded' + (failed ? ', ' + failed + ' failed (tap Upload again to retry)' : '') + '.');
+        renderQueue();
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  SETTINGS
+    // ═════════════════════════════════════════════════════════════
+
+    function renderSettings() {
+        view.innerHTML = '';
+        var screen = el(
+            '<div class="screen">' +
+                '<header class="hdr"><div class="hdr__kicker">Tweller Studios</div><div class="hdr__title">Settings</div></header>' +
+            '</div>'
+        );
+        var wrap = el('<div class="wrap"></div>');
+        screen.appendChild(wrap);
+
+        var card = el(
+            '<div class="card"><div class="card__title">Connection</div>' +
+                '<div class="field"><label>Website URL</label><input type="url" id="set-site" value="' + esc(state.settings.siteUrl) + '"></div>' +
+                '<div class="field"><label>API Key (same as the Lightroom plugin)</label><input type="password" id="set-key" value="' + esc(state.settings.apiKey) + '"></div>' +
+                '<label class="toggle"><input type="checkbox" id="set-wifi" ' + (state.settings.wifiOnly ? 'checked' : '') + '><span>Upload on Wi-Fi only (ask before using mobile data)</span></label>' +
+                '<button class="btn" id="set-save">Save</button>' +
+            '</div>'
+        );
+        card.querySelector('#set-save').addEventListener('click', function () {
+            state.settings.siteUrl = card.querySelector('#set-site').value.trim();
+            state.settings.apiKey = card.querySelector('#set-key').value.trim();
+            state.settings.wifiOnly = card.querySelector('#set-wifi').checked;
+            localStorage.setItem('tb_site', state.settings.siteUrl);
+            localStorage.setItem('tb_key', state.settings.apiKey);
+            localStorage.setItem('tb_wifi_only', state.settings.wifiOnly ? '1' : '0');
+            TwellerApi.configure(state.settings.siteUrl, state.settings.apiKey);
+            toast('Saved.');
+        });
+        wrap.appendChild(card);
+
+        wrap.appendChild(el(
+            '<div class="card"><div class="card__title">The flow</div><p class="hint" style="margin:0;">' +
+            '<strong>Home</strong> shows what needs you. Open a client to see everything about the shoot.<br><br>' +
+            '<strong>Upload for Culling</strong> — after the shoot: watermarked proofs the client picks from.<br><br>' +
+            '<strong>Deliver to Gallery</strong> — after editing: finished photos at full quality (export from Lightroom Mobile first).<br><br>' +
+            'Every upload sits in <strong>Uploads</strong> with an exact MB count before anything moves — Wi-Fi-only by default.</p></div>'
+        ));
+
+        view.innerHTML = '';
+        view.appendChild(screen);
+    }
+
+    // ── Boot ─────────────────────────────────────────────────────
+
+    renderRoot('home');
+    refreshBadge();
+    refreshPrintsBadge();
+})();

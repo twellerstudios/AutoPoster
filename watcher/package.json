@@ -1,0 +1,15 @@
+{
+  "name": "tweller-watcher",
+  "version": "2.0.0",
+  "description": "Local folder watcher for Tweller Flow — watches photo session folders and updates WordPress",
+  "main": "watcher.js",
+  "scripts": {
+    "start": "node watcher.js",
+    "dev": "node watcher.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "chokidar": "^3.6.0",
+    "form-data": "^4.0.5"
+  }
+}

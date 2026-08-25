@@ -1,0 +1,497 @@
+/* Tweller Flow — Print Provider Portal
+   Namespace: .tfpv  ·  Black #101010 / Gold #C9A227  ·  mobile-first */
+
+.tfpv {
+    --tfpv-ink: #101010;
+    --tfpv-gold: #C9A227;
+    --tfpv-muted: #6B7280;
+    --tfpv-line: #E7E5E0;
+    --tfpv-bg: #FBFAF8;
+    --tfpv-card: #FFFFFF;
+    --tfpv-green: #0E7C5A;
+    --tfpv-amber: #B4690E;
+    --tfpv-red: #B91C1C;
+
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 16px 96px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--tfpv-ink);
+    line-height: 1.5;
+}
+
+.tfpv *,
+.tfpv *::before,
+.tfpv *::after { box-sizing: border-box; }
+
+/* ── Header ────────────────────────────────────────── */
+
+.tfpv__top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--tfpv-line);
+}
+
+.tfpv__brand { display: flex; align-items: baseline; gap: 8px; }
+.tfpv__brand--stack { flex-direction: column; align-items: center; gap: 2px; margin-bottom: 20px; }
+
+.tfpv__brand-name {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: var(--tfpv-ink);
+}
+
+.tfpv__brand-sub {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--tfpv-gold);
+}
+
+.tfpv__whoami { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.tfpv__provider { font-weight: 600; }
+
+.tfpv__logout {
+    color: var(--tfpv-muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--tfpv-line);
+}
+.tfpv__logout:hover { color: var(--tfpv-ink); }
+
+.tfpv__hello { padding: 26px 0 18px; }
+
+.tfpv__title {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    margin: 0 0 6px;
+    color: var(--tfpv-ink);
+}
+
+.tfpv__sub { margin: 0; font-size: 14px; color: var(--tfpv-muted); }
+
+.tfpv__h2 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--tfpv-muted);
+    margin: 0 0 6px;
+}
+
+.tfpv__hint { margin: 0 0 12px; font-size: 13px; color: var(--tfpv-muted); }
+.tfpv__loading { font-size: 14px; color: var(--tfpv-muted); }
+
+/* ── Centred cards (login / no access) ─────────────── */
+
+.tfpv--centered { display: flex; justify-content: center; padding-top: 48px; }
+
+.tfpv__card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--tfpv-card);
+    border: 1px solid var(--tfpv-line);
+    border-radius: 14px;
+    padding: 32px 26px;
+    box-shadow: 0 1px 2px rgba(16, 16, 16, 0.05), 0 12px 32px rgba(16, 16, 16, 0.06);
+    text-align: center;
+}
+
+.tfpv__card--muted { background: var(--tfpv-bg); }
+
+.tfpv__card-title { font-size: 20px; font-weight: 700; margin: 0 0 8px; }
+.tfpv__card-body { font-size: 14px; color: var(--tfpv-muted); margin: 0 0 20px; }
+.tfpv__card-foot { margin: 16px 0 0; font-size: 13px; }
+.tfpv__card-foot a { color: var(--tfpv-muted); }
+
+/* WP login form, restyled */
+.tfpv__login { text-align: left; }
+.tfpv__login label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+.tfpv__login input[type="text"],
+.tfpv__login input[type="password"] {
+    width: 100%;
+    padding: 11px 12px;
+    font-size: 15px;
+    border: 1px solid var(--tfpv-line);
+    border-radius: 9px;
+    background: #fff;
+    margin-bottom: 14px;
+}
+.tfpv__login input[type="text"]:focus,
+.tfpv__login input[type="password"]:focus {
+    outline: none;
+    border-color: var(--tfpv-ink);
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.18);
+}
+.tfpv__login .login-remember label { font-weight: 400; color: var(--tfpv-muted); }
+.tfpv__login input[type="submit"] {
+    width: 100%;
+    background: var(--tfpv-ink);
+    color: var(--tfpv-gold);
+    border: 0;
+    border-radius: 9px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 8px;
+}
+.tfpv__login input[type="submit"]:hover { background: #000; }
+
+/* ── Alerts ────────────────────────────────────────── */
+
+.tfpv__alert {
+    margin: 16px 0 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    border: 1px solid var(--tfpv-line);
+    background: #fff;
+}
+.tfpv__alert--ok    { border-color: #A7D8C4; background: #EFF9F5; color: var(--tfpv-green); }
+.tfpv__alert--error { border-color: #F0C0C0; background: #FDF2F2; color: var(--tfpv-red); }
+
+/* ── Scan panel ────────────────────────────────────── */
+
+.tfpv__scan {
+    margin-top: 22px;
+    padding: 18px;
+    border: 1px solid var(--tfpv-line);
+    border-radius: 14px;
+    background: var(--tfpv-bg);
+}
+
+.tfpv__scan-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.tfpv__input {
+    flex: 1 1 220px;
+    min-width: 0;
+    padding: 11px 12px;
+    font-size: 15px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    letter-spacing: 0.4px;
+    border: 1px solid var(--tfpv-line);
+    border-radius: 9px;
+    background: #fff;
+}
+.tfpv__input:focus {
+    outline: none;
+    border-color: var(--tfpv-ink);
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.18);
+}
+
+/* The hidden attribute has to beat author display rules, or an element
+   marked hidden still paints — which is how the scanner's <video> was
+   rendering as a bare black rectangle on page load. */
+.tfpv [hidden],
+.tfpv__scan [hidden],
+[hidden] { display: none !important; }
+
+/* ── Scanner ───────────────────────────────────────── */
+
+.tfpv__scan {
+    background: var(--tfpv-card, #fff);
+    border: 1px solid var(--tfpv-line);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 18px;
+}
+.tfpv__scan-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+.tfpv__scan-icon {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(201, 162, 39, 0.12);
+    color: var(--tfpv-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tfpv__scan-icon svg { width: 20px; height: 20px; }
+.tfpv__scan-head .tfpv__h2 { margin: 0; }
+
+/* Camera viewport — only ever in the flow while the camera is live. */
+.tfpv__viewport {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    margin: 14px 0 0;
+    aspect-ratio: 4 / 3;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #101010;
+}
+.tfpv__video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+/* Corner guides so the frame reads as a scanner, not a dead rectangle. */
+.tfpv__reticle {
+    position: absolute;
+    inset: 12%;
+    pointer-events: none;
+    border-radius: 10px;
+    box-shadow: 0 0 0 9999px rgba(16, 16, 16, 0.35);
+}
+.tfpv__reticle::before,
+.tfpv__reticle::after {
+    content: '';
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    border: 3px solid var(--tfpv-gold);
+}
+.tfpv__reticle::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
+.tfpv__reticle::after  { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
+
+/* ── Stat tiles ────────────────────────────────────── */
+
+.tfpv__stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 22px 0 10px;
+}
+
+.tfpv__tile {
+    background: var(--tfpv-card);
+    border: 1px solid var(--tfpv-line);
+    border-radius: 12px;
+    padding: 14px 14px 13px;
+    box-shadow: 0 1px 2px rgba(16, 16, 16, 0.04);
+}
+
+.tfpv__tile-label {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--tfpv-muted);
+    margin-bottom: 6px;
+}
+
+.tfpv__tile-value {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--tfpv-ink);
+}
+
+.tfpv__tile--accent .tfpv__tile-value { color: var(--tfpv-gold); }
+
+/* ── Order cards ───────────────────────────────────── */
+
+.tfpv__orders { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+
+.tfpv__order {
+    background: var(--tfpv-card);
+    border: 1px solid var(--tfpv-line);
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 1px 2px rgba(16, 16, 16, 0.04);
+}
+
+.tfpv__order-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.tfpv__ref {
+    font-size: 15px;
+    font-weight: 700;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    letter-spacing: 0.4px;
+}
+
+.tfpv__meta { margin: 8px 0 0; font-size: 13px; color: var(--tfpv-muted); }
+.tfpv__meta strong { color: var(--tfpv-ink); font-weight: 600; }
+.tfpv__sizes { margin: 6px 0 0; font-size: 13px; color: var(--tfpv-ink); }
+
+/* ── Payout line (order value vs. what this job earns) ──────── */
+
+.tfpv__pay {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    border: 1px solid var(--tfpv-line);
+    border-radius: 10px;
+    background: var(--tfpv-bg);
+}
+
+.tfpv__pay-item {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tfpv__pay-item + .tfpv__pay-item {
+    border-left: 1px solid var(--tfpv-line);
+    padding-left: 12px;
+}
+
+.tfpv__pay-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    color: var(--tfpv-muted);
+}
+
+.tfpv__pay-value {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--tfpv-ink);
+    letter-spacing: -0.2px;
+}
+
+.tfpv__pay-item--earn .tfpv__pay-value { color: var(--tfpv-gold); }
+
+.tfpv__flag {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border-radius: 9px;
+    border: 1px solid #E7CFA0;
+    background: #FDF6E7;
+    color: var(--tfpv-amber);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.tfpv__pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--tfpv-line);
+    background: var(--tfpv-bg);
+    color: var(--tfpv-muted);
+    white-space: nowrap;
+}
+.tfpv__pill--printing  { border-color: #E7CFA0; background: #FDF6E7; color: var(--tfpv-amber); }
+.tfpv__pill--ready     { border-color: #A7D8C4; background: #EFF9F5; color: var(--tfpv-green); }
+.tfpv__pill--completed { border-color: #101010; background: #101010; color: var(--tfpv-gold); }
+.tfpv__pill--cancelled { border-color: #F0C0C0; background: #FDF2F2; color: var(--tfpv-red); }
+
+/* ── Buttons ───────────────────────────────────────── */
+
+.tfpv__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+.tfpv__btn {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--tfpv-ink);
+    background: var(--tfpv-ink);
+    color: #fff;
+    border-radius: 9px;
+    padding: 10px 15px;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.15s ease;
+}
+.tfpv__btn:hover { opacity: 0.88; }
+.tfpv__btn[disabled] { opacity: 0.45; cursor: default; }
+
+.tfpv__btn--gold { background: var(--tfpv-gold); border-color: var(--tfpv-gold); color: #101010; }
+.tfpv__btn--ghost { background: #fff; color: var(--tfpv-ink); border-color: var(--tfpv-line); }
+.tfpv__btn--ghost:hover { border-color: var(--tfpv-ink); }
+.tfpv__btn--link { background: none; border: 0; color: var(--tfpv-muted); padding: 10px 4px; }
+.tfpv__btn--link:hover { color: var(--tfpv-ink); }
+.tfpv__btn--dark { background: var(--tfpv-ink); border-color: var(--tfpv-ink); color: #fff; }
+.tfpv__btn--dark:hover { opacity: 0.85; }
+
+/* ── Detail ────────────────────────────────────────── */
+
+.tfpv__detail {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--tfpv-line);
+}
+
+.tfpv__items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.tfpv__item { display: flex; gap: 12px; align-items: center; }
+
+.tfpv__thumb {
+    width: 54px;
+    height: 54px;
+    flex: 0 0 54px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: var(--tfpv-bg);
+    border: 1px solid var(--tfpv-line);
+}
+
+.tfpv__thumb--empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--tfpv-muted);
+}
+
+.tfpv__item-name { font-size: 14px; font-weight: 600; margin: 0; }
+.tfpv__item-file { font-size: 12px; color: var(--tfpv-muted); margin: 2px 0 0; word-break: break-all; }
+.tfpv__item-qty { margin-left: auto; font-size: 14px; font-weight: 700; white-space: nowrap; }
+
+.tfpv__note {
+    margin: 14px 0 0;
+    padding: 12px 14px;
+    border-left: 3px solid var(--tfpv-gold);
+    background: var(--tfpv-bg);
+    border-radius: 0 9px 9px 0;
+    font-size: 13.5px;
+    color: var(--tfpv-ink);
+}
+
+.tfpv__empty {
+    text-align: center;
+    padding: 40px 20px;
+    border: 1px dashed var(--tfpv-line);
+    border-radius: 14px;
+    color: var(--tfpv-muted);
+    font-size: 14px;
+}
+
+.tfpv__progress { font-size: 13px; color: var(--tfpv-muted); margin: 10px 0 0; }
+
+/* ── Larger screens ────────────────────────────────── */
+
+@media (min-width: 720px) {
+    .tfpv { padding: 40px 24px 120px; }
+    .tfpv__title { font-size: 30px; }
+    .tfpv__stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .tfpv__order { padding: 20px 22px; }
+}

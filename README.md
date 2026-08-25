@@ -145,3 +145,33 @@ Generate and (optionally) publish a blog post.
 - [ ] Post history / dashboard
 - [ ] Mobile APK (Capacitor)
 - [ ] Image generation (DALL-E / Stability AI)
+
+---
+
+## Tweller Bookings WP plugin — releases
+
+The plugin source lives in `tweller-bookings-wp/`. That folder is the only
+thing you edit; it is what gets installed on WordPress.
+
+**Every version is archived automatically.** A pre-commit hook watches the
+plugin's `Version:` header — when it changes, it builds
+`releases/tweller-bookings-wp-<version>.zip` and attaches it to that same
+commit. So `git pull` gives you a rollback-ready zip of every version that
+ever shipped, with no build step to remember.
+
+Those zips are kept in git deliberately: each is named for its version,
+written once, and never modified — so unlike a single mutable `build.zip`
+they can never cause a merge conflict.
+
+To enable the hook on a fresh clone (one time, per machine):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+To build a zip by hand without bumping the version:
+
+```bash
+npm run build:plugin            # skips if that version is already archived
+npm run build:plugin -- --force # rebuild it anyway
+```

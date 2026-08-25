@@ -1,0 +1,12 @@
+{
+  "appId": "com.twellerstudios.bookings",
+  "appName": "Tweller Bookings",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

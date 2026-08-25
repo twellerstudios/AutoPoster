@@ -1,0 +1,868 @@
+/* tweller-flow/public/css/booking.css */
+:root {
+    --tf-primary: #1A1A1A;
+    --tf-primary-hover: #0A0A0A;
+    --tf-accent: #C9A84C;
+    --tf-bg: #FFFFFF;
+    --tf-card-bg: #FDFDFD;
+    --tf-border: #E5E5E5;
+    --tf-text: #52525B;
+    --tf-text-dark: #1A1A1A;
+    --tf-radius: 12px;
+    --tf-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --tf-font: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.tweller-booking {
+    font-family: var(--tf-font);
+    background: var(--tf-bg);
+    color: var(--tf-text);
+    max-width: 800px;
+    margin: 40px auto;
+    border-radius: var(--tf-radius);
+    padding: 30px;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+    border: 1px solid var(--tf-border);
+    position: relative;
+    overflow: hidden;
+}
+
+.tweller-booking__header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.tweller-booking__header h2 {
+    color: var(--tf-text-dark);
+    margin: 0 0 10px 0;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.tweller-booking__header p {
+    margin: 0;
+    color: var(--tf-text);
+}
+
+.tweller-booking__progress {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 25px;
+}
+
+.tf2-step {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--tf-border);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    color: var(--tf-border);
+    transition: all 0.3s ease;
+}
+
+.tf2-step.active, .tf2-step.completed {
+    border-color: var(--tf-primary);
+    color: var(--tf-primary);
+}
+
+.tf2-step.completed {
+    background: var(--tf-primary);
+    color: white;
+}
+
+.tf2-step-line {
+    height: 2px;
+    width: 50px;
+    background: var(--tf-border);
+    margin: 0 10px;
+    transition: background 0.3s ease;
+}
+
+.tf2-step.completed + .tf2-step-line {
+    background: var(--tf-primary);
+}
+
+/* Step containers */
+.tweller-booking__step {
+    animation: fadeIn 0.4s ease forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.tf2-back-btn {
+    cursor: pointer;
+    font-weight: 500;
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--tf-primary);
+    transition: color 0.2s;
+}
+
+.tf2-back-btn:hover {
+    color: var(--tf-accent);
+}
+
+/* Packages Grid */
+.tf2-packages-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+.tf2-package-card {
+    background: var(--tf-card-bg);
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius);
+    padding: 24px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.tf2-top-booked {
+    position: absolute;
+    top: -12px;
+    right: 20px;
+    background: var(--tf-primary);
+    color: var(--tf-accent);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 4px 12px;
+    border-radius: 100px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.tf2-pkg-features {
+    list-style: none;
+    padding: 0;
+    margin: 15px 0 0 0;
+    font-size: 14px;
+    color: var(--tf-text);
+    text-align: left;
+}
+
+.tf2-pkg-features li {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.tf2-checkmark {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23C9A84C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>');
+    background-size: contain;
+    background-repeat: no-repeat;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.tf2-session-card {
+    border: 1px solid var(--tf-border);
+    background: var(--tf-bg);
+}
+
+.tf2-btn-inquiry {
+    display: inline-block;
+    padding: 10px 20px;
+    background: var(--tf-primary);
+    color: white !important;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.2s;
+    text-align: center;
+    margin-top: auto;
+}
+.tf2-btn-inquiry:hover {
+    background: var(--tf-primary-hover);
+}
+
+.tf2-package-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--tf-shadow);
+    border-color: var(--tf-primary);
+}
+
+.tf2-pkg-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--tf-text-dark);
+    margin-bottom: 10px;
+}
+
+.tf2-pkg-price {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--tf-accent);
+    margin-bottom: 15px;
+}
+
+.tf2-pkg-detail {
+    font-size: 14px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Date Time Layout */
+.tf2-datetime-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+}
+@media (max-width: 600px) {
+    .tf2-datetime-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.tf2-input-field {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius);
+    font-size: 16px;
+    font-family: inherit;
+    background: white;
+    color: var(--tf-text-dark);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.tf2-input-field:focus {
+    border-color: var(--tf-primary);
+}
+
+.tf2-slots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    max-height: 350px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.tf2-slot-btn {
+    padding: 12px;
+    text-align: center;
+    background: white;
+    border: 1px solid var(--tf-border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.tf2-slot-btn:hover {
+    border-color: var(--tf-primary);
+    background: var(--tf-primary);
+    color: white;
+}
+
+.tf2-slots-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: #9ca3af;
+    font-style: italic;
+    padding: 20px 0;
+}
+
+/* Form Styles */
+.tf2-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+@media (max-width: 500px) {
+    .tf2-form-row { grid-template-columns: 1fr; gap: 0; }
+}
+
+.tf2-field {
+    margin-bottom: 15px;
+}
+
+.tf2-field label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--tf-text-dark);
+}
+
+.tf2-field input, .tf2-field textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--tf-border);
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.tf2-field input:focus, .tf2-field textarea:focus {
+    border-color: var(--tf-primary);
+}
+
+.tf2-btn-submit {
+    width: 100%;
+    padding: 16px;
+    background: var(--tf-primary);
+    color: white;
+    border: none;
+    border-radius: var(--tf-radius);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 15px;
+}
+
+.tf2-btn-submit:hover {
+    background: var(--tf-primary-hover);
+}
+
+.tf2-btn-submit:disabled {
+    opacity: 0.65;
+    cursor: default;
+}
+
+/*
+ * "Reserve Booking · Continue to Payment" is a long label for a small
+ * phone. Measured, not guessed: inside .tweller-booking's 30px padding
+ * the button is 298px wide at a 360px viewport, and the label needs
+ * 305px at 16px/700 — 7px too wide, so it broke onto two lines. Stepping
+ * to 15px at ≤440px and 14px at ≤400px brings it to 286px and 267px
+ * against 274px/278px of usable width, so it stays on one line all the
+ * way down to 360px. text-wrap:balance keeps any forced break tidy.
+ */
+.tf2-btn-submit {
+    line-height: 1.3;
+    text-wrap: balance;
+}
+
+@media (max-width: 440px) {
+    .tf2-btn-submit {
+        font-size: 15px;
+        padding: 15px 12px;
+    }
+}
+
+@media (max-width: 400px) {
+    .tf2-btn-submit {
+        font-size: 14px;
+        padding: 15px 10px;
+    }
+}
+
+/* Calm expectation-setting note under the submit button — a muted hint
+   in the same voice as the rest of the form, never a boxed alert. */
+.tf2-submit-hint {
+    margin: 10px 0 0;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #6B7280;
+    text-align: center;
+}
+
+/* Summary Card */
+.tf2-summary-card {
+    background: var(--tf-primary);
+    color: white;
+    padding: 20px;
+    border-radius: var(--tf-radius);
+    margin-bottom: 25px;
+}
+
+.tf2-summary-card h4 {
+    margin: 0 0 10px 0;
+    color: #e5e7eb;
+}
+
+.tf2-summary-detail {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+/* Loading Overlay */
+.tweller-booking__loading {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+}
+
+.tf2-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--tf-border);
+    border-top-color: var(--tf-primary);
+    border-radius: 50%;
+    animation: tfspin 1s linear infinite;
+    margin-bottom: 15px;
+}
+@keyframes tfspin { to { transform: rotate(360deg); } }
+
+.tf2-error-msg {
+    color: var(--tf-accent);
+    margin-top: 15px;
+    text-align: center;
+    font-weight: 500;
+}
+
+/* ══════════════════════════════════════════════════════
+   Image-use consent — "Sharing your photos"
+   ══════════════════════════════════════════════════════ */
+
+/*
+ * THE bug fix: .tf2-field input sets width:100% + padding:12px, which turned
+ * every radio into a full-width box — the dot rendered centred and the label
+ * was pushed off the side. These controls opt out of that rule entirely.
+ */
+.tf2-consent input[type="radio"] {
+    width: auto;
+    padding: 0;
+    margin: 0;
+    border: 0;
+}
+
+.tf2-consent {
+    margin-bottom: 15px;
+    padding: 16px;
+    background: var(--tf-card-bg);
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius);
+}
+
+.tf2-consent__head { margin-bottom: 12px; }
+
+.tf2-consent__title {
+    margin: 0 0 2px;
+    font-family: var(--tf-font);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tf-text-dark);
+    letter-spacing: -0.01em;
+}
+
+.tf2-consent__sub {
+    margin: 0;
+    font-size: 13px;
+    color: var(--tf-text);
+}
+
+.tf2-consent__opts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Each option is a card: custom radio, body, then a price/benefit tag. */
+.tf2-consent-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 0;
+    padding: 13px 14px;
+    background: var(--tf-bg);
+    border: 1px solid var(--tf-border);
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 400;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tf2-consent-opt:hover { border-color: #C9C9C9; }
+
+/* The native input is kept for semantics and keyboard, but hidden behind a
+   drawn mark so it can never inherit the full-width field styling again. */
+.tf2-consent-opt input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.tf2-consent-opt__mark {
+    position: relative;
+    flex: 0 0 auto;
+    width: 19px;
+    height: 19px;
+    margin-top: 1px;
+    border: 1.5px solid #C4C4C4;
+    border-radius: 50%;
+    background: var(--tf-bg);
+    transition: border-color 0.15s ease;
+}
+
+.tf2-consent-opt__mark::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--tf-primary);
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.15s ease;
+}
+
+.tf2-consent-opt__body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.tf2-consent-opt__name {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--tf-text-dark);
+    line-height: 1.35;
+}
+
+.tf2-consent-opt__note {
+    display: block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--tf-text);
+}
+
+.tf2-consent-opt__tag {
+    flex: 0 0 auto;
+    align-self: center;
+    padding: 5px 10px;
+    border-radius: 100px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.tf2-consent-opt__tag--free { background: #F1F5F2; color: #4B6B57; }
+.tf2-consent-opt__tag--gift { background: rgba(201, 168, 76, 0.16); color: #8A6D1B; }
+.tf2-consent-opt__tag--fee  { background: #F6EFEF; color: #9A5B5B; }
+
+/* Selected state — the whole card responds, not just the dot. */
+.tf2-consent-opt:has(input:checked) {
+    border-color: var(--tf-primary);
+    background: var(--tf-bg);
+    box-shadow: 0 0 0 1px var(--tf-primary);
+}
+.tf2-consent-opt:has(input:checked) .tf2-consent-opt__mark { border-color: var(--tf-primary); }
+.tf2-consent-opt:has(input:checked) .tf2-consent-opt__mark::after { transform: translate(-50%, -50%) scale(1); }
+
+.tf2-consent-opt:has(input:focus-visible) {
+    border-color: var(--tf-accent);
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.28);
+}
+
+/* :has() is unsupported on older Safari/Firefox — JS mirrors the state onto
+   this class so the selection is never invisible. */
+.tf2-consent-opt.is-selected {
+    border-color: var(--tf-primary);
+    box-shadow: 0 0 0 1px var(--tf-primary);
+}
+.tf2-consent-opt.is-selected .tf2-consent-opt__mark { border-color: var(--tf-primary); }
+.tf2-consent-opt.is-selected .tf2-consent-opt__mark::after { transform: translate(-50%, -50%) scale(1); }
+
+/* ── "Why is there a privacy fee?" trigger ── */
+.tf2-consent__why {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: rgba(201, 168, 76, 0.09);
+    border: 1px solid rgba(201, 168, 76, 0.4);
+    border-radius: 10px;
+    color: #7A6015;
+    font-family: var(--tf-font);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.tf2-consent__why:hover {
+    background: rgba(201, 168, 76, 0.16);
+    border-color: var(--tf-accent);
+}
+
+.tf2-consent__why svg { flex: 0 0 auto; width: 17px; height: 17px; }
+.tf2-consent__why > span:first-of-type { flex: 1 1 auto; min-width: 0; }
+
+.tf2-consent__why-cta {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: var(--tf-accent);
+    color: #1A1A1A;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* ── Why-this-fee modal ── */
+.tf2-why-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 100020;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    /* Never inherit centring or type from whatever wraps the shortcode. */
+    text-align: left;
+    font-family: var(--tf-font);
+}
+
+.tf2-why-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.55);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+}
+
+.tf2-why-modal__card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 560px;
+    max-height: min(82vh, 720px);
+    margin: 0 auto;
+    background: var(--tf-bg);
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(10, 10, 10, 0.32);
+    overflow: hidden;
+}
+
+.tf2-why-modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex: 0 0 auto;
+    padding: 22px 26px 16px;
+    border-bottom: 1px solid var(--tf-border);
+}
+
+.tf2-why-modal__title {
+    margin: 0;
+    font-family: var(--tf-font);
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--tf-text-dark);
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+}
+
+.tf2-why-modal__x {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    margin: -3px -6px 0 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #8A8178;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.tf2-why-modal__x svg { width: 17px; height: 17px; display: block; }
+.tf2-why-modal__x:hover { background: #F1F0ED; color: var(--tf-text-dark); }
+.tf2-why-modal__x:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.32);
+}
+
+/* The scrollable part */
+/*
+ * Generous leading, restrained weights and a gold hairline before each
+ * heading — the copy should read like the studio's own writing, not like
+ * terms and conditions.
+ */
+.tf2-why-modal__body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 20px 26px 12px;
+    font-size: 14.5px;
+    line-height: 1.78;
+    color: var(--tf-text);
+}
+
+.tf2-why-modal__body h4 {
+    position: relative;
+    margin: 26px 0 8px;
+    padding-top: 16px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--tf-text-dark);
+}
+
+.tf2-why-modal__body h4::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 26px;
+    height: 2px;
+    background: var(--tf-accent);
+    border-radius: 2px;
+}
+
+.tf2-why-modal__body p { margin: 0 0 13px; }
+.tf2-why-modal__body ul { margin: 0 0 13px; padding-left: 0; list-style: none; }
+.tf2-why-modal__body li {
+    position: relative;
+    margin: 9px 0;
+    padding-left: 18px;
+}
+.tf2-why-modal__body li::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 11px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--tf-accent);
+}
+.tf2-why-modal__body strong { color: var(--tf-text-dark); font-weight: 600; }
+
+/* The opening line carries the whole tone — give it room. */
+.tf2-why-modal__body .tf2-why__lead {
+    margin-bottom: 4px;
+    font-size: 17px;
+    line-height: 1.6;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--tf-text-dark);
+}
+
+.tf2-why-modal__body .tf2-why__foot {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid var(--tf-border);
+    font-size: 13px;
+    color: #8A8178;
+}
+.tf2-why-modal__body .tf2-why__foot a { color: var(--tf-text-dark); }
+
+.tf2-why-modal__foot {
+    flex: 0 0 auto;
+    padding: 14px 26px 20px;
+    border-top: 1px solid var(--tf-border);
+    background: var(--tf-bg);
+}
+.tf2-why-modal__done { margin: 0; }
+
+/* ── Phones ── */
+@media (max-width: 560px) {
+    .tf2-consent { padding: 14px; }
+
+    /*
+     * Stack the tag under the text rather than squeezing it beside a long
+     * label — that squeeze is what pushed the copy off the edge.
+     */
+    .tf2-consent-opt {
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+    .tf2-consent-opt__body { flex: 1 1 100%; order: 2; min-width: 0; }
+    .tf2-consent-opt__mark { order: 1; }
+    .tf2-consent-opt__tag { order: 3; align-self: flex-start; margin-left: 31px; }
+
+    .tf2-consent__why { flex-wrap: wrap; row-gap: 8px; }
+    .tf2-consent__why > span:first-of-type { flex: 1 1 calc(100% - 26px); }
+    .tf2-consent__why-cta { margin-left: 26px; }
+
+    .tf2-why-modal { padding: 0; align-items: flex-end; }
+    .tf2-why-modal__card {
+        max-width: none;
+        max-height: 88vh;
+        border-radius: 18px 18px 0 0;
+    }
+    .tf2-why-modal__head { padding: 20px 20px 14px; }
+    .tf2-why-modal__body { padding: 18px 20px 6px; }
+    .tf2-why-modal__foot { padding: 12px 20px 18px; }
+    .tf2-why-modal__body .tf2-why__lead { font-size: 16px; }
+}
+
+/* ── Resumed-booking notice ── */
+.tf2-resume {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 11px 14px;
+    background: rgba(201, 168, 76, 0.09);
+    border: 1px solid rgba(201, 168, 76, 0.38);
+    border-radius: 10px;
+    font-size: 13.5px;
+    color: #7A6015;
+}
+
+.tf2-resume svg { flex: 0 0 auto; width: 17px; height: 17px; }
+.tf2-resume__text { flex: 1 1 auto; min-width: 0; line-height: 1.45; }
+
+.tf2-resume__reset {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border: 1px solid rgba(201, 168, 76, 0.5);
+    border-radius: 100px;
+    background: var(--tf-bg);
+    color: #7A6015;
+    font-family: var(--tf-font);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.tf2-resume__reset:hover { background: var(--tf-accent); color: #1A1A1A; border-color: var(--tf-accent); }
+
+@media (max-width: 560px) {
+    .tf2-resume { flex-wrap: wrap; row-gap: 8px; }
+    .tf2-resume__text { flex: 1 1 calc(100% - 27px); }
+    .tf2-resume__reset { margin-left: 27px; }
+}

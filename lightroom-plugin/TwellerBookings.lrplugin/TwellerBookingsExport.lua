@@ -1,0 +1,773 @@
+--[[
+    Tweller Bookings — Auto Upload plugin for Lightroom Classic
+
+    Exports photos straight from Lightroom to the Tweller Bookings WP
+    gallery (no watcher needed). Supports:
+      - Picking an existing session (loaded from the website)
+      - Creating a session on the fly for last-minute / walk-in shoots
+      - Optional local export copy
+      - Auto-advancing the session to "delivered" (sends the delivery email)
+]]
+
+local LrView          = import 'LrView'
+local LrHttp          = import 'LrHttp'
+local LrPathUtils     = import 'LrPathUtils'
+local LrFileUtils     = import 'LrFileUtils'
+local LrDialogs       = import 'LrDialogs'
+local LrTasks         = import 'LrTasks'
+local LrLogger        = import 'LrLogger'
+local LrStringUtils   = import 'LrStringUtils'
+local LrColor         = import 'LrColor'
+
+local logger = LrLogger( 'TwellerBookings' )
+logger:enable( 'logfile' )
+
+--------------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------------
+
+local function log( msg )
+    logger:trace( msg )
+end
+
+local function trim( s )
+    return s and s:match( "^%s*(.-)%s*$" ) or ""
+end
+
+local function urlencode( s )
+    if not s then return "" end
+    s = tostring( s )
+    s = s:gsub( "([^%w%-%.%_%~])", function( c )
+        return string.format( "%%%02X", string.byte( c ) )
+    end )
+    return s
+end
+
+--- Minimal JSON string value extractor
+local function jsonValue( json, key )
+    if not json then return nil end
+    return json:match( '"' .. key .. '"%s*:%s*"([^"]*)"' )
+end
+
+local function jsonBool( json, key )
+    if not json then return false end
+    return json:match( '"' .. key .. '"%s*:%s*true' ) ~= nil
+end
+
+--- API base for the Tweller Bookings WP plugin
+local function apiBase( siteUrl )
+    return siteUrl:gsub( "/+$", "" ) .. "/wp-json/tweller-flow-2/v1"
+end
+
+--- Resolve the site's canonical URL (www vs non-www, http vs https).
+--- POST requests don't survive redirects (they get converted to GET and
+--- WordPress replies "no route"), so uploads must hit the final URL directly.
+local function resolveSiteUrl( siteUrl )
+    local entered = siteUrl:gsub( "/+$", "" )
+    local body = LrHttp.get( entered .. "/wp-json/", nil, 15 )
+    if body then
+        local url = body:match( '"url"%s*:%s*"([^"]-)"' )
+        if url then
+            url = url:gsub( '\\/', '/' ):gsub( "/+$", "" )
+            if url:match( "^https?://" ) then
+                -- Never downgrade to http: WordPress sometimes reports an
+                -- http:// home URL even though the site serves https, and an
+                -- http POST gets redirected to https and turned into a GET.
+                if entered:match( "^https://" ) then
+                    url = url:gsub( "^http://", "https://" )
+                end
+                log( "Resolved canonical site URL: " .. url )
+                return url
+            end
+        end
+    end
+    log( "Could not resolve canonical URL, using as entered: " .. entered )
+    return entered
+end
+
+--- Parse a JSON array of session objects into popup items
+local function parseSessionList( body )
+    local sessions = {}
+    local in_string = false
+    local depth = 0
+    local obj_start = 1
+
+    for i = 1, #body do
+        local char = body:sub( i, i )
+
+        if char == '"' and ( i == 1 or body:sub( i - 1, i - 1 ) ~= '\\' ) then
+            in_string = not in_string
+        elseif not in_string then
+            if char == '{' then
+                if depth == 0 then obj_start = i end
+                depth = depth + 1
+            elseif char == '}' then
+                depth = depth - 1
+                if depth == 0 then
+                    local obj_str = body:sub( obj_start, i )
+                    local code = jsonValue( obj_str, 'tracking_code' )
+                    local name = jsonValue( obj_str, 'client_name' )
+                    local stage = jsonValue( obj_str, 'current_stage' )
+                    local date = jsonValue( obj_str, 'session_date' )
+                    if code and name then
+                        sessions[#sessions + 1] = {
+                            title = name .. " — " .. ( date or "no date" ) .. "  [" .. ( stage or "" ) .. "]",
+                            value = code,
+                        }
+                    end
+                end
+            end
+        end
+    end
+    return sessions
+end
+
+--- Fetch sessions from WordPress for the session picker.
+--- Returns sessions table + error message (nil on success).
+local function fetchSessions( siteUrl, apiKey )
+    if siteUrl == "" then
+        return {}, "Enter your website URL first."
+    end
+
+    -- Try recent sessions first, then fall back to all active sessions
+    local urls = {
+        apiBase( siteUrl ) .. "/automation/sessions?range=recent&api_key=" .. urlencode( apiKey ),
+        apiBase( siteUrl ) .. "/automation/sessions?api_key=" .. urlencode( apiKey ),
+    }
+
+    local lastError = nil
+
+    for _, url in ipairs( urls ) do
+        local body, hdrs = LrHttp.get( url, {
+            { field = "Authorization", value = "Bearer " .. apiKey },
+            { field = "Accept",        value = "application/json" },
+        }, 30 )
+
+        local status = hdrs and hdrs.status or 0
+
+        if not body or body == "" then
+            local errMsg = hdrs and hdrs.error and ( hdrs.error.errorCode or "network error" ) or "no response"
+            lastError = "Could not reach the website (" .. tostring( errMsg ) .. "). Check the URL."
+            log( "fetchSessions: no body from " .. url .. " status=" .. tostring( status ) )
+        elseif status == 401 or status == 403 then
+            lastError = "Access denied (HTTP " .. status .. "). Check the API key."
+            log( "fetchSessions: auth failed " .. tostring( body:sub( 1, 300 ) ) )
+        elseif status == 404 then
+            lastError = "Endpoint not found (HTTP 404). Is the Tweller Bookings plugin active and up to date?"
+            log( "fetchSessions: 404 " .. tostring( body:sub( 1, 300 ) ) )
+        elseif status >= 400 then
+            lastError = "Website error (HTTP " .. status .. ")."
+            log( "fetchSessions: HTTP " .. status .. " body=" .. tostring( body:sub( 1, 300 ) ) )
+        else
+            log( "fetchSessions response (" .. tostring( status ) .. "): " .. body:sub( 1, 300 ) )
+            local sessions = parseSessionList( body )
+            if #sessions > 0 then
+                log( "fetchSessions found " .. #sessions .. " sessions" )
+                return sessions, nil
+            end
+            lastError = "Connected OK, but no sessions came back. Response: " .. trim( body ):sub( 1, 120 )
+        end
+    end
+
+    return {}, lastError
+end
+
+--------------------------------------------------------------------------------
+-- Export Service Provider
+--------------------------------------------------------------------------------
+
+local exportServiceProvider = {}
+
+exportServiceProvider.supportsIncrementalPublish = false
+exportServiceProvider.hideSections               = { 'exportLocation' }
+exportServiceProvider.allowFileFormats           = { 'JPEG' }
+exportServiceProvider.allowColorSpaces           = { 'sRGB' }
+exportServiceProvider.hidePrintResolution        = true
+exportServiceProvider.canExportVideo             = false
+
+exportServiceProvider.exportPresetFields = {
+    { key = 'siteUrl',         default = 'https://twellerstudios.com' },
+    { key = 'apiKey',          default = '' },
+    { key = 'sessionCode',     default = '' },
+    { key = 'localExportDir',  default = '' },
+    { key = 'uploadToSite',    default = true },
+    { key = 'uploadTarget',    default = 'gallery' },  -- 'gallery' | 'culling'
+    { key = 'notifyCulling',   default = true },
+    { key = 'advanceStage',    default = true },
+    { key = 'galleryPassword', default = '' },
+    -- New-session fields (for last-minute bookings)
+    { key = 'newClientName',   default = '' },
+    { key = 'newClientEmail',  default = '' },
+    { key = 'newSessionDate',  default = '' },
+    { key = 'newPackage',      default = 'mini' },
+}
+
+--- Culling proofs only need to be selection previews — force small,
+--- light JPEGs so uploads are fast (the website compresses further
+--- and applies the studio watermark).
+function exportServiceProvider.updateExportSettings( exportSettings )
+    if exportSettings.uploadTarget == 'culling' then
+        exportSettings.LR_format                    = 'JPEG'
+        exportSettings.LR_jpeg_quality              = 0.6
+        exportSettings.LR_size_doConstrain          = true
+        exportSettings.LR_size_resizeType           = 'longEdge'
+        exportSettings.LR_size_maxWidth             = 2048
+        exportSettings.LR_size_maxHeight            = 2048
+        exportSettings.LR_size_units                = 'pixels'
+        exportSettings.LR_minimizeEmbeddedMetadata  = true
+    end
+end
+
+function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
+    local bind = LrView.bind
+
+    if propertyTable.sessionItems == nil then
+        propertyTable.sessionItems = { { title = 'Click "Load Sessions" to fetch from website', value = '' } }
+    end
+    if propertyTable.statusText == nil then
+        propertyTable.statusText = ''
+    end
+
+    return {
+        -- Connection Settings
+        {
+            title   = 'Tweller Bookings Connection',
+            synopsis = function( props )
+                if props.siteUrl and props.siteUrl ~= '' then
+                    return props.siteUrl
+                end
+                return 'Not configured'
+            end,
+
+            f:row {
+                f:static_text { title = 'Website URL:', width = 120, alignment = 'right' },
+                f:edit_field {
+                    value          = bind 'siteUrl',
+                    width_in_chars = 40,
+                    tooltip        = 'Your WordPress site URL (e.g., https://twellerstudios.com)',
+                },
+            },
+            f:row {
+                f:static_text { title = 'API Key:', width = 120, alignment = 'right' },
+                f:password_field {
+                    value          = bind 'apiKey',
+                    width_in_chars = 40,
+                    tooltip        = 'Automation API key from Tweller Bookings settings in WordPress',
+                },
+            },
+        },
+
+        -- Session selection
+        {
+            title = 'Session',
+            synopsis = function( props )
+                if props.sessionCode and props.sessionCode ~= '' then
+                    return props.sessionCode
+                end
+                return 'No session selected'
+            end,
+
+            f:row {
+                f:static_text { title = 'Shoot Code:', width = 120, alignment = 'right' },
+                f:edit_field {
+                    value          = bind 'sessionCode',
+                    width_in_chars = 34,
+                    tooltip        = 'The session shoot code (e.g., 04-July-2024-JohnDoe-Mini)',
+                },
+            },
+            f:row {
+                f:static_text { title = '', width = 120 },
+                f:popup_menu {
+                    value = bind 'sessionCode',
+                    items = bind 'sessionItems',
+                    width_in_chars = 30,
+                    tooltip = 'Pick from recent sessions on the website',
+                },
+                f:push_button {
+                    title  = 'Load Sessions',
+                    action = function()
+                        LrTasks.startAsyncTask( function()
+                            propertyTable.statusText = 'Loading sessions...'
+                            -- LrTasks.pcall (NOT plain pcall): LrHttp yields, and
+                            -- plain pcall can't cross a yield in Lightroom's Lua.
+                            local ok, sessions, errMsg = LrTasks.pcall( fetchSessions, trim( propertyTable.siteUrl ), trim( propertyTable.apiKey ) )
+                            if ok and sessions and #sessions > 0 then
+                                propertyTable.sessionItems = sessions
+                                propertyTable.statusText = #sessions .. ' session(s) loaded — pick one from the menu'
+                            elseif ok then
+                                propertyTable.statusText = errMsg or 'No sessions found.'
+                            else
+                                propertyTable.statusText = 'Error: ' .. tostring( sessions )
+                            end
+                        end )
+                    end,
+                },
+            },
+
+            f:separator { fill_horizontal = 1 },
+
+            f:row {
+                f:static_text { title = 'New session:', width = 120, alignment = 'right' },
+                f:static_text { title = 'For last-minute shoots not booked on the website yet.', text_color = LrColor( 0.5, 0.5, 0.5 ) },
+            },
+            f:row {
+                f:static_text { title = 'Client Name:', width = 120, alignment = 'right' },
+                f:edit_field { value = bind 'newClientName', width_in_chars = 24 },
+            },
+            f:row {
+                f:static_text { title = 'Client Email:', width = 120, alignment = 'right' },
+                f:edit_field { value = bind 'newClientEmail', width_in_chars = 24, tooltip = 'Optional — needed for the delivery email' },
+            },
+            f:row {
+                f:static_text { title = 'Date:', width = 120, alignment = 'right' },
+                f:edit_field { value = bind 'newSessionDate', width_in_chars = 12, tooltip = 'YYYY-MM-DD (leave blank for today)' },
+                f:static_text { title = 'Package:' },
+                f:popup_menu {
+                    value = bind 'newPackage',
+                    items = {
+                        { title = 'Mini Session',     value = 'mini' },
+                        { title = 'Full Session',     value = 'full' },
+                        { title = 'Extended Session', value = 'extended' },
+                        { title = 'Event 1hr',        value = 'event_1hr' },
+                        { title = 'Event 2hr',        value = 'event_2hr' },
+                        { title = 'Event 3hr',        value = 'event_3hr' },
+                        { title = 'Event 4hr',        value = 'event_4hr' },
+                    },
+                },
+            },
+            f:row {
+                f:static_text { title = '', width = 120 },
+                f:push_button {
+                    title  = 'Create / Find Session',
+                    action = function()
+                        LrTasks.startAsyncTask( function()
+                            local siteUrl = trim( propertyTable.siteUrl )
+                            local apiKey  = trim( propertyTable.apiKey )
+                            local name    = trim( propertyTable.newClientName )
+                            if name == '' then
+                                propertyTable.statusText = 'Enter a client name first.'
+                                return
+                            end
+                            propertyTable.statusText = 'Creating session...'
+
+                            -- Default to the LOCAL machine's date so the session
+                            -- date matches your timezone, not the server's.
+                            local sessionDate = trim( propertyTable.newSessionDate )
+                            if sessionDate == '' then
+                                sessionDate = os.date( '%Y-%m-%d' )
+                            end
+
+                            local url = apiBase( siteUrl ) .. "/automation/create-session"
+                                .. "?client_name=" .. urlencode( name )
+                                .. "&client_email=" .. urlencode( trim( propertyTable.newClientEmail ) )
+                                .. "&session_date=" .. urlencode( sessionDate )
+                                .. "&package_type=" .. urlencode( propertyTable.newPackage or 'mini' )
+                                .. "&api_key=" .. urlencode( apiKey )
+                            local body, hdrs = LrHttp.get( url, {
+                                { field = "Authorization", value = "Bearer " .. apiKey },
+                            }, 30 )
+                            if body and jsonBool( body, 'ok' ) then
+                                local code = jsonValue( body, 'tracking_code' )
+                                propertyTable.sessionCode = code or ''
+                                if jsonBool( body, 'existing' ) then
+                                    propertyTable.statusText = 'Found existing session: ' .. tostring( code ) .. ' (' .. sessionDate .. ')'
+                                else
+                                    propertyTable.statusText = 'Session created: ' .. tostring( code ) .. ' (' .. sessionDate .. ')'
+                                end
+                            else
+                                local status = hdrs and hdrs.status or 0
+                                propertyTable.statusText = 'Could not create session (HTTP ' .. tostring( status ) .. '). Check URL / API key.'
+                                log( 'create-session failed: HTTP ' .. tostring( status ) .. ' ' .. tostring( body ) )
+                            end
+                        end )
+                    end,
+                },
+            },
+            f:row {
+                f:static_text { title = '', width = 120 },
+                f:static_text { title = bind 'statusText', width_in_chars = 50 },
+            },
+        },
+
+        -- Where the photos go
+        {
+            title   = 'Send Photos To',
+            synopsis = function( props )
+                local t = props.uploadTarget
+                local dest
+                if t == 'culling' then
+                    dest = 'Culling / selection portal'
+                elseif t == 'none' then
+                    dest = 'Local export only'
+                else
+                    dest = 'Final client gallery'
+                end
+                if props.localExportDir and props.localExportDir ~= '' and t ~= 'none' then
+                    dest = dest .. ' + local copy'
+                end
+                return dest
+            end,
+
+            f:row {
+                f:static_text { title = 'Destination:', width = 120, alignment = 'right' },
+                f:popup_menu {
+                    value = bind 'uploadTarget',
+                    items = {
+                        { title = 'Final client gallery — finished, delivery-ready photos', value = 'gallery' },
+                        { title = 'Culling / selection portal — proofs the client picks from', value = 'culling' },
+                        { title = "Don't upload — export to this computer only",            value = 'none' },
+                    },
+                    width_in_chars = 42,
+                    tooltip = 'Final gallery = the finished album your client downloads.\nCulling portal = compressed, watermarked proofs your client uses to choose which photos get edited.',
+                },
+            },
+
+            f:separator { fill_horizontal = 1 },
+
+            -- ── Final gallery options ──
+            f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'gallery' end },
+                f:static_text { title = '', width = 120 },
+                f:checkbox {
+                    value = bind 'advanceStage',
+                    title = 'Mark session "delivered" when done (sends the delivery email to the client)',
+                },
+            },
+            f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'gallery' end },
+                f:static_text { title = 'Gallery Password:', width = 120, alignment = 'right' },
+                f:edit_field {
+                    value          = bind 'galleryPassword',
+                    width_in_chars = 20,
+                    tooltip        = 'Optional password to protect the client gallery (leave blank for none)',
+                },
+            },
+
+            -- ── Culling portal options ──
+            f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'culling' end },
+                f:static_text { title = '', width = 120 },
+                f:static_text {
+                    title = 'Proofs are compressed and watermarked by the website automatically.\nThe client sees them in the selection portal — never in the final gallery.',
+                    text_color = LrColor( 0.5, 0.5, 0.5 ),
+                    height_in_lines = 2,
+                },
+            },
+            f:row {
+                visible = LrView.bind { key = 'uploadTarget', transform = function( v ) return v == 'culling' end },
+                f:static_text { title = '', width = 120 },
+                f:checkbox {
+                    value = bind 'notifyCulling',
+                    title = 'Email the client that their selection gallery is ready (after upload)',
+                },
+            },
+
+            f:separator { fill_horizontal = 1 },
+
+            -- ── Local copy (applies to every destination) ──
+            f:row {
+                f:static_text { title = 'Local Folder:', width = 120, alignment = 'right' },
+                f:edit_field {
+                    value          = bind 'localExportDir',
+                    width_in_chars = 35,
+                    tooltip        = 'Also save the exported photos to this folder (leave blank to skip)',
+                },
+                f:push_button {
+                    title  = 'Browse...',
+                    action = function()
+                        local dir = LrDialogs.runOpenPanel( {
+                            title                   = 'Choose Export Folder',
+                            canChooseFiles          = false,
+                            canChooseDirectories    = true,
+                            allowsMultipleSelection = false,
+                        } )
+                        if dir then
+                            propertyTable.localExportDir = dir[1]
+                        end
+                    end,
+                },
+            },
+        },
+    }
+end
+
+--------------------------------------------------------------------------------
+-- Export process
+--------------------------------------------------------------------------------
+
+function exportServiceProvider.processRenderedPhotos( functionContext, exportContext )
+    local exportSession = exportContext.exportSession
+    local propertyTable = exportContext.propertyTable
+    local nPhotos       = exportSession:countRenditions()
+
+    local siteUrl         = trim( propertyTable.siteUrl )
+    local apiKey          = trim( propertyTable.apiKey )
+    local sessionCode     = trim( propertyTable.sessionCode )
+    local localDir        = trim( propertyTable.localExportDir )
+    local uploadTarget    = propertyTable.uploadTarget or 'gallery'
+    local uploadToSite    = ( uploadTarget ~= 'none' )
+    local isCulling       = ( uploadTarget == 'culling' )
+    local notifyCulling   = propertyTable.notifyCulling
+    local advanceStage    = propertyTable.advanceStage
+    local galleryPassword = trim( propertyTable.galleryPassword )
+
+    -- Validate. On failure, skip all renditions so Lightroom shows our
+    -- message instead of a generic "failed to export" error.
+    local validationError = nil
+    if uploadToSite and sessionCode == "" then
+        validationError = "Please pick a session or create one first (Session section)."
+    elseif uploadToSite and siteUrl == "" then
+        validationError = "Please enter your website URL to upload photos."
+    elseif not uploadToSite and localDir == "" then
+        validationError = "Destination is set to local-only, but no Local Folder is chosen."
+    end
+
+    if validationError then
+        for _, rendition in exportContext:renditions() do
+            rendition:skipRender()
+        end
+        LrDialogs.message( "Tweller Bookings", validationError, "critical" )
+        return
+    end
+
+    -- Uploads are POSTs and must not go through a www/https redirect
+    if uploadToSite and siteUrl ~= "" then
+        siteUrl = resolveSiteUrl( siteUrl )
+    end
+
+    local base = apiBase( siteUrl )
+
+    -- Create local export subfolder: localDir/SESSION_CODE/
+    local localSessionDir = nil
+    if localDir ~= "" then
+        local subfolder = sessionCode ~= "" and sessionCode or os.date( "%Y-%m-%d Export" )
+        localSessionDir = LrPathUtils.child( localDir, subfolder )
+        LrFileUtils.createAllDirectories( localSessionDir )
+    end
+
+    local progressScope = exportContext:configureProgress {
+        title = "Tweller Bookings: Exporting " .. nPhotos .. " photos",
+    }
+
+    local uploadedCount = 0
+    local failedCount   = 0
+    local photoIndex    = 0
+    local firstError    = nil
+
+    for i, rendition in exportContext:renditions { stopIfCanceled = true } do
+        progressScope:setPortionComplete( photoIndex, nPhotos )
+        photoIndex = photoIndex + 1
+
+        local success, pathOrMessage = rendition:waitForRender()
+
+        if not success then
+            log( "Render failed: " .. tostring( pathOrMessage ) )
+            failedCount = failedCount + 1
+        else
+            local renderedPath = pathOrMessage
+            local fileName     = LrPathUtils.leafName( renderedPath )
+
+            -- The photo's name inside Lightroom (e.g. DSC_1234.NEF) — used
+            -- for culling so XMP sidecars match the originals even when
+            -- file renaming is enabled in the export dialog.
+            local sourceName = fileName
+            local okName, name = LrTasks.pcall( function()
+                return rendition.photo:getFormattedMetadata( 'fileName' )
+            end )
+            if okName and type( name ) == 'string' and name ~= '' then
+                sourceName = name
+            end
+
+            -- 1. Copy to local folder
+            if localSessionDir then
+                local destPath = LrPathUtils.child( localSessionDir, fileName )
+                local ok, err = LrTasks.pcall( function()
+                    LrFileUtils.copy( renderedPath, destPath )
+                end )
+                if not ok then
+                    log( "Local save failed: " .. tostring( err ) )
+                end
+            end
+
+            -- 2. Upload to WordPress
+            if uploadToSite and siteUrl ~= "" then
+                local kind = isCulling and "proof" or "photo"
+                progressScope:setCaption( "Uploading " .. kind .. " " .. fileName .. " (" .. photoIndex .. "/" .. nPhotos .. ")" )
+
+                local uploadUrl
+                if isCulling then
+                    uploadUrl = base .. "/culling/" .. sessionCode .. "/upload"
+                else
+                    uploadUrl = base .. "/photo-upload"
+                end
+
+                local fileContents = nil
+                local fh = io.open( renderedPath, "rb" )
+                if fh then
+                    fileContents = fh:read( "*all" )
+                    fh:close()
+                end
+
+                if fileContents then
+                    local boundary = "----TwellerBookings" .. tostring( math.random( 100000, 999999 ) )
+                    local body = ""
+
+                    if not isCulling then
+                        body = body .. "--" .. boundary .. "\r\n"
+                        body = body .. 'Content-Disposition: form-data; name="session_code"\r\n\r\n'
+                        body = body .. sessionCode .. "\r\n"
+                    else
+                        body = body .. "--" .. boundary .. "\r\n"
+                        body = body .. 'Content-Disposition: form-data; name="original_filename"\r\n\r\n'
+                        body = body .. sourceName .. "\r\n"
+                    end
+
+                    -- API key in body (Authorization header may be stripped by hosts)
+                    if apiKey ~= "" then
+                        body = body .. "--" .. boundary .. "\r\n"
+                        body = body .. 'Content-Disposition: form-data; name="api_key"\r\n\r\n'
+                        body = body .. apiKey .. "\r\n"
+                    end
+
+                    -- Gallery password (only on first photo, final gallery only)
+                    if not isCulling and photoIndex == 1 and galleryPassword ~= "" then
+                        body = body .. "--" .. boundary .. "\r\n"
+                        body = body .. 'Content-Disposition: form-data; name="gallery_password"\r\n\r\n'
+                        body = body .. galleryPassword .. "\r\n"
+                    end
+
+                    body = body .. "--" .. boundary .. "\r\n"
+                    body = body .. 'Content-Disposition: form-data; name="photo"; filename="' .. fileName .. '"\r\n'
+                    body = body .. "Content-Type: image/jpeg\r\n\r\n"
+                    body = body .. fileContents .. "\r\n"
+
+                    body = body .. "--" .. boundary .. "--\r\n"
+
+                    local headers = {
+                        { field = "Content-Type",  value = "multipart/form-data; boundary=" .. boundary },
+                        { field = "Authorization", value = "Bearer " .. apiKey },
+                    }
+
+                    -- Generous timeout: big JPEGs on slow connections
+                    local respBody, respHdrs = LrHttp.post( uploadUrl, body, headers, "POST", 300 )
+                    local status = respHdrs and respHdrs.status or 0
+
+                    if respBody and jsonBool( respBody, "ok" ) then
+                        uploadedCount = uploadedCount + 1
+                        log( "Uploaded: " .. fileName )
+                    else
+                        failedCount = failedCount + 1
+                        local detail
+                        if not respBody or respBody == "" then
+                            local netErr = respHdrs and respHdrs.error and ( respHdrs.error.errorCode or "network error" ) or "no response"
+                            detail = "Could not reach the website (" .. tostring( netErr ) .. ")"
+                        else
+                            local serverMsg = jsonValue( respBody, "message" ) or trim( respBody ):sub( 1, 150 )
+                            detail = "HTTP " .. tostring( status ) .. ": " .. serverMsg
+                        end
+                        firstError = firstError or detail
+                        rendition:uploadFailed( detail )
+                        log( "Upload failed for " .. fileName .. ": " .. detail )
+                    end
+                else
+                    failedCount = failedCount + 1
+                    firstError = firstError or ( "Could not read exported file: " .. renderedPath )
+                    log( "Could not read file: " .. renderedPath )
+                end
+            end
+
+            LrFileUtils.delete( renderedPath )
+        end
+    end
+
+    -- Advance the session stage automatically after a successful upload:
+    --   - Culling proofs            -> mark selection gallery ready (optional client email)
+    --   - "Mark delivered" checked  -> delivered (sends the delivery email)
+    --   - otherwise                 -> uploaded  (gallery goes live, no email)
+    local deliveredMsg = ""
+    if isCulling and uploadToSite and uploadedCount > 0 and siteUrl ~= "" then
+        if notifyCulling then
+            progressScope:setCaption( "Notifying client (selection gallery ready)..." )
+            local readyUrl = base .. "/culling/" .. sessionCode .. "/ready"
+            local body = LrHttp.post( readyUrl, "api_key=" .. urlencode( apiKey ), {
+                { field = "Content-Type",  value = "application/x-www-form-urlencoded" },
+                { field = "Authorization", value = "Bearer " .. apiKey },
+            }, "POST", 30 )
+            if body and jsonBool( body, "ok" ) then
+                deliveredMsg = "\n\nSelection gallery is live — the client has been emailed to pick their photos."
+            else
+                deliveredMsg = "\n\nWarning: proofs uploaded, but could not mark the selection gallery ready: " .. tostring( body )
+                log( "Culling ready warning: " .. tostring( body ) )
+            end
+        else
+            deliveredMsg = "\n\nProofs uploaded. Client NOT notified — send the selection email from the dashboard when ready."
+        end
+    elseif uploadToSite and uploadedCount > 0 and siteUrl ~= "" then
+        local targetStage = advanceStage and "delivered" or "uploaded"
+        progressScope:setCaption( "Updating session status..." )
+
+        local advanceUrl = base .. "/automation/advance"
+            .. "?session_code=" .. urlencode( sessionCode )
+            .. "&target_stage=" .. targetStage
+            .. "&notes=" .. urlencode( uploadedCount .. " photos uploaded via Lightroom" )
+            .. "&photo_count=" .. uploadedCount
+            .. "&api_key=" .. urlencode( apiKey )
+
+        local body = LrHttp.get( advanceUrl, {
+            { field = "Authorization", value = "Bearer " .. apiKey },
+        }, 30 )
+        if body and jsonBool( body, "ok" ) then
+            if targetStage == "delivered" then
+                if jsonBool( body, "notified" ) then
+                    deliveredMsg = "\n\nSession marked delivered — delivery email sent to the client."
+                else
+                    deliveredMsg = "\n\nSession marked delivered. (No email sent — the session has no client email.)"
+                end
+            else
+                deliveredMsg = "\n\nSession moved to \"Uploaded\" — the gallery is now live."
+            end
+        else
+            deliveredMsg = "\n\nWarning: could not update session status: " .. tostring( body )
+            log( "Stage advance warning: " .. tostring( body ) )
+        end
+    end
+
+    -- Summary dialog — say what actually happened, where.
+    local summary
+    if uploadToSite then
+        local destName = isCulling and "the culling / selection portal" or "the final client gallery"
+        if uploadedCount == 0 then
+            summary = "Upload FAILED — none of the " .. nPhotos .. " photos reached " .. destName .. "."
+        elseif failedCount > 0 then
+            summary = uploadedCount .. " of " .. nPhotos .. " photos uploaded to " .. destName .. " — " .. failedCount .. " failed."
+        else
+            summary = "All " .. uploadedCount .. " photos uploaded to " .. destName .. "."
+        end
+        if uploadedCount > 0 then
+            summary = summary .. "\nWebsite: " .. siteUrl .. "  (session " .. sessionCode .. ")"
+        end
+    else
+        summary = nPhotos - failedCount .. " photos exported to this computer."
+    end
+
+    if localSessionDir then
+        summary = summary .. "\n\nLocal copy: " .. localSessionDir
+    end
+
+    if failedCount > 0 and firstError then
+        summary = summary .. "\n\nReason: " .. firstError
+    end
+    summary = summary .. deliveredMsg
+
+    local dialogTitle, dialogStyle
+    if uploadToSite and uploadedCount == 0 then
+        dialogTitle, dialogStyle = "Tweller Bookings — Upload Failed", "critical"
+    elseif failedCount > 0 then
+        dialogTitle, dialogStyle = "Tweller Bookings — Completed With Errors", "warning"
+    else
+        dialogTitle, dialogStyle = "Tweller Bookings — Export Complete", "info"
+    end
+    LrDialogs.message( dialogTitle, summary, dialogStyle )
+end
+
+return exportServiceProvider

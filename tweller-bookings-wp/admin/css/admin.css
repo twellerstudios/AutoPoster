@@ -1,0 +1,984 @@
+/* Tweller Flow v2 — Light + Clean Admin UI */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ── Reset & Base ───────────────────────────────────── */
+
+.tf2-wrap {
+    max-width: 1280px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #111827;
+    -webkit-font-smoothing: antialiased;
+}
+
+.tf2-wrap *,
+.tf2-wrap *::before,
+.tf2-wrap *::after {
+    box-sizing: border-box;
+}
+
+.tf2-wrap h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 24px 0;
+    color: #111827;
+}
+
+.tf2-wrap h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    color: #111827;
+}
+
+.tf2-wrap a { color: #3B82F6; text-decoration: none; }
+.tf2-wrap a:hover { color: #2563EB; }
+
+/* Override WP admin link styles on buttons */
+.tf2-wrap a.tf2-btn--primary,
+.tf2-wrap a.tf2-btn--primary:hover,
+.tf2-wrap a.tf2-btn--primary:focus,
+.tf2-wrap a.tf2-btn--primary:active { color: #FFFFFF !important; background: #3B82F6 !important; }
+.tf2-wrap a.tf2-btn--success,
+.tf2-wrap a.tf2-btn--success:hover { color: #FFFFFF !important; }
+.tf2-wrap a.tf2-btn--whatsapp,
+.tf2-wrap a.tf2-btn--whatsapp:hover { color: #FFFFFF !important; }
+.tf2-wrap a.tf2-btn--danger,
+.tf2-wrap a.tf2-btn--danger:hover { color: #EF4444 !important; }
+.tf2-wrap a.tf2-btn--ghost,
+.tf2-wrap a.tf2-btn--ghost:hover { color: #6B7280 !important; }
+.tf2-wrap a.tf2-btn--secondary,
+.tf2-wrap a.tf2-btn--secondary:hover { color: #374151 !important; }
+
+/* ── Layout ─────────────────────────────────────────── */
+
+.tf2-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.tf2-page-header h1 {
+    margin: 0;
+}
+
+.tf2-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.tf2-grid--2 { grid-template-columns: 1fr 1fr; }
+.tf2-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+.tf2-grid--4 { grid-template-columns: repeat(4, 1fr); }
+.tf2-grid--sidebar { grid-template-columns: 2fr 1fr; }
+
+@media (max-width: 960px) {
+    .tf2-grid--2, .tf2-grid--3, .tf2-grid--4, .tf2-grid--sidebar { grid-template-columns: 1fr; }
+}
+
+/* ── Cards ──────────────────────────────────────────── */
+
+.tf2-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.tf2-card--flush {
+    padding: 0;
+}
+
+.tf2-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #F3F4F6;
+}
+
+.tf2-card__header h2 {
+    margin: 0;
+}
+
+.tf2-card__body {
+    padding: 24px;
+}
+
+/* ── Stat Cards ─────────────────────────────────────── */
+
+.tf2-stat {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tf2-stat__value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1;
+}
+
+.tf2-stat__label {
+    font-size: 13px;
+    color: #6B7280;
+    font-weight: 500;
+}
+
+.tf2-stat--blue { border-left: 3px solid #3B82F6; }
+.tf2-stat--green { border-left: 3px solid #10B981; }
+.tf2-stat--amber { border-left: 3px solid #F59E0B; }
+.tf2-stat--purple { border-left: 3px solid #8B5CF6; }
+
+/* ── Buttons ────────────────────────────────────────── */
+
+.tf2-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.tf2-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.tf2-btn--primary {
+    background: #3B82F6;
+    color: #FFFFFF;
+    border-color: #3B82F6;
+}
+.tf2-btn--primary:hover { background: #2563EB; color: #FFFFFF; }
+
+.tf2-btn--secondary {
+    background: #FFFFFF;
+    color: #374151;
+    border-color: #D1D5DB;
+}
+.tf2-btn--secondary:hover { background: #F9FAFB; color: #111827; }
+
+.tf2-btn--success {
+    background: #10B981;
+    color: #FFFFFF;
+    border-color: #10B981;
+}
+.tf2-btn--success:hover { background: #059669; color: #FFFFFF; }
+
+.tf2-btn--danger {
+    background: #FFFFFF;
+    color: #EF4444;
+    border-color: #FCA5A5;
+}
+.tf2-btn--danger:hover { background: #FEF2F2; color: #DC2626; }
+
+.tf2-btn--ghost {
+    background: transparent;
+    color: #6B7280;
+    border-color: transparent;
+    padding: 6px 10px;
+}
+.tf2-btn--ghost:hover { background: #F3F4F6; color: #111827; }
+
+.tf2-btn--sm {
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+}
+
+.tf2-btn--lg {
+    padding: 12px 24px;
+    font-size: 15px;
+}
+
+.tf2-btn-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ── Badges ─────────────────────────────────────────── */
+
+.tf2-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.tf2-badge--booked    { background: #DBEAFE; color: #1E40AF; }
+.tf2-badge--imported  { background: #E0E7FF; color: #3730A3; }
+.tf2-badge--culling   { background: #FEF3C7; color: #92400E; }
+.tf2-badge--culled    { background: #FDE68A; color: #78350F; }
+.tf2-badge--editing   { background: #EDE9FE; color: #5B21B6; }
+.tf2-badge--edited    { background: #D1FAE5; color: #065F46; }
+.tf2-badge--delivered { background: #10B981; color: #FFFFFF; }
+
+.tf2-badge--pending { background: #FEF3C7; color: #92400E; }
+.tf2-badge--paid    { background: #D1FAE5; color: #065F46; }
+.tf2-badge--deposit { background: #DBEAFE; color: #1E40AF; }
+
+/* ── Tables ─────────────────────────────────────────── */
+
+.tf2-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.tf2-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6B7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #E5E7EB;
+    background: #F9FAFB;
+}
+
+.tf2-table td {
+    padding: 14px 16px;
+    font-size: 14px;
+    border-bottom: 1px solid #F3F4F6;
+    vertical-align: middle;
+}
+
+.tf2-table tbody tr {
+    transition: background 0.1s;
+}
+
+.tf2-table tbody tr:hover {
+    background: #F9FAFB;
+}
+
+.tf2-table .tf2-client-name {
+    font-weight: 600;
+    color: #111827;
+}
+
+.tf2-table .tf2-muted {
+    font-size: 12px;
+    color: #9CA3AF;
+}
+
+/* ── Forms ──────────────────────────────────────────── */
+
+.tf2-form {
+    max-width: 640px;
+}
+
+.tf2-field {
+    margin-bottom: 20px;
+}
+
+.tf2-field__label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.tf2-field__hint {
+    font-size: 12px;
+    color: #9CA3AF;
+    margin-top: 4px;
+}
+
+.tf2-field input[type="text"],
+.tf2-field input[type="email"],
+.tf2-field input[type="tel"],
+.tf2-field input[type="number"],
+.tf2-field input[type="date"],
+.tf2-field input[type="time"],
+.tf2-field input[type="url"],
+.tf2-field input[type="password"],
+.tf2-field select,
+.tf2-field textarea {
+    width: 100%;
+    padding: 9px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #111827;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.tf2-field input:focus,
+.tf2-field select:focus,
+.tf2-field textarea:focus {
+    outline: none;
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.tf2-field textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+.tf2-field select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.tf2-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.tf2-row--3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 640px) {
+    .tf2-row, .tf2-row--3 { grid-template-columns: 1fr; }
+}
+
+.tf2-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.tf2-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #3B82F6;
+}
+
+/* ── Pipeline (Session Detail) ──────────────────────── */
+
+.tf2-pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 24px 0;
+    overflow-x: auto;
+}
+
+.tf2-pipeline__step {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+}
+
+.tf2-pipeline__node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    min-width: 64px;
+}
+
+.tf2-pipeline__dot {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+.tf2-pipeline__dot--completed {
+    background: #10B981;
+    color: #FFFFFF;
+}
+
+.tf2-pipeline__dot--current {
+    background: #3B82F6;
+    color: #FFFFFF;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+    animation: tf-pulse 2s infinite;
+}
+
+.tf2-pipeline__dot--upcoming {
+    background: #F3F4F6;
+    color: #9CA3AF;
+}
+
+.tf2-pipeline__name {
+    font-size: 10px;
+    font-weight: 500;
+    text-align: center;
+    max-width: 64px;
+}
+
+.tf2-pipeline__dot--completed + .tf2-pipeline__name { color: #059669; }
+.tf2-pipeline__dot--current + .tf2-pipeline__name { color: #2563EB; font-weight: 600; }
+.tf2-pipeline__dot--upcoming + .tf2-pipeline__name { color: #9CA3AF; }
+
+.tf2-pipeline__line {
+    width: 20px;
+    height: 2px;
+    flex-shrink: 0;
+}
+
+.tf2-pipeline__line--completed { background: #10B981; }
+.tf2-pipeline__line--upcoming { background: #E5E7EB; }
+
+@keyframes tf-pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2); }
+    50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.1); }
+}
+
+/* Pipeline Controls */
+.tf2-pipeline-controls {
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 16px;
+}
+
+.tf2-pipeline-controls__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 12px;
+}
+
+.tf2-pipeline-controls__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ── Pipeline Overview (Dashboard) ──────────────────── */
+
+.tf2-pipeline-overview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tf2-pipeline-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #111827;
+    transition: all 0.15s;
+    font-size: 13px;
+}
+
+.tf2-pipeline-chip:hover {
+    background: #F3F4F6;
+    border-color: #D1D5DB;
+    color: #111827;
+}
+
+.tf2-pipeline-chip__count {
+    font-weight: 700;
+    font-size: 16px;
+    color: #3B82F6;
+}
+
+/* ── Filters ────────────────────────────────────────── */
+
+.tf2-filters {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.tf2-filters__search {
+    flex: 1;
+    min-width: 200px;
+    max-width: 320px;
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    background: #FFFFFF;
+}
+
+.tf2-filters__search:focus {
+    outline: none;
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.tf2-filters__select {
+    padding: 8px 32px 8px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    background: #FFFFFF;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+
+/* ── History Timeline ───────────────────────────────── */
+
+.tf2-timeline {
+    position: relative;
+    padding-left: 24px;
+}
+
+.tf2-timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: #E5E7EB;
+}
+
+.tf2-timeline__item {
+    position: relative;
+    padding: 0 0 20px 0;
+}
+
+.tf2-timeline__item:last-child {
+    padding-bottom: 0;
+}
+
+.tf2-timeline__dot {
+    position: absolute;
+    left: -20px;
+    top: 4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #3B82F6;
+    border: 2px solid #FFFFFF;
+    box-shadow: 0 0 0 2px #E5E7EB;
+}
+
+.tf2-timeline__stage {
+    font-size: 13px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.tf2-timeline__time {
+    font-size: 12px;
+    color: #9CA3AF;
+    margin-top: 2px;
+}
+
+.tf2-timeline__notes {
+    font-size: 12px;
+    color: #6B7280;
+    margin-top: 2px;
+    font-style: italic;
+}
+
+/* ── Client Info Card ───────────────────────────────── */
+
+.tf2-client-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.tf2-client-info__item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tf2-client-info__label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9CA3AF;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tf2-client-info__value {
+    font-size: 14px;
+    color: #111827;
+    font-weight: 500;
+}
+
+/* ── Session Detail Layout ──────────────────────────── */
+
+.tf2-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.tf2-detail-header__left h1 {
+    margin-bottom: 4px;
+}
+
+.tf2-detail-header__code {
+    font-size: 13px;
+    color: #6B7280;
+    font-weight: 500;
+}
+
+.tf2-detail-header__code span {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: #F3F4F6;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #3B82F6;
+}
+
+/* ── Alerts ─────────────────────────────────────────── */
+
+.tf2-alert {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tf2-alert--success { background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; }
+.tf2-alert--error   { background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; }
+.tf2-alert--info    { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E40AF; }
+.tf2-alert--warning { background: #FFFBEB; border: 1px solid #FDE68A; color: #92400E; }
+
+/* ── Tabs ───────────────────────────────────────────── */
+
+.tf2-tabs {
+    display: flex;
+    border-bottom: 1px solid #E5E7EB;
+    margin-bottom: 20px;
+    gap: 0;
+}
+
+.tf2-tab {
+    padding: 10px 20px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6B7280;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tf2-tab:hover { color: #111827; }
+.tf2-tab--active {
+    color: #3B82F6;
+    border-bottom-color: #3B82F6;
+}
+
+.tf2-tab-content { display: none; }
+.tf2-tab-content--active { display: block; }
+
+/* ── Settings Sections ──────────────────────────────── */
+
+.tf2-settings-section {
+    margin-bottom: 32px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid #F3F4F6;
+}
+
+.tf2-settings-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.tf2-settings-section h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+    color: #111827;
+}
+
+.tf2-settings-section p.tf2-description {
+    font-size: 13px;
+    color: #6B7280;
+    margin: 0 0 16px 0;
+}
+
+/* ── Toggle Switch ──────────────────────────────────── */
+
+.tf2-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.tf2-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.tf2-toggle__switch {
+    width: 40px;
+    height: 22px;
+    background: #D1D5DB;
+    border-radius: 11px;
+    transition: background 0.2s;
+    position: relative;
+}
+
+.tf2-toggle__switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    background: #FFFFFF;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.tf2-toggle input:checked + .tf2-toggle__switch {
+    background: #3B82F6;
+}
+
+.tf2-toggle input:checked + .tf2-toggle__switch::after {
+    transform: translateX(18px);
+}
+
+.tf2-toggle__label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+}
+
+/* ── Quick Add Form ─────────────────────────────────── */
+
+.tf2-quick-add {
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.tf2-quick-add h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1E40AF;
+    margin: 0 0 12px 0;
+}
+
+.tf2-quick-add__row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.tf2-quick-add__field {
+    flex: 1;
+}
+
+.tf2-quick-add__field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: #1E40AF;
+    margin-bottom: 4px;
+}
+
+.tf2-quick-add__field input,
+.tf2-quick-add__field select {
+    width: 100%;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    border: 1px solid #BFDBFE;
+    border-radius: 6px;
+    background: #FFFFFF;
+}
+
+@media (max-width: 768px) {
+    .tf2-quick-add__row { flex-direction: column; }
+}
+
+/* ── Empty State ────────────────────────────────────── */
+
+.tf2-empty {
+    text-align: center;
+    padding: 48px 24px;
+    color: #9CA3AF;
+}
+
+.tf2-empty__icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.tf2-empty__text {
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+/* ── Notification Badge ─────────────────────────────── */
+
+.tf2-notif-status--sent   { color: #10B981; font-weight: 600; }
+.tf2-notif-status--failed { color: #EF4444; font-weight: 600; }
+
+/* ── Utilities ──────────────────────────────────────── */
+
+.tf2-muted { color: #9CA3AF; }
+.tf2-text-sm { font-size: 12px; }
+.tf2-text-right { text-align: right; }
+.tf2-mt-4 { margin-top: 16px; }
+.tf2-mt-6 { margin-top: 24px; }
+.tf2-mb-4 { margin-bottom: 16px; }
+.tf2-mb-6 { margin-bottom: 24px; }
+.tf2-gap-2 { gap: 8px; }
+.tf2-flex { display: flex; }
+.tf2-items-center { align-items: center; }
+.tf2-justify-between { justify-content: space-between; }
+
+/* ── Separator ──────────────────────────────────────── */
+
+.tf2-separator {
+    border: none;
+    border-top: 1px solid #F3F4F6;
+    margin: 20px 0;
+}
+
+/* ── Pagination ─────────────────────────────────────── */
+
+.tf2-pagination {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.tf2-pagination a,
+.tf2-pagination span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.15s;
+}
+
+.tf2-pagination a {
+    color: #374151;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+}
+
+.tf2-pagination a:hover {
+    background: #F3F4F6;
+    color: #111827;
+}
+
+.tf2-pagination span.current {
+    background: #3B82F6;
+    color: #FFFFFF;
+    border: 1px solid #3B82F6;
+}
+
+/* ── WhatsApp Button ────────────────────────────────── */
+
+.tf2-btn--whatsapp {
+    background: #25D366;
+    color: #FFFFFF;
+    border-color: #25D366;
+}
+.tf2-btn--whatsapp:hover {
+    background: #20BD5A;
+    color: #FFFFFF;
+}
+
+/* ── Copy Button ────────────────────────────────────── */
+
+.tf2-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    background: #F3F4F6;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #6B7280;
+    font-family: inherit;
+}
+
+.tf2-copy-btn:hover { background: #E5E7EB; color: #374151; }
+
+/* ── Section within card ────────────────────────────── */
+
+.tf2-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9CA3AF;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}
+
+/* ── Danger zone ────────────────────────────────────── */
+
+.tf2-card--danger {
+    border-color: #FECACA;
+}
+
+.tf2-card--danger h2 {
+    color: #DC2626;
+}

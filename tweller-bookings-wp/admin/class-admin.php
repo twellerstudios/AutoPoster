@@ -510,6 +510,25 @@ class TwellerFlow2_Admin {
                 ) );
             }
 
+            // Shoot reminders. Stored separately from the OAuth config so the
+            // studio can retune them without touching the connection.
+            if ( isset( $_POST['google_client_id'] ) && class_exists( 'TwellerFlow2_Google_Calendar' ) ) {
+                $hhmm = function ( $v, $fallback ) {
+                    $v = trim( (string) $v );
+                    return preg_match( '/^([01]\d|2[0-3]):[0-5]\d$/', $v ) ? $v : $fallback;
+                };
+                update_option( TwellerFlow2_Google_Calendar::OPT_REMINDERS, array(
+                    'enabled'        => ! empty( $_POST['gcal_rem_enabled'] ) ? 1 : 0,
+                    'method'         => ( ( $_POST['gcal_rem_method'] ?? 'popup' ) === 'email' ) ? 'email' : 'popup',
+                    'day_before'     => ! empty( $_POST['gcal_rem_day_before'] ) ? 1 : 0,
+                    'day_before_at'  => $hhmm( $_POST['gcal_rem_day_before_at'] ?? '', '18:00' ),
+                    'morning_of'     => ! empty( $_POST['gcal_rem_morning_of'] ) ? 1 : 0,
+                    'morning_at'     => $hhmm( $_POST['gcal_rem_morning_at'] ?? '', '08:00' ),
+                    'hours_before'   => max( 0, min( 24,  intval( $_POST['gcal_rem_hours_before'] ?? 2 ) ) ),
+                    'minutes_before' => max( 0, min( 120, intval( $_POST['gcal_rem_minutes_before'] ?? 30 ) ) ),
+                ) );
+            }
+
             // "Save & Test Sync Now" — run contact + calendar sync for the
             // most recent session inline and show the results on the page.
             if ( ! empty( $_POST['tweller_flow_2_google_test_sync'] ) ) {

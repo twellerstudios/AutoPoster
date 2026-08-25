@@ -313,6 +313,63 @@
                     </label>
                 </div>
 
+                <?php $rem = class_exists( 'TwellerFlow2_Google_Calendar' ) ? TwellerFlow2_Google_Calendar::reminder_settings() : array(); ?>
+                <div class="tf2-field" style="max-width:640px; border:1px solid #E5E7EB; border-radius:8px; padding:14px 16px; background:#FAFAFA;">
+                    <label class="tf2-toggle" style="margin:0 0 4px;">
+                        <input type="checkbox" name="gcal_rem_enabled" value="1" <?php checked( ! empty( $rem['enabled'] ) ); ?>>
+                        <span class="tf2-toggle__switch"></span>
+                        <span class="tf2-toggle__label"><strong>Remind me about shoots</strong></span>
+                    </label>
+                    <div class="tf2-field__hint" style="margin:0 0 12px;">
+                        Alerts are set on each calendar event, so they reach every device signed into
+                        that Google account &mdash; phone included. Applies to bookings synced from now
+                        on; use <em>Re-sync every booking</em> to add them to shoots already on the calendar.
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <label style="min-width:150px; margin:0;">
+                            <input type="checkbox" name="gcal_rem_day_before" value="1" <?php checked( ! empty( $rem['day_before'] ) ); ?>>
+                            The day before, at
+                        </label>
+                        <input type="time" name="gcal_rem_day_before_at" value="<?php echo esc_attr( $rem['day_before_at'] ?? '18:00' ); ?>" style="width:120px;">
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <label style="min-width:150px; margin:0;">
+                            <input type="checkbox" name="gcal_rem_morning_of" value="1" <?php checked( ! empty( $rem['morning_of'] ) ); ?>>
+                            That morning, at
+                        </label>
+                        <input type="time" name="gcal_rem_morning_at" value="<?php echo esc_attr( $rem['morning_at'] ?? '08:00' ); ?>" style="width:120px;">
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <label style="min-width:150px; margin:0;">Hours before</label>
+                        <input type="number" name="gcal_rem_hours_before" min="0" max="24" value="<?php echo esc_attr( intval( $rem['hours_before'] ?? 2 ) ); ?>" style="width:80px;">
+                        <span class="tf2-field__hint" style="margin:0;">0 = off</span>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <label style="min-width:150px; margin:0;">Minutes before</label>
+                        <input type="number" name="gcal_rem_minutes_before" min="0" max="120" value="<?php echo esc_attr( intval( $rem['minutes_before'] ?? 30 ) ); ?>" style="width:80px;">
+                        <span class="tf2-field__hint" style="margin:0;">0 = off</span>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <label style="min-width:150px; margin:0;">Alert by</label>
+                        <select name="gcal_rem_method" style="width:140px;">
+                            <option value="popup" <?php selected( ( $rem['method'] ?? 'popup' ), 'popup' ); ?>>Notification</option>
+                            <option value="email" <?php selected( ( $rem['method'] ?? 'popup' ), 'email' ); ?>>Email</option>
+                        </select>
+                    </div>
+
+                    <div class="tf2-field__hint" style="margin-top:12px;">
+                        A reminder that would land after the shoot has already started is skipped &mdash;
+                        so <em>that morning at 8am</em> is simply left off a 7am sunrise session rather
+                        than firing at the wrong moment. All-day holds (bookings with no time set) get
+                        the day-before reminder only. Google allows five per event.
+                    </div>
+                </div>
+
                 <div class="tf2-field" style="max-width:640px;">
                     <?php if ( $g_connected ) : ?>
                         <p style="margin:0 0 8px; color:#166534; font-weight:600;">

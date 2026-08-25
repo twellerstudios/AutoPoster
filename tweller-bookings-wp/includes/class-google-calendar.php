@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class TwellerFlow2_Google_Calendar {
 
     const EVENT_OPT_PREFIX = 'tweller_gcal_event_'; // + session_id => Google event id
+    const OPT_REMINDERS    = 'tweller_flow_2_gcal_reminders';
 
     const API_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 
@@ -267,6 +268,83 @@ class TwellerFlow2_Google_Calendar {
         return false;
     }
 
+    // ── Reminders ──────────────────────────────────────
+
+    /** Reminder preferences, with the studio's defaults filled in. */
+    public static function reminder_settings() {
+        $defaults = array(
+            'enabled'        => 1,
+            'method'         => 'popup',   // popup | email
+            'day_before'     => 1,
+            'day_before_at'  => '18:00',
+            'morning_of'     => 1,
+            'morning_at'     => '08:00',
+            'hours_before'   => 2,         // 0 = off
+            'minutes_before' => 30,        // 0 = off
+        );
+        $saved = get_option( self::OPT_REMINDERS, array() );
+        return array_merge( $defaults, is_array( $saved ) ? $saved : array() );
+    }
+
+    /** Same calendar day as $d, but at HH:MM. */
+    private static function at_time( $d, $hhmm ) {
+        $parts = explode( ':', (string) $hhmm );
+        $h = max( 0, min( 23, intval( $parts[0] ?? 8 ) ) );
+        $m = max( 0, min( 59, intval( $parts[1] ?? 0 ) ) );
+        return $d->setTime( $h, $m, 0 );
+    }
+
+    /**
+     * Google only understands "N minutes before the start". "The day before at
+     * 6pm" and "that morning at 8am" are wall-clock times, so what N is depends
+     * on when this particular shoot begins — an 8am reminder is 7 hours before
+     * a 3pm session and already in the past for a 7am one. Each is converted
+     * against this session's own start, and anything that lands at or after the
+     * start is dropped rather than sent as a negative Google would reject.
+     *
+     * @return array|null Overrides for the API, or null to leave the calendar's
+     *                    own defaults in charge.
+     */
+    private static function reminder_overrides( $start, $is_all_day ) {
+        $s = self::reminder_settings();
+        if ( empty( $s['enabled'] ) || ! $start ) return null;
+
+        $mins = array();
+
+        if ( ! empty( $s['day_before'] ) ) {
+            $target = self::at_time( $start->modify( '-1 day' ), $s['day_before_at'] );
+            $mins[] = ( $start->getTimestamp() - $target->getTimestamp() ) / 60;
+        }
+
+        // An all-day hold starts at midnight, so "that morning" and anything
+        // measured in hours would fire during the night before. Only the
+        // day-before reminder is meaningful for those.
+        if ( ! $is_all_day ) {
+            if ( ! empty( $s['morning_of'] ) ) {
+                $target = self::at_time( $start, $s['morning_at'] );
+                $mins[] = ( $start->getTimestamp() - $target->getTimestamp() ) / 60;
+            }
+            if ( intval( $s['hours_before'] ) > 0 )   $mins[] = intval( $s['hours_before'] ) * 60;
+            if ( intval( $s['minutes_before'] ) > 0 ) $mins[] = intval( $s['minutes_before'] );
+        }
+
+        // Positive, inside Google's 4-week ceiling, no duplicates (a 7am shoot
+        // makes "that morning at 8am" collide with or invert other entries).
+        $mins = array_filter( $mins, function ( $m ) { return $m > 0 && $m <= 40320; } );
+        $mins = array_values( array_unique( array_map( 'intval', $mins ) ) );
+        rsort( $mins );                 // furthest out first, purely for legibility
+        $mins = array_slice( $mins, 0, 5 );   // Google caps overrides at 5
+
+        if ( ! $mins ) return null;
+
+        $method = ( $s['method'] === 'email' ) ? 'email' : 'popup';
+        $out = array();
+        foreach ( $mins as $m ) {
+            $out[] = array( 'method' => $method, 'minutes' => $m );
+        }
+        return $out;
+    }
+
     /** Build the Google Calendar event payload for a session. */
     private static function build_event( $session ) {
         $packages = get_option( 'tweller_flow_2_packages', array() );
@@ -323,6 +401,11 @@ class TwellerFlow2_Google_Calendar {
             $event['start'] = array( 'date' => $session->session_date );
             $event['end']   = array( 'date' => date( 'Y-m-d', strtotime( $session->session_date . ' +1 day' ) ) );
         }
+
+        $overrides = self::reminder_overrides( $start, empty( $session->session_time ) );
+        $event['reminders'] = ( $overrides === null )
+            ? array( 'useDefault' => true )
+            : array( 'useDefault' => false, 'overrides' => $overrides );
 
         return $event;
     }

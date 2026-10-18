@@ -1,0 +1,72 @@
+"""Export the running WordPress site as a static staging preview.
+
+usage: python export_static.py <wp_base_url> <theme_dir> <out_dir> [public_url]
+
+Every page is fetched from the real theme, so the preview is exactly what the
+WordPress install will show. Links become relative, so the folder works from
+any sub-path (e.g. https://twellerstudios.com/beazer/). Forms are marked as
+preview-only and the pages carry noindex.
+"""
+import re
+import shutil
+import sys
+import urllib.request
+from pathlib import Path
+
+PAGES = ["", "merch/", "tour/", "fan-club/", "media/", "about/", "contact/"]
+
+
+def fetch(url):
+    try:
+        with urllib.request.urlopen(url) as r:
+            return r.read().decode("utf-8")
+    except urllib.error.HTTPError as e:  # the 404 page still has a body
+        return e.read().decode("utf-8")
+
+
+def rewrite(html, base, depth, public):
+    rel = "../" * depth
+    # inline WordPress core block styles (wp-includes is not part of the export)
+    html = re.sub(
+        r"<link rel='stylesheet' id='([\w-]+)' href='(" + re.escape(base) + r"/wp-includes/[^']+\.css)[^']*'[^>]*>",
+        lambda m: f'<style id="{m.group(1)}">{fetch(m.group(2))}</style>',
+        html,
+    )
+    assets = f"{base}/wp-content/themes/beazer/assets/"
+    # social previews need an absolute image URL
+    html = html.replace(f'content="{assets}', f'content="{public}assets/')
+    html = html.replace(assets, rel + "assets/")
+    html = re.sub(r"\?ver=[\w.\-]+", "", html)
+    # drop WordPress-only head links
+    html = re.sub(r'<link rel="canonical"[^>]*>\s*', "", html)
+    html = re.sub(r"<link rel=['\"](?:alternate|EditURI|https://api\.w\.org/)['\"][^>]*>\s*", "", html)
+    html = re.sub(r"<meta name='robots'[^>]*>", '<meta name="robots" content="noindex, nofollow">', html)
+    # forms post to WordPress; the preview script shows a notice instead
+    html = re.sub(r'action="[^"]*admin-post\.php"', 'action="#"', html)
+    html = html.replace(f'action="{base}/"', 'action="#"')
+    # internal page links -> relative
+    html = re.sub(re.escape(base) + r"/([\w\-/]*)", lambda m: (rel + m.group(1)) or "./", html)
+    html = html.replace('href=""', 'href="./"')
+    return html.replace("<html ", "<html data-static ", 1)
+
+
+def main(base, theme, out, public="https://twellerstudios.com/beazer/"):
+    base = base.rstrip("/")
+    out = Path(out)
+    if out.exists():
+        shutil.rmtree(out)
+    shutil.copytree(Path(theme) / "assets", out / "assets")
+    for page in PAGES:
+        html = rewrite(fetch(f"{base}/{page}"), base, page.count("/"), public)
+        dest = out / page / "index.html"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(html, encoding="utf-8")
+    (out / "404.html").write_text(rewrite(fetch(f"{base}/this-page-does-not-exist/"), base, 0, public), encoding="utf-8")
+    leftovers = [p for p in out.rglob("*.html") if base in p.read_text(encoding="utf-8")]
+    if leftovers:
+        sys.exit(f"absolute local URLs left in: {leftovers}")
+    print(f"exported {len(PAGES) + 1} pages to {out}")
+
+
+if __name__ == "__main__":
+    main(*sys.argv[1:5])

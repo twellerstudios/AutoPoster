@@ -1,0 +1,16 @@
+/*
+Theme Name: BEAZER
+Theme URI: https://twellerstudios.com/
+Author: Tweller Studios
+Author URI: https://twellerstudios.com/
+Description: Official website theme for BEAZER - Caribbean Rock. Global Ambition. Recreates the approved homepage design as a responsive, accessible site. On activation it creates the Home, Merch, Tour, Fan Club, Media, About and Contact pages and the main menu. All release, video and social content is editable under Appearance > Customize > BEAZER.
+Version: 1.0.0
+Requires at least: 6.3
+Tested up to: 7.1
+Requires PHP: 7.4
+License: GNU General Public License v2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: beazer
+*/
+
+/* Styles live in assets/css/main.css (enqueued in functions.php). */

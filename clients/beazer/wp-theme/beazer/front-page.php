@@ -19,6 +19,8 @@ $release     = array(
 	'youtube' => beazer_mod_or( 'release_youtube', 'youtube_url' ),
 );
 $platforms   = beazer_platforms();
+$listen_url  = beazer_mod( 'listen_url' ) ?: beazer_page_url( 'media' );
+$feature_url = beazer_mod( 'release_listen' ) ?: beazer_page_url( 'media' );
 ?>
 <main id="main" class="stage">
 	<picture class="stage-art">
@@ -43,13 +45,13 @@ $platforms   = beazer_platforms();
 		</h1>
 		<p class="tagline"><span class="tagline-white"><?php echo esc_html( beazer_mod( 'tagline_white' ) ); ?></span> <span class="tagline-red"><?php echo esc_html( beazer_mod( 'tagline_red' ) ); ?></span></p>
 		<div class="cta">
-			<a class="btn btn-red btn-listen" href="<?php echo esc_url( beazer_mod( 'listen_url' ) ); ?>" target="_blank" rel="noopener"><?php echo beazer_icon( 'play', 'btn-icon' ); // phpcs:ignore ?><span><?php echo esc_html( beazer_mod( 'listen_label' ) ); ?></span></a>
+			<a class="btn btn-red btn-listen" href="<?php echo esc_url( $listen_url ); ?>"<?php echo beazer_mod( 'listen_url' ) ? ' target="_blank" rel="noopener"' : ''; ?>><?php echo beazer_icon( 'play', 'btn-icon' ); // phpcs:ignore ?><span><?php echo esc_html( beazer_mod( 'listen_label' ) ); ?></span></a>
 			<a class="btn btn-dark btn-fan" href="<?php echo esc_url( beazer_fanclub_url() ); ?>"><?php echo beazer_icon( 'fans', 'btn-icon' ); // phpcs:ignore ?><span><?php echo esc_html( beazer_mod( 'fanclub_label' ) ); ?></span></a>
 		</div>
 		<ul class="platforms" aria-label="<?php esc_attr_e( 'BEAZER on music and social platforms', 'beazer' ); ?>">
 			<?php foreach ( $platforms as $key => $p ) : ?>
 				<li class="platform platform-<?php echo esc_attr( $key ); ?>">
-					<a href="<?php echo esc_url( $p['url'] ); ?>" target="_blank" rel="noopener" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: platform name */ __( 'BEAZER on %s', 'beazer' ), $p['name'] ) ); ?>">
+					<a <?php echo beazer_platform_link( $p['url'], $p['name'] ); // phpcs:ignore ?> aria-label="<?php echo esc_attr( sprintf( /* translators: %s: platform name */ __( 'BEAZER on %s', 'beazer' ), $p['name'] ) ); ?>">
 						<?php echo beazer_icon( $key, 'platform-icon' ); // phpcs:ignore ?>
 						<span class="platform-label"><?php echo esc_html( $p['label'] ); ?></span>
 					</a>
@@ -62,12 +64,9 @@ $platforms   = beazer_platforms();
 		<p class="brush-label release-label"><?php echo esc_html( beazer_mod( 'release_label' ) ); ?></p>
 		<figure class="cover">
 			<?php if ( $cover ) : ?>
-				<img src="<?php echo esc_url( $cover ); ?>" alt="<?php echo esc_attr( sprintf( /* translators: %s: release title */ __( '%s cover art', 'beazer' ), beazer_mod( 'release_title' ) ) ); ?>" loading="lazy">
+				<img src="<?php echo esc_url( $cover ); ?>" alt="<?php echo esc_attr( beazer_mod( 'release_title' ) ); ?>" loading="lazy">
 			<?php else : ?>
-				<picture>
-					<source type="image/webp" srcset="<?php echo esc_url( beazer_asset( 'img/sample-cover-454.webp' ) ); ?>">
-					<img src="<?php echo esc_url( beazer_asset( 'img/sample-cover-454.jpg' ) ); ?>" width="454" height="418" alt="<?php echo esc_attr( sprintf( /* translators: %s: release title */ __( '%s cover art', 'beazer' ), beazer_mod( 'release_title' ) ) ); ?>" loading="lazy">
-				</picture>
+				<img src="<?php echo esc_url( beazer_asset( 'img/band/joel-live.webp' ) ); ?>" width="680" height="850" alt="<?php esc_attr_e( 'Joel Beazer pointing at the camera mid-song', 'beazer' ); ?>" loading="lazy">
 			<?php endif; ?>
 		</figure>
 		<div class="release-info">
@@ -76,9 +75,9 @@ $platforms   = beazer_platforms();
 			<p class="release-copy"><?php echo esc_html( beazer_mod( 'release_copy' ) ); ?></p>
 			<div class="release-actions">
 				<?php foreach ( $release as $key => $url ) : ?>
-					<a class="mini" href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener" aria-label="<?php echo esc_attr( sprintf( /* translators: 1: release title, 2: platform */ __( '%1$s on %2$s', 'beazer' ), beazer_mod( 'release_title' ), $platforms[ $key ]['name'] ) ); ?>"><?php echo beazer_icon( $key ); // phpcs:ignore ?></a>
+					<a class="mini" <?php echo beazer_platform_link( $url, $platforms[ $key ]['name'] ); // phpcs:ignore ?> aria-label="<?php echo esc_attr( sprintf( /* translators: %s: platform */ __( 'BEAZER on %s', 'beazer' ), $platforms[ $key ]['name'] ) ); ?>"><?php echo beazer_icon( $key ); // phpcs:ignore ?></a>
 				<?php endforeach; ?>
-				<a class="btn btn-red btn-sm" href="<?php echo esc_url( beazer_mod_or( 'release_listen', 'listen_url' ) ); ?>" target="_blank" rel="noopener"><?php echo esc_html( beazer_mod( 'listen_label' ) ); ?></a>
+				<a class="btn btn-red btn-sm" href="<?php echo esc_url( $feature_url ); ?>"><?php echo esc_html( beazer_mod( 'release_button' ) ); ?></a>
 			</div>
 		</div>
 	</section>

@@ -68,18 +68,90 @@
 		dialog.addEventListener('close', function () { embed.replaceChildren(); btn.focus(); });
 	});
 
-	// Static staging preview: forms and search need the live WordPress site.
-	if (isStatic) {
-		document.querySelectorAll('form').forEach(function (form) {
-			form.addEventListener('submit', function (e) {
+	// Platform links not supplied yet: say so instead of sending fans somewhere wrong.
+	var toast;
+	document.addEventListener('click', function (e) {
+		var link = e.target.closest('[data-soon]');
+		if (!link) return;
+		e.preventDefault();
+		if (!toast) {
+			toast = document.createElement('div');
+			toast.className = 'soon-toast';
+			toast.setAttribute('role', 'status');
+			document.body.appendChild(toast);
+		}
+		toast.innerHTML = '';
+		toast.append('The official BEAZER ' + link.dataset.soon + ' profile is coming soon. ');
+		var join = document.createElement('a');
+		join.href = link.href;
+		join.textContent = 'Join the fan club to hear first.';
+		toast.append(join);
+		toast.classList.add('is-on');
+		clearTimeout(toast.timer);
+		toast.timer = setTimeout(function () { toast.classList.remove('is-on'); }, 6000);
+	});
+
+	// Show dates: label past shows, count down to upcoming ones.
+	document.querySelectorAll('[data-show-date]').forEach(function (el) {
+		var show = new Date(el.dataset.showDate + 'T23:59:59');
+		var days = Math.ceil((show - new Date()) / 864e5);
+		if (days < 0) {
+			el.textContent = 'Past show';
+			el.classList.add('is-past');
+		} else if (days === 0) {
+			el.textContent = 'Tonight';
+		} else {
+			el.textContent = 'In ' + days + (days === 1 ? ' day' : ' days');
+		}
+	});
+
+	// Photo gallery lightbox.
+	var gallery = document.querySelectorAll('.bz-gallery-item');
+	if (gallery.length && typeof HTMLDialogElement === 'function') {
+		var box = document.createElement('dialog');
+		box.className = 'lightbox';
+		box.innerHTML = '<button class="video-close" type="button" aria-label="Close photo"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg></button><img alt=""><p></p>';
+		document.body.appendChild(box);
+		gallery.forEach(function (item) {
+			item.addEventListener('click', function (e) {
 				e.preventDefault();
-				var note = form.querySelector('.form-status') || document.createElement('p');
-				note.className = 'form-status';
-				note.setAttribute('role', 'status');
-				note.textContent = form.classList.contains('search-form')
-					? 'Search is available on the live site.'
-					: 'Preview only: this form goes live when the site launches on WordPress.';
-				form.prepend(note);
+				var img = item.querySelector('img');
+				box.querySelector('img').src = item.href;
+				box.querySelector('img').alt = img ? img.alt : '';
+				box.querySelector('p').textContent = item.dataset.caption || '';
+				box.showModal();
+			});
+		});
+		box.querySelector('.video-close').addEventListener('click', function () { box.close(); });
+		box.addEventListener('click', function (e) { if (e.target === box) box.close(); });
+	}
+
+	// Static build: forms post to form.php, which redirects back with ?beazer=status.
+	if (isStatic) {
+		var messages = {
+			joined: 'You are in. Welcome to the BEAZER fan club!',
+			sent: 'Thanks. Your message has been sent.',
+			error: 'Please check the form and try again.',
+			mailfail: 'Sorry, your message could not be sent right now. Please try again later.'
+		};
+		var status = new URLSearchParams(location.search).get('beazer');
+		var form = document.querySelector('.beazer-form');
+		if (status && messages[status] && form) {
+			var note = document.createElement('p');
+			note.className = 'form-status form-status--' + status;
+			note.setAttribute('role', 'status');
+			note.textContent = messages[status];
+			form.prepend(note);
+		}
+		document.querySelectorAll('.search-form').forEach(function (f) {
+			f.addEventListener('submit', function (e) {
+				e.preventDefault();
+				if (!f.querySelector('.form-status')) {
+					var n = document.createElement('p');
+					n.className = 'form-status';
+					n.textContent = 'Search is available on the full WordPress site.';
+					f.after(n);
+				}
 			});
 		});
 	}

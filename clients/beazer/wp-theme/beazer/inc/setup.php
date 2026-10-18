@@ -12,25 +12,36 @@
 defined( 'ABSPATH' ) || exit;
 
 function beazer_starter_pages() {
-	$confirm = '<!-- wp:paragraph {"className":"note"} --><p class="note">Draft content: to be confirmed by BEAZER before launch.</p><!-- /wp:paragraph -->';
-	$p       = function ( $text ) {
-		return '<!-- wp:paragraph --><p>' . $text . '</p><!-- /wp:paragraph -->';
-	};
-	$h       = function ( $text ) {
-		return '<!-- wp:heading --><h2 class="wp-block-heading">' . $text . '</h2><!-- /wp:heading -->';
-	};
-	$code    = function ( $shortcode ) {
-		return '<!-- wp:shortcode -->' . $shortcode . '<!-- /wp:shortcode -->';
-	};
-	return array(
-		'home'     => array( 'Home', '' ),
-		'merch'    => array( 'Merch', $p( 'Official BEAZER merchandise is on the way: tees, hoodies and limited tour gear.' ) . $p( 'Join the fan club to be first in line when the store opens.' ) . $confirm ),
-		'tour'     => array( 'Tour', $h( 'Upcoming shows' ) . $p( 'New dates are being announced soon. Fan club members hear first.' ) . $confirm ),
-		'fan-club' => array( 'Fan Club', $p( 'Get new releases, show announcements and members-only drops straight to your inbox.' ) . '<!-- wp:html --><div id="join"></div><!-- /wp:html -->' . $code( '[beazer_fan_club_form]' ) ),
-		'media'    => array( 'Media', $code( '[beazer_featured_video]' ) . $h( 'Photos' ) . $p( 'Live photos and press images coming soon.' ) . $confirm ),
-		'about'    => array( 'About', $p( 'BEAZER: Caribbean rock with global ambition.' ) . $p( 'Biography to be supplied by BEAZER.' ) . $confirm ),
-		'contact'  => array( 'Contact', $p( 'Bookings, press, merch and general enquiries. Send a message and the team will get back to you.' ) . '<!-- wp:html --><div id="contact"></div><!-- /wp:html -->' . $code( '[beazer_contact_form]' ) ),
+	$pages = array(
+		'home'     => 'Home',
+		'merch'    => 'Merch',
+		'tour'     => 'Tour',
+		'fan-club' => 'Fan Club',
+		'media'    => 'Media',
+		'about'    => 'About',
+		'contact'  => 'Contact',
 	);
+	$out = array();
+	foreach ( $pages as $slug => $title ) {
+		$out[ $slug ] = array( $title, beazer_starter_content( $slug ) );
+	}
+	return $out;
+}
+
+/**
+ * Starter content for a page from content/{slug}.html, as one Custom HTML
+ * block so it stays editable. {{assets}} and {{home}} become real URLs.
+ */
+function beazer_starter_content( $slug ) {
+	$file = get_template_directory() . '/content/' . $slug . '.html';
+	if ( ! is_readable( $file ) ) {
+		return '';
+	}
+	$html = strtr( file_get_contents( $file ), array( // phpcs:ignore WordPress.WP.AlternativeFunctions
+		'{{assets}}' => trailingslashit( beazer_asset( '' ) ),
+		'{{home}}'   => home_url( '/' ),
+	) );
+	return "<!-- wp:html -->\n" . trim( $html ) . "\n<!-- /wp:html -->";
 }
 
 function beazer_run_setup() {

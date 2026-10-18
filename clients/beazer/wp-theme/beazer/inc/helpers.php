@@ -2,8 +2,9 @@
 /**
  * Content defaults and template helpers.
  *
- * Defaults marked "PLACEHOLDER" are the sample content from the approved mockup
- * and must be confirmed by the client before launch.
+ * Defaults are BEAZER's real details (line-up, Hutt Shutts show, Titan Music).
+ * Empty platform links render as "official profile coming soon" until the
+ * band supplies them in the Customizer.
  *
  * @package beazer
  */
@@ -18,37 +19,38 @@ function beazer_defaults() {
 		// Hero.
 		'tagline_white'    => 'CARIBBEAN ROCK.',
 		'tagline_red'      => 'GLOBAL AMBITION.',
-		'listen_url'       => 'https://open.spotify.com/search/BEAZER',
+		'listen_url'       => '', // Empty = the Media page until music is out.
 		'listen_label'     => 'LISTEN NOW',
 		'fanclub_label'    => 'JOIN THE FAN CLUB',
 		'fanclub_url'      => '', // Empty = the Fan Club page.
 		'hero_art_desktop' => '', // Empty = bundled approved artwork.
 		'hero_art_mobile'  => '',
 
-		// Platforms row (official profile URLs to be supplied by the client).
-		'spotify_url'      => 'https://open.spotify.com/search/BEAZER',
-		'apple_url'        => 'https://music.apple.com/search?term=BEAZER',
-		'youtube_url'      => 'https://www.youtube.com/results?search_query=BEAZER',
-		'instagram_url'    => 'https://www.instagram.com/explore/search/keyword/?q=BEAZER',
-		'tiktok_url'       => 'https://www.tiktok.com/search?q=BEAZER',
-		'facebook_url'     => 'https://www.facebook.com/search/top?q=BEAZER',
+		// Platforms row: empty = "official profile coming soon".
+		'spotify_url'      => '',
+		'apple_url'        => '',
+		'youtube_url'      => '',
+		'instagram_url'    => '',
+		'tiktok_url'       => '',
+		'facebook_url'     => '',
 
-		// New release (PLACEHOLDER: "STORM SEASON" sample from the mockup).
-		'release_label'    => 'NEW RELEASE',
-		'release_title'    => 'STORM SEASON',
-		'release_subtitle' => 'NEW SINGLE OUT NOW',
-		'release_copy'     => 'A thunderous fusion of island soul and rock rebellion. STORM SEASON is BEAZER at full power.',
-		'release_cover'    => '',
+		// Feature panel (the approved NEW RELEASE slot): live recap until the debut record.
+		'release_label'    => 'LIVE',
+		'release_title'    => 'HUTT SHUTTS',
+		'release_subtitle' => '3 OCTOBER 2026 · TACARIGUA',
+		'release_copy'     => 'Beazer with Supernormal, in a room that looks like a castle from the road. New band, old hands.',
+		'release_cover'    => '', // Empty = bundled live photo of Joel.
+		'release_button'   => 'SEE THE ROOM',
 		'release_spotify'  => '',
 		'release_apple'    => '',
 		'release_youtube'  => '',
-		'release_listen'   => '',
+		'release_listen'   => '', // Empty = the Media page.
 
-		// Featured video (PLACEHOLDER).
+		// Featured video.
 		'video_label'      => 'FEATURED VIDEO',
 		'video_url'        => '', // Any YouTube link; plays in place when set.
-		'video_thumb'      => '',
-		'watch_url'        => '',
+		'video_thumb'      => '', // Empty = bundled first-jam still.
+		'watch_url'        => '', // Empty = the video, or the Media page.
 
 		// Site.
 		'contact_email'    => '',
@@ -102,6 +104,17 @@ function beazer_cart_url() {
 		return wc_get_cart_url();
 	}
 	return beazer_page_url( 'merch' );
+}
+
+/**
+ * Link attributes for a platform: its profile URL, or, until the band supplies
+ * one, the fan club sign-up with a "coming soon" note (see main.js).
+ */
+function beazer_platform_link( $url, $name ) {
+	if ( $url ) {
+		return sprintf( 'href="%s" target="_blank" rel="noopener"', esc_url( $url ) );
+	}
+	return sprintf( 'href="%s" data-soon="%s"', esc_url( beazer_fanclub_url() . '#join' ), esc_attr( $name ) );
 }
 
 /** The six platform destinations, in the approved order. */

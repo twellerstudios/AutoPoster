@@ -1,12 +1,15 @@
 """Export the running WordPress site as a static staging preview.
 
-usage: python export_static.py <wp_base_url> <theme_dir> <out_dir> [public_url]
+usage: python export_static.py <wp_base_url> <theme_dir> <out_dir>
+                                [--public-url URL] [--notify EMAIL]
 
-Every page is fetched from the real theme, so the preview is exactly what the
+Every page is fetched from the real theme, so the demo is exactly what the
 WordPress install will show. Links become relative, so the folder works from
-any sub-path (e.g. https://twellerstudios.com/beazer/). Forms are marked as
-preview-only and the pages carry noindex.
+any sub-path (e.g. https://www.twellerstudios.com/beazertheband/). Forms post
+to a bundled form.php (emails --notify, stores fan club sign-ups), and the
+pages carry noindex.
 """
+import argparse
 import re
 import shutil
 import sys
@@ -42,7 +45,7 @@ def rewrite(html, base, depth, public):
     html = re.sub(r"<link rel=['\"](?:alternate|EditURI|https://api\.w\.org/)['\"][^>]*>\s*", "", html)
     html = re.sub(r"<meta name='robots'[^>]*>", '<meta name="robots" content="noindex, nofollow">', html)
     # forms post to WordPress; the preview script shows a notice instead
-    html = re.sub(r'action="[^"]*admin-post\.php"', 'action="#"', html)
+    html = re.sub(r'action="[^"]*admin-post\.php"', f'action="{rel}form.php"', html)
     html = html.replace(f'action="{base}/"', 'action="#"')
     # internal page links -> relative
     html = re.sub(re.escape(base) + r"/([\w\-/]*)", lambda m: (rel + m.group(1)) or "./", html)
@@ -50,12 +53,14 @@ def rewrite(html, base, depth, public):
     return html.replace("<html ", "<html data-static ", 1)
 
 
-def main(base, theme, out, public="https://twellerstudios.com/beazer/"):
+def main(base, theme, out, public, notify):
     base = base.rstrip("/")
     out = Path(out)
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(Path(theme) / "assets", out / "assets")
+    handler = (Path(__file__).parent / "static" / "form.php").read_text(encoding="utf-8")
+    (out / "form.php").write_text(handler.replace("{{NOTIFY_EMAIL}}", notify), encoding="utf-8")
     for page in PAGES:
         html = rewrite(fetch(f"{base}/{page}"), base, page.count("/"), public)
         dest = out / page / "index.html"
@@ -69,4 +74,11 @@ def main(base, theme, out, public="https://twellerstudios.com/beazer/"):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:5])
+    ap = argparse.ArgumentParser()
+    ap.add_argument("base")
+    ap.add_argument("theme")
+    ap.add_argument("out")
+    ap.add_argument("--public-url", default="https://www.twellerstudios.com/beazertheband/")
+    ap.add_argument("--notify", required=True, help="email that receives form submissions")
+    a = ap.parse_args()
+    main(a.base, a.theme, a.out, a.public_url, a.notify)

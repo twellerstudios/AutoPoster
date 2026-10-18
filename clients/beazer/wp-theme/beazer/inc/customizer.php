@@ -19,7 +19,7 @@ add_action( 'customize_register', function ( WP_Customize_Manager $wp ) {
 	$sections = array(
 		'beazer_hero'      => __( 'Hero & buttons', 'beazer' ),
 		'beazer_platforms' => __( 'Platform links (icon row)', 'beazer' ),
-		'beazer_release'   => __( 'New release', 'beazer' ),
+		'beazer_release'   => __( 'Feature panel (new release / live)', 'beazer' ),
 		'beazer_video'     => __( 'Featured video', 'beazer' ),
 		'beazer_site'      => __( 'Contact, cart & footer', 'beazer' ),
 	);
@@ -58,25 +58,26 @@ add_action( 'customize_register', function ( WP_Customize_Manager $wp ) {
 	$add( 'tagline_white', 'beazer_hero', __( 'Tagline (white part)', 'beazer' ) );
 	$add( 'tagline_red', 'beazer_hero', __( 'Tagline (red part)', 'beazer' ) );
 	$add( 'listen_label', 'beazer_hero', __( 'Red button text', 'beazer' ) );
-	$add( 'listen_url', 'beazer_hero', __( 'LISTEN NOW link', 'beazer' ), 'url' );
+	$add( 'listen_url', 'beazer_hero', __( 'LISTEN NOW link', 'beazer' ), 'url', __( 'Empty = the Media page (until music is released).', 'beazer' ) );
 	$add( 'fanclub_label', 'beazer_hero', __( 'Dark button text', 'beazer' ) );
 	$add( 'fanclub_url', 'beazer_hero', __( 'Fan club link', 'beazer' ), 'url', __( 'Empty = the Fan Club page on this site.', 'beazer' ) );
 	$add( 'hero_art_desktop', 'beazer_hero', __( 'Desktop artwork (3:2)', 'beazer' ), 'image', __( 'Optional. Full scene WITHOUT buttons or text, 3072×2048 recommended. Empty = approved artwork.', 'beazer' ) );
 	$add( 'hero_art_mobile', 'beazer_hero', __( 'Phone / tablet hero photo', 'beazer' ), 'image', __( 'Optional. Portrait-friendly crop of Joel, about 1440×1240.', 'beazer' ) );
 
 	foreach ( beazer_platforms() as $key => $p ) {
-		$add( $key . '_url', 'beazer_platforms', $p['name'], 'url' );
+		$add( $key . '_url', 'beazer_platforms', $p['name'], 'url', __( 'Official profile link. Empty = "coming soon" note that points to the fan club.', 'beazer' ) );
 	}
 
 	$add( 'release_label', 'beazer_release', __( 'Label', 'beazer' ) );
 	$add( 'release_title', 'beazer_release', __( 'Title', 'beazer' ) );
 	$add( 'release_subtitle', 'beazer_release', __( 'Subtitle', 'beazer' ) );
 	$add( 'release_copy', 'beazer_release', __( 'Description', 'beazer' ), 'textarea' );
-	$add( 'release_cover', 'beazer_release', __( 'Cover art', 'beazer' ), 'image', __( 'Square artwork, 1000×1000 or larger.', 'beazer' ) );
+	$add( 'release_cover', 'beazer_release', __( 'Cover art / photo', 'beazer' ), 'image', __( 'Square artwork, 1000×1000 or larger.', 'beazer' ) );
+	$add( 'release_button', 'beazer_release', __( 'Red button text', 'beazer' ), 'text', __( 'e.g. LISTEN NOW once the record is out.', 'beazer' ) );
 	$add( 'release_spotify', 'beazer_release', __( 'Release on Spotify', 'beazer' ), 'url', __( 'Empty = artist Spotify link.', 'beazer' ) );
 	$add( 'release_apple', 'beazer_release', __( 'Release on Apple Music / iTunes', 'beazer' ), 'url' );
 	$add( 'release_youtube', 'beazer_release', __( 'Release on YouTube', 'beazer' ), 'url' );
-	$add( 'release_listen', 'beazer_release', __( 'Release LISTEN NOW link', 'beazer' ), 'url', __( 'Empty = main LISTEN NOW link.', 'beazer' ) );
+	$add( 'release_listen', 'beazer_release', __( 'Red button link', 'beazer' ), 'url', __( 'Empty = the Media page.', 'beazer' ) );
 
 	$add( 'video_label', 'beazer_video', __( 'Label', 'beazer' ) );
 	$add( 'video_url', 'beazer_video', __( 'YouTube video link', 'beazer' ), 'url', __( 'Plays in place when visitors press play.', 'beazer' ) );

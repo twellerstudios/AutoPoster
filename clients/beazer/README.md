@@ -4,7 +4,7 @@ Built from the approved homepage in the *BEAZER Official Website Developer Packa
 
 | Deliverable | What it is |
 |---|---|
-| `dist/beazertheband-demo.zip` | The full multi-page demo for **www.twellerstudios.com/beazertheband/**. Static pages plus a small form handler, completely separate from the Tweller WordPress site. |
+| `dist/beazertheband-demo.zip` / `.tar.gz` | The full multi-page demo for **www.twellerstudios.com/beazertheband/**. Static pages plus a small form handler, completely separate from the Tweller WordPress site. |
 | `dist/beazer-wp-theme.zip` | WordPress theme for the band's own server. Install it once and the whole site sets itself up with the same content. |
 | `screenshots/` | Every page at desktop (1536), tablet (768) and iPhone (390), plus a side-by-side comparison with the mockup. |
 | `brand-assets/` | Transparent PNGs of the red and silver logos keyed from the files supplied, plus a 512 px icon. |
@@ -13,15 +13,27 @@ Pages: **Home · Merch · Tour · Fan Club · Media · About · Contact**. The c
 
 ## 1. Demo on twellerstudios.com/beazertheband/
 
-1. In cPanel, open **File Manager → public_html**.
-2. Upload `beazertheband-demo.zip` and choose **Extract**. You get a `beazertheband/` folder next to WordPress.
-3. Open **https://www.twellerstudios.com/beazertheband/**.
+**On AWS Lightsail (one command):** in the Lightsail console, open the instance → **Connect using SSH**, then paste:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/twellerstudios/AutoPoster/ccr-fddeaeb4-o3mwxx/clients/beazer/deploy/lightsail-deploy.sh | sudo bash
+```
+
+The script (`deploy/lightsail-deploy.sh`, worth reading first):
+- finds the WordPress folder (Bitnami or standard)
+- downloads `dist/beazertheband-demo.tar.gz` from this branch and puts it in `beazertheband/` beside WordPress
+- copies WordPress's file owner and permissions
+- lets the web server write only to `data/`
+
+Running it again updates the demo, keeps fan club sign-ups and backs up the previous version. If Cloudflare shows an old version, purge the cache for `/beazertheband/*`.
+
+**Or with cPanel / a file manager:** upload `beazertheband-demo.zip` into the WordPress folder and extract it.
 
 This doesn't change anything in the Tweller WordPress site. WordPress only handles addresses that aren't real folders, so the existing `/beazer/` concept page stays as it is.
 
 - All links are relative and every page carries `noindex`.
-- **Fan club and contact forms work.** `form.php` emails each submission to hello@twellerstudios.com and saves fan club sign-ups to `beazertheband/data/fan-club.csv.php`, which can't be opened from a browser. Download that file in File Manager and delete its first line to open it as a spreadsheet.
-- To change the email address, edit the `$notify` line at the top of `beazertheband/form.php`. If mail doesn't arrive, the host's PHP `mail()` is disabled: ask the host, or rebuild with `--notify` set to an address on the same domain.
+- **Fan club and contact forms work.** `form.php` emails each submission to hello@twellerstudios.com through the neighbouring WordPress install's own mailer, so it uses the site's SMTP plugin. That matters on Lightsail, where AWS blocks plain PHP mail. It also saves fan club sign-ups to `beazertheband/data/fan-club.csv.php`, which can't be opened from a browser. Download that file in File Manager and delete its first line to open it as a spreadsheet.
+- To change the email address, edit the `$notify` line at the top of `beazertheband/form.php`. If mail doesn't arrive, check that the WordPress site itself can send email (an SMTP plugin such as WP Mail SMTP).
 - Social icons show "official profile coming soon" and point to the fan club until real profile links exist. No official BEAZER accounts were found online.
 
 ## 2. Live site on the client's server (one-time setup)

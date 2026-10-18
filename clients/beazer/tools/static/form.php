@@ -8,6 +8,10 @@
  * on any server (data/.htaccess blocks it on Apache too). Download it with
  * the host's file manager and delete the first line to open it as a CSV.
  * Redirects back to the page with ?beazer=<status>.
+ *
+ * Mail goes through the WordPress install next to this folder when there is
+ * one (so it uses that site's SMTP setup; AWS Lightsail blocks plain PHP
+ * mail), otherwise through PHP mail().
  */
 
 $notify = '{{NOTIFY_EMAIL}}';
@@ -17,6 +21,17 @@ function bz_clean( $key, $max = 200 ) {
 	$v = trim( (string) ( $_POST[ $key ] ?? '' ) );
 	$v = str_replace( array( "\r", "\n" ), ' ', $v );
 	return mb_substr( strip_tags( $v ), 0, $max );
+}
+
+function bz_mail( $to, $subject, $body, $reply_to ) {
+	global $from;
+	$wp = dirname( __DIR__ ) . '/wp-load.php';
+	if ( is_readable( $wp ) ) {
+		require_once $wp;
+		return wp_mail( $to, $subject, $body, array( "Reply-To: $reply_to" ) );
+	}
+	$headers = "From: BEAZER website <$from>\r\nContent-Type: text/plain; charset=UTF-8\r\nReply-To: $reply_to\r\n";
+	return mail( $to, $subject, $body, $headers );
 }
 
 function bz_back( $status, $anchor ) {
@@ -39,8 +54,6 @@ $anchor = 'beazer_join' === $action ? 'join' : 'contact';
 if ( ! empty( $_POST['website'] ) ) { // honeypot: bots fill every field
 	bz_back( 'beazer_join' === $action ? 'joined' : 'sent', $anchor );
 }
-
-$headers = "From: BEAZER website <$from>\r\nContent-Type: text/plain; charset=UTF-8\r\n";
 
 if ( 'beazer_join' === $action ) {
 	$name    = bz_clean( 'fan_name' );
@@ -70,7 +83,7 @@ if ( 'beazer_join' === $action ) {
 		fputcsv( $fh, $row );
 		fclose( $fh );
 	}
-	@mail( $notify, 'New BEAZER fan club member', "Name: $name\nEmail: $email\nCountry: $country\n", $headers . "Reply-To: $email\r\n" );
+	@bz_mail( $notify, 'New BEAZER fan club member', "Name: $name\nEmail: $email\nCountry: $country\n", $email );
 	bz_back( 'joined', $anchor );
 }
 
@@ -82,7 +95,7 @@ if ( 'beazer_contact' === $action ) {
 	if ( ! $name || ! $email || ! $message ) {
 		bz_back( 'error', $anchor );
 	}
-	$sent = mail( $notify, "[BEAZER website] $topic enquiry from $name", "Name: $name\nEmail: $email\nTopic: $topic\n\n$message\n", $headers . "Reply-To: $email\r\n" );
+	$sent = bz_mail( $notify, "[BEAZER website] $topic enquiry from $name", "Name: $name\nEmail: $email\nTopic: $topic\n\n$message\n", $email );
 	bz_back( $sent ? 'sent' : 'mailfail', $anchor );
 }
 

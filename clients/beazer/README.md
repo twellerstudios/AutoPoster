@@ -4,6 +4,7 @@ Built from the approved homepage in the *BEAZER Official Website Developer Packa
 
 | Deliverable | What it is |
 |---|---|
+| `dist/beazer-demo-plugin.zip` | **Installable WordPress plugin** that serves the demo at /beazertheband/ (recommended). |
 | `dist/beazertheband-demo.zip` / `.tar.gz` | The full multi-page demo for **www.twellerstudios.com/beazertheband/**. Static pages plus a small form handler, completely separate from the Tweller WordPress site. |
 | `dist/beazer-wp-theme.zip` | WordPress theme for the band's own server. Install it once and the whole site sets itself up with the same content. |
 | `screenshots/` | Every page at desktop (1536), tablet (768) and iPhone (390), plus a side-by-side comparison with the mockup. |
@@ -13,7 +14,20 @@ Pages: **Home · Merch · Tour · Fan Club · Media · About · Contact**. The c
 
 ## 1. Demo on twellerstudios.com/beazertheband/
 
-**On AWS Lightsail (one command):** in the Lightsail console, open the instance → **Connect using SSH**, then paste:
+**Easiest: install the plugin** (`dist/beazer-demo-plugin.zip`):
+
+1. In WordPress, go to **Plugins → Add New → Upload Plugin**, choose the zip, then **Install** and **Activate**.
+2. Open **https://www.twellerstudios.com/beazertheband/**.
+3. Optional: under **BEAZER Demo → Settings**, set the email address for fan club and contact notifications. If you leave it empty, they go to the site admin email.
+
+The plugin only answers addresses that start with `/beazertheband/`. It creates no pages and doesn't change the theme, menus or settings, so the rest of the site, including the `/beazer/` concept page, stays as it is.
+- Sign-ups are listed under **BEAZER Demo** in the admin, with a CSV export button.
+- Emails go through the site's normal mailer, including any SMTP plugin.
+- Deactivating the plugin takes the demo offline.
+
+Source: `demo-plugin/beazer-demo/`. Rebuild its `site/` folder with `tools/export_static.py ... --mode plugin`.
+
+**Alternative, as plain files on AWS Lightsail (one command):** in the Lightsail console, open the instance → **Connect using SSH**, then paste:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/twellerstudios/AutoPoster/ccr-fddeaeb4-o3mwxx/clients/beazer/deploy/lightsail-deploy.sh | sudo bash

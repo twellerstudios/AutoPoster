@@ -1,0 +1,44 @@
+/* Self-hosted Google Fonts (SIL Open Font License), latin subset. */
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/barlow-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/barlow-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/barlow-condensed-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/barlow-condensed-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Noto Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 62.5% 100%;
+  font-display: swap;
+  src: url('../fonts/noto-serif-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Sedgwick Ave Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/sedgwick-ave-display-400.woff2') format('woff2');
+}

@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter
 
-SIZE = 1400          # square output
+SIZE = 1000          # square output (source shirts are ~575-1400 px)
 FILL = 0.84          # shirt fills 84% of the frame
 
 
@@ -56,6 +56,10 @@ def on_black(tee, offset, seed):
     img += rng.normal(0, 3.2, (SIZE, SIZE, 1))
     bg = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
     bg.paste((0, 0, 0), mask=shadow(tee, offset, 0.75, 34, 26))
+    # red rim light so dark shirts keep their silhouette on the dark stage
+    rim = Image.new("L", (SIZE, SIZE), 0)
+    rim.paste(tee.getchannel("A").filter(ImageFilter.MaxFilter(9)), offset)
+    bg.paste((150, 22, 18), mask=rim.filter(ImageFilter.GaussianBlur(22)).point(lambda v: int(v * 0.55)))
     bg.paste(tee, offset, tee)
     return bg
 

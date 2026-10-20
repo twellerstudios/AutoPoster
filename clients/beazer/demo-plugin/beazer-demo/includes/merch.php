@@ -22,7 +22,7 @@ function beazer_demo_merch_items() {
 	$file = BEAZER_DEMO_PATH . 'merch/products.php';
 	$list = is_readable( $file ) ? include $file : array( 'price' => '250', 'items' => array() );
 	foreach ( $list['items'] as &$item ) {
-		$item['slug'] = sanitize_title( $item['name'] );
+		$item['slug'] = sanitize_title( preg_replace( '/[^A-Za-z0-9]+/', ' ', $item['name'] ) ); // plain ASCII URLs
 	}
 	return $list;
 }

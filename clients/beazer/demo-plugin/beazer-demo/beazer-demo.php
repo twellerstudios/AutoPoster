@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       BEAZER Demo
  * Plugin URI:        https://www.twellerstudios.com/beazertheband/
- * Description:       Serves the multi-page BEAZER website demo at /beazertheband/ without touching the rest of the site: no pages, theme, menu or settings are changed. Fan club sign-ups are kept under BEAZER Demo and emailed through this site's mailer. Deactivate to take the demo offline.
- * Version:           1.0.0
+ * Description:       Serves the multi-page BEAZER website demo at /beazertheband/ without touching the rest of the site: no pages, theme, menu or settings are changed. Fan club sign-ups are kept under BEAZER Demo and emailed through this site's mailer. With WooCommerce active, the BEAZER T-shirts are added as products hidden from the main shop and sold from the demo's Merch page. Deactivate to take the demo offline.
+ * Version:           1.1.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Tweller Studios
@@ -16,8 +16,14 @@
 
 defined( 'ABSPATH' ) || exit;
 
+define( 'BEAZER_DEMO_VERSION', '1.1.0' );
 define( 'BEAZER_DEMO_SLUG', 'beazertheband' );
+define( 'BEAZER_DEMO_FILE', __FILE__ );
+define( 'BEAZER_DEMO_PATH', __DIR__ . '/' );
 define( 'BEAZER_DEMO_DIR', __DIR__ . '/site/' );
+define( 'BEAZER_DEMO_NOTIFY_DEFAULT', 'titanmusicgroupltd@gmail.com' );
+
+require __DIR__ . '/includes/merch.php';
 
 /** Pages bundled in site/, by the path after /beazertheband/. */
 function beazer_demo_pages() {
@@ -40,7 +46,7 @@ function beazer_demo_url( $path = '' ) {
  * Router: answer /beazertheband/... before WordPress looks for a post, and
  * leave every other URL alone.
  */
-add_action( 'init', 'beazer_demo_route', 1 );
+add_action( 'init', 'beazer_demo_route', 20 ); // after WooCommerce registers its products (init 5)
 function beazer_demo_route() {
 	if ( is_admin() || wp_doing_ajax() || wp_doing_cron() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
@@ -57,7 +63,15 @@ function beazer_demo_route() {
 	}
 	$slug  = trim( substr( $path, strlen( $prefix ) ), '/' );
 	$pages = beazer_demo_pages();
-	if ( isset( $pages[ $slug ] ) ) {
+	$tee   = 0 === strpos( $slug, 'merch/' ) ? beazer_demo_merch_find( substr( $slug, 6 ) ) : null;
+	if ( $tee ) { // product page: built on the Merch page's header, banner and footer
+		if ( '/' !== substr( $path, -1 ) ) {
+			wp_safe_redirect( beazer_demo_merch_url( $tee ), 301 );
+			exit;
+		}
+		$file   = $pages['merch'];
+		$status = 200;
+	} elseif ( isset( $pages[ $slug ] ) ) {
 		if ( '/' !== substr( $path, -1 ) ) { // keep relative links consistent
 			wp_safe_redirect( beazer_demo_url( $slug ), 301 );
 			exit;
@@ -78,6 +92,20 @@ function beazer_demo_route() {
 		'{{ASSETS}}' => esc_url( plugins_url( 'site/assets/', __FILE__ ) ),
 		'{{FORM}}'   => esc_url( admin_url( 'admin-post.php' ) ),
 	) );
+	if ( $tee ) {
+		$html = beazer_demo_product_page( $html, $tee );
+	} elseif ( 'merch' === $slug ) {
+		$grid = beazer_demo_merch_html(); // contains "$" (prices), so no preg_replace backreferences
+		$html = preg_replace_callback( '/<!--beazer-merch-->.*?<!--\/beazer-merch-->/s', function () use ( $grid ) {
+			return $grid;
+		}, $html );
+	}
+	if ( beazer_demo_wc_ready() ) { // header cart icon -> the store cart
+		$cart = esc_url( wc_get_cart_url() );
+		$html = preg_replace_callback( '/(<a class="tool tool-cart" href=")[^"]*"/', function ( $m ) use ( $cart ) {
+			return $m[1] . $cart . '"';
+		}, $html );
+	}
 
 	status_header( $status );
 	header( 'Content-Type: text/html; charset=utf-8' );
@@ -106,7 +134,7 @@ add_action( 'init', function () {
 } );
 
 function beazer_demo_notify_email() {
-	return get_option( 'beazer_demo_notify' ) ?: get_option( 'admin_email' );
+	return get_option( 'beazer_demo_notify' ) ?: BEAZER_DEMO_NOTIFY_DEFAULT;
 }
 
 function beazer_demo_field( $key, $max = 200 ) {
@@ -210,13 +238,32 @@ function beazer_demo_settings_page() {
 	<div class="wrap">
 		<h1><?php esc_html_e( 'BEAZER Demo', 'beazer-demo' ); ?></h1>
 		<p><?php esc_html_e( 'The demo is live at', 'beazer-demo' ); ?> <a href="<?php echo esc_url( beazer_demo_url() ); ?>" target="_blank"><?php echo esc_html( beazer_demo_url() ); ?></a>. <?php esc_html_e( 'Search engines are asked not to index it. Deactivate the plugin to take it offline.', 'beazer-demo' ); ?></p>
+		<h2><?php esc_html_e( 'Merch (WooCommerce)', 'beazer-demo' ); ?></h2>
+		<?php
+		$merch = beazer_demo_merch_items();
+		if ( ! beazer_demo_wc_ready() ) {
+			echo '<p>' . esc_html__( 'Activate WooCommerce to sell the BEAZER T-shirts. Until then the Merch page shows them as coming soon.', 'beazer-demo' ) . '</p>';
+		} else {
+			if ( isset( $_GET['synced'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+				echo '<div class="notice notice-success"><p>' . esc_html__( 'Merch products are up to date.', 'beazer-demo' ) . '</p></div>';
+			}
+			printf(
+				'<p>%s</p>',
+				esc_html( sprintf( /* translators: 1: count, 2: price */ __( '%1$d T-shirts at %2$s each, sizes S–2XL, in the "BEAZER Merch" category. They are hidden from the main shop and search, and sold from the demo\'s Merch page.', 'beazer-demo' ), count( $merch['items'] ), wp_strip_all_tags( wc_price( $merch['price'] ) ) ) )
+			);
+			printf( '<p><a class="button" href="%s">%s</a> <a class="button" href="%s">%s</a></p>',
+				esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=beazer_demo_sync' ), 'beazer_demo_sync' ) ), esc_html__( 'Re-sync merch products', 'beazer-demo' ),
+				esc_url( admin_url( 'edit.php?post_type=product&product_cat=beazer-merch' ) ), esc_html__( 'View products', 'beazer-demo' ) );
+		}
+		?>
+		<h2><?php esc_html_e( 'Notifications', 'beazer-demo' ); ?></h2>
 		<form method="post" action="options.php">
 			<?php settings_fields( 'beazer_demo' ); ?>
 			<table class="form-table" role="presentation">
 				<tr>
 					<th scope="row"><label for="beazer_demo_notify"><?php esc_html_e( 'Send form emails to', 'beazer-demo' ); ?></label></th>
-					<td><input type="email" class="regular-text" id="beazer_demo_notify" name="beazer_demo_notify" value="<?php echo esc_attr( get_option( 'beazer_demo_notify' ) ); ?>" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>">
-					<p class="description"><?php esc_html_e( 'Empty = the site admin email. Mail is sent with this site’s normal mailer (and any SMTP plugin).', 'beazer-demo' ); ?></p></td>
+					<td><input type="email" class="regular-text" id="beazer_demo_notify" name="beazer_demo_notify" value="<?php echo esc_attr( get_option( 'beazer_demo_notify' ) ); ?>" placeholder="<?php echo esc_attr( BEAZER_DEMO_NOTIFY_DEFAULT ); ?>">
+					<p class="description"><?php echo esc_html( sprintf( /* translators: %s: email */ __( 'Empty = %s (Titan Music). Mail is sent with this site’s normal mailer (and any SMTP plugin).', 'beazer-demo' ), BEAZER_DEMO_NOTIFY_DEFAULT ) ); ?></p></td>
 				</tr>
 			</table>
 			<?php submit_button(); ?>
@@ -224,6 +271,15 @@ function beazer_demo_settings_page() {
 	</div>
 	<?php
 }
+
+add_action( 'admin_post_beazer_demo_sync', function () {
+	if ( ! current_user_can( 'manage_options' ) || ! check_admin_referer( 'beazer_demo_sync' ) ) {
+		wp_die( 'Not allowed' );
+	}
+	beazer_demo_sync_merch();
+	wp_safe_redirect( admin_url( 'edit.php?post_type=beazer_demo_fan&page=beazer-demo&synced=1' ) );
+	exit;
+} );
 
 add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), function ( $links ) {
 	array_unshift( $links, sprintf( '<a href="%s" target="_blank">%s</a>', esc_url( beazer_demo_url() ), esc_html__( 'View demo', 'beazer-demo' ) ) );

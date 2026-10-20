@@ -40,7 +40,7 @@ if ( $video_id ) {
 		<?php elseif ( $video_id ) : ?>
 			<img src="<?php echo esc_url( 'https://i.ytimg.com/vi/' . $video_id . '/hqdefault.jpg' ); ?>" alt="" loading="lazy">
 		<?php else : ?>
-			<img src="<?php echo esc_url( beazer_asset( 'img/band/room-between-takes.webp' ) ); ?>" width="760" height="428" alt="<?php esc_attr_e( 'Beazer with arms up between takes at the first jam', 'beazer' ); ?>" loading="lazy">
+			<img src="<?php echo esc_url( beazer_asset( 'img/band/room-front-line.webp' ) ); ?>" width="760" height="428" alt="<?php esc_attr_e( 'Joel Beazer and Jerome at the first jam', 'beazer' ); ?>" loading="lazy">
 		<?php endif; ?>
 		<?php if ( 'div' === $tag ) : ?>
 			<span class="soon-badge"><?php esc_html_e( 'FIRST-JAM FILM · COMING SOON', 'beazer' ); ?></span>

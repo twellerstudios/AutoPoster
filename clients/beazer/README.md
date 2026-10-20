@@ -4,51 +4,32 @@ Built from the approved homepage in the *BEAZER Official Website Developer Packa
 
 | Deliverable | What it is |
 |---|---|
-| `dist/beazer-demo-plugin.zip` | **Installable WordPress plugin** that serves the demo at /beazertheband/ (recommended). |
-| `dist/beazertheband-demo.zip` / `.tar.gz` | The full multi-page demo for **www.twellerstudios.com/beazertheband/**. Static pages plus a small form handler, completely separate from the Tweller WordPress site. |
-| `dist/beazer-wp-theme.zip` | WordPress theme for the band's own server. Install it once and the whole site sets itself up with the same content. |
+| `dist/beazer-demo-<version>.zip` | **WordPress plugin for twellerstudios.com.** Serves the full demo at /beazertheband/ and sells the BEAZER T-shirts through WooCommerce. |
+| `dist/beazer-wp-theme.zip` | WordPress theme for the band's own server later. **Don't install it on twellerstudios.com**, because it would replace the site's theme. |
 | `screenshots/` | Every page at desktop (1536), tablet (768) and iPhone (390), plus a side-by-side comparison with the mockup. |
 | `brand-assets/` | Transparent PNGs of the red and silver logos keyed from the files supplied, plus a 512 px icon. |
 
-Pages: **Home · Merch · Tour · Fan Club · Media · About · Contact**. The content comes from the BEAZER concept page at twellerstudios.com/beazer/: the name story, the line-up, the team, the Hutt Shutts show (3 Oct 2026) and Titan Music management.
+Pages: **Home · Merch (+ a page per T-shirt) · Tour · Fan Club · Media · About · Contact**. The content comes from the BEAZER concept page at twellerstudios.com/beazer/: the name story, the line-up (Joel Beazer, Obasi Springer, Jerome), the team, the Hutt Shutts show and Titan Music management.
 
-## 1. Demo on twellerstudios.com/beazertheband/
+## 1. Demo on twellerstudios.com/beazertheband/ (plugin)
 
-**Easiest: install the plugin** (`dist/beazer-demo-plugin.zip`):
-
-1. In WordPress, go to **Plugins → Add New → Upload Plugin**, choose the zip, then **Install** and **Activate**.
+1. In WordPress, go to **Plugins → Add New → Upload Plugin**, choose `beazer-demo-<version>.zip`, then **Install Now** and **Activate**. To update later, upload the newer zip and choose **Replace current with uploaded**.
 2. Open **https://www.twellerstudios.com/beazertheband/**.
-3. Optional: under **BEAZER Demo → Settings**, set the email address for fan club and contact notifications. If you leave it empty, they go to the site admin email.
 
-The plugin only answers addresses that start with `/beazertheband/`. It creates no pages and doesn't change the theme, menus or settings, so the rest of the site, including the `/beazer/` concept page, stays as it is.
-- Sign-ups are listed under **BEAZER Demo** in the admin, with a CSV export button.
-- Emails go through the site's normal mailer, including any SMTP plugin.
-- Deactivating the plugin takes the demo offline.
+**What the plugin changes, and what it doesn't:**
+- It only answers addresses under `/beazertheband/`. It creates no pages and doesn't change the theme, menus or settings, so the rest of the site, including `/beazer/`, stays as it is.
+- **Forms:** fan club sign-ups are listed under **BEAZER Demo** in the admin, with CSV export. Sign-ups and contact messages are emailed to **titanmusicgroupltd@gmail.com** through the site's own mailer (change this under BEAZER Demo → Settings).
+- **Merch (needs WooCommerce):** on first admin page load after activation, the plugin creates the T-shirts as variable products: TT$250, sizes S–2XL, category "BEAZER Merch".
+  - They're **hidden from the main shop and search**, so the Tweller store looks the same.
+  - They're sold from `/beazertheband/merch/` and their own themed product pages, through the store's normal cart and checkout.
+  - Each shirt has two shots: on the site's dark red stage (used on the demo) and on white (the store image for cart, checkout and emails). Product pages have an On black / On white switch.
+  - BEAZER Demo → Settings → **Re-sync merch products** repairs them if they get edited.
+- **Social links:** Facebook, Instagram, TikTok, YouTube and Spotify go to the official BEAZER profiles. Apple Music shows "coming soon".
+- Deactivating the plugin takes the demo offline. The products stay in WooCommerce, still hidden.
 
-Source: `demo-plugin/beazer-demo/`. Rebuild its `site/` folder with `tools/export_static.py ... --mode plugin`.
-
-**Alternative, as plain files on AWS Lightsail (one command):** in the Lightsail console, open the instance → **Connect using SSH**, then paste:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/twellerstudios/AutoPoster/ccr-fddeaeb4-o3mwxx/clients/beazer/deploy/lightsail-deploy.sh | sudo bash
-```
-
-The script (`deploy/lightsail-deploy.sh`, worth reading first):
-- finds the WordPress folder (Bitnami or standard)
-- downloads `dist/beazertheband-demo.tar.gz` from this branch and puts it in `beazertheband/` beside WordPress
-- copies WordPress's file owner and permissions
-- lets the web server write only to `data/`
-
-Running it again updates the demo, keeps fan club sign-ups and backs up the previous version. If Cloudflare shows an old version, purge the cache for `/beazertheband/*`.
-
-**Or with cPanel / a file manager:** upload `beazertheband-demo.zip` into the WordPress folder and extract it.
-
-This doesn't change anything in the Tweller WordPress site. WordPress only handles addresses that aren't real folders, so the existing `/beazer/` concept page stays as it is.
-
-- All links are relative and every page carries `noindex`.
-- **Fan club and contact forms work.** `form.php` emails each submission to hello@twellerstudios.com through the neighbouring WordPress install's own mailer, so it uses the site's SMTP plugin. That matters on Lightsail, where AWS blocks plain PHP mail. It also saves fan club sign-ups to `beazertheband/data/fan-club.csv.php`, which can't be opened from a browser. Download that file in File Manager and delete its first line to open it as a spreadsheet.
-- To change the email address, edit the `$notify` line at the top of `beazertheband/form.php`. If mail doesn't arrive, check that the WordPress site itself can send email (an SMTP plugin such as WP Mail SMTP).
-- Social icons show "official profile coming soon" and point to the fan club until real profile links exist. No official BEAZER accounts were found online.
+Source: `demo-plugin/beazer-demo/`. To rebuild:
+- `tools/build_merch.py <tee images> demo-plugin/beazer-demo` makes the black and white shots and the product list
+- `tools/export_static.py <wp> wp-theme/beazer demo-plugin/beazer-demo/site --mode plugin` rebuilds the pages
 
 ## 2. Live site on the client's server (one-time setup)
 
@@ -74,15 +55,13 @@ If the host doesn't send email reliably, add an SMTP plugin (e.g. WP Mail SMTP).
 
 ## Confirm with BEAZER before launch
 
-- [ ] Official Spotify, Apple Music, YouTube, Instagram, TikTok and Facebook links (currently "coming soon")
-- [ ] **LISTEN NOW**: there's no released music yet, so it goes to the Media page. Point it at the debut record when it's out.
-- [ ] The homepage feature panel is a live recap of Hutt Shutts, 3 Oct 2026. Switch it to the debut record in **Customize → BEAZER → Feature panel**.
-- [ ] Featured video: a first-jam still marked "film coming soon". Add the YouTube link when the film is ready.
-- [ ] Missing photos. Mark Dobson's portrait shows "MD" initials for now. On the concept page, the photos of Mark, Joel singing and the full band are corrupted, and three gallery images ("Two guitars", "Rhythm", "Back to the kit") never loaded. Originals at higher resolution would sharpen every photo, since the current ones are 480–760 px.
-- [ ] Jerome's surname for the line-up
-- [ ] Merch details when ready
-- [ ] Notification email for the live site, plus full-resolution photos of Joel and a vector logo
-- [ ] Domain / DNS access for beazertheband.com when ready
+- [ ] Apple Music / iTunes link (currently "coming soon")
+- [ ] **LISTEN NOW**: point it at the debut record when released. Until then it goes to the Media page.
+- [ ] Homepage feature panel: switch from the Hutt Shutts live recap to the debut record when it's out
+- [ ] Featured video link (currently a first-jam still marked "film coming soon")
+- [ ] T-shirt names, and confirm TT$250 and sizes S–2XL
+- [ ] Higher-resolution originals of the band photos (current ones are 480–760 px), and Jerome's surname
+- [ ] Domain / DNS for beazertheband.com when ready
 
 ## Design notes and deliberate choices
 

@@ -26,13 +26,13 @@ function beazer_defaults() {
 		'hero_art_desktop' => '', // Empty = bundled approved artwork.
 		'hero_art_mobile'  => '',
 
-		// Platforms row: empty = "official profile coming soon".
-		'spotify_url'      => '',
+		// Platforms row: empty = "official profile coming soon" (Apple Music for now).
+		'spotify_url'      => 'https://open.spotify.com/artist/3kswRiVAXwC63MHPktvgL0',
 		'apple_url'        => '',
-		'youtube_url'      => '',
-		'instagram_url'    => '',
-		'tiktok_url'       => '',
-		'facebook_url'     => '',
+		'youtube_url'      => 'https://www.youtube.com/@beazerofficial',
+		'instagram_url'    => 'https://www.instagram.com/beazermusic',
+		'tiktok_url'       => 'https://www.tiktok.com/@beazermusic',
+		'facebook_url'     => 'https://www.facebook.com/BeazerBand',
 
 		// Feature panel (the approved NEW RELEASE slot): live recap until the debut record.
 		'release_label'    => 'LIVE',
@@ -53,7 +53,7 @@ function beazer_defaults() {
 		'watch_url'        => '', // Empty = the video, or the Media page.
 
 		// Site.
-		'contact_email'    => '',
+		'contact_email'    => 'titanmusicgroupltd@gmail.com',
 		'cart_url'         => '',
 		'footer_credit'    => 'Website by Tweller Studios',
 		'footer_credit_url' => 'https://twellerstudios.com/',

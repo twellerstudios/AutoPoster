@@ -3,7 +3,7 @@
  * Plugin Name:       BEAZER Demo
  * Plugin URI:        https://www.twellerstudios.com/beazertheband/
  * Description:       Serves the multi-page BEAZER website demo at /beazertheband/ without touching the rest of the site: no pages, theme, menu or settings are changed. Fan club sign-ups are kept under BEAZER Demo and emailed through this site's mailer. With WooCommerce active, the BEAZER T-shirts are added as products hidden from the main shop and sold from the demo's Merch page. Deactivate to take the demo offline.
- * Version:           1.1.0
+ * Version:           1.1.1
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Tweller Studios
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BEAZER_DEMO_VERSION', '1.1.0' );
+define( 'BEAZER_DEMO_VERSION', '1.1.1' );
 define( 'BEAZER_DEMO_SLUG', 'beazertheband' );
 define( 'BEAZER_DEMO_FILE', __FILE__ );
 define( 'BEAZER_DEMO_PATH', __DIR__ . '/' );

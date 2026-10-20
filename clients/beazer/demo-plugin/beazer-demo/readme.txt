@@ -3,7 +3,7 @@ Contributors: twellerstudios
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 
 Serves the multi-page BEAZER website demo at /beazertheband/ on this site.
@@ -26,6 +26,10 @@ If a page cache or Cloudflare shows an old version after an update, purge the
 cache for /beazertheband/*.
 
 == Changelog ==
+
+= 1.1.1 =
+* Merch cards on phones: separate panels, numbered, full-width size picker and larger Add to cart.
+* Updating no longer re-uploads unchanged T-shirt images.
 
 = 1.1.0 =
 * Official BEAZER social links; Apple Music marked coming soon.

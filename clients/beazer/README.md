@@ -4,7 +4,7 @@ Built from the approved homepage in the *BEAZER Official Website Developer Packa
 
 | Deliverable | What it is |
 |---|---|
-| `dist/beazer-demo-<version>.zip` | **WordPress plugin for twellerstudios.com.** Serves the full demo at /beazertheband/ and sells the BEAZER T-shirts through WooCommerce. |
+| `dist/beazer-demo-<version>.zip` (current: 1.1.1) | **WordPress plugin for twellerstudios.com.** Serves the full demo at /beazertheband/ and sells the BEAZER T-shirts through WooCommerce. |
 | `dist/beazer-wp-theme.zip` | WordPress theme for the band's own server later. **Don't install it on twellerstudios.com**, because it would replace the site's theme. |
 | `screenshots/` | Every page at desktop (1536), tablet (768) and iPhone (390), plus a side-by-side comparison with the mockup. |
 | `brand-assets/` | Transparent PNGs of the red and silver logos keyed from the files supplied, plus a 512 px icon. |

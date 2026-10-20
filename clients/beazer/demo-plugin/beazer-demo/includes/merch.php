@@ -38,7 +38,7 @@ function beazer_demo_merch_url( $item = null ) {
 /** Media library attachment for a bundled image, uploaded once and reused. */
 function beazer_demo_merch_image( $file, $title ) {
 	$source = BEAZER_DEMO_PATH . 'merch/' . $file;
-	$key    = 'beazer_demo_img_' . md5( $file . filemtime( $source ) );
+	$key    = 'beazer_demo_img_' . ( is_readable( $source ) ? md5_file( $source ) : md5( $file ) ); // same image = same attachment
 	$id     = (int) get_option( $key );
 	if ( $id && get_post( $id ) ) {
 		return $id;
@@ -183,12 +183,14 @@ function beazer_demo_sizes( $item, $product, $style ) {
 function beazer_demo_merch_card( $item, $list ) {
 	$product = beazer_demo_merch_product( $item );
 	$url     = esc_url( beazer_demo_merch_url( $item ) );
+	$number  = (int) substr( $item['sku'], -2 );
 	$card    = '<article class="bz-tee">';
+	$card   .= sprintf( '<p class="bz-tee-num">%02d<span>/ %02d</span></p>', $number, count( $list['items'] ) );
 	$card   .= sprintf( '<a class="bz-tee-img" href="%s"><img src="%s" alt="%s" loading="lazy"></a>', $url, esc_url( beazer_demo_merch_img( $item, $product, 'black' ) ), esc_attr( $item['name'] ) );
 	$card   .= sprintf( '<h3><a href="%s">%s</a></h3>', $url, esc_html( $item['name'] ) );
 	$card   .= sprintf( '<p class="bz-tee-price">%s</p>', beazer_demo_price_html( $list, $product ) );
 	if ( $product && $product->is_purchasable() ) {
-		$card .= sprintf( '<form class="bz-tee-buy" method="get" action="%s">%s<button class="btn btn-red" type="submit">Add to cart</button></form>', esc_url( wc_get_cart_url() ), beazer_demo_sizes( $item, $product, 'select' ) );
+		$card .= sprintf( '<form class="bz-tee-buy" method="get" action="%s">%s<button class="btn btn-red" type="submit">Add to cart</button></form><a class="bz-tee-more" href="%s">View details</a>', esc_url( wc_get_cart_url() ), beazer_demo_sizes( $item, $product, 'select' ), $url );
 	} else {
 		$card .= '<p class="bz-tee-soon">Coming soon</p>';
 	}

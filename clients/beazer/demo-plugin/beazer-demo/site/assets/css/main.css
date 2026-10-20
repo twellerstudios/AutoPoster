@@ -1107,3 +1107,36 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .bz-product-notes li { position: relative; padding-left: 18px; font: 500 15px var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: #cfc8c8; }
 .bz-product-notes li::before { content: ""; position: absolute; left: 0; top: .5em; width: 8px; height: 3px; background: var(--red); }
 .bz-more-link { margin-top: 26px; text-align: center; max-width: none; }
+
+/* Merch cards: number, details link, and a roomier stacked layout on phones */
+.bz-tee { position: relative; border-top: 3px solid var(--red); }
+.bz-tee-num { margin: 0 0 10px; font: 600 15px var(--font-display); letter-spacing: .2em; color: var(--red-bright); }
+.bz-tee-num span { margin-left: 6px; color: var(--muted); }
+.bz-tee-more { margin-top: 12px; font: 600 14px var(--font-display); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); text-decoration: none; text-align: center; }
+.bz-tee-more:hover { color: #fff; }
+@media (max-width: 759.98px) {
+	.bz-tees { gap: 30px; }
+	.bz-tee {
+		padding: 18px 18px 22px;
+		background: linear-gradient(180deg, #1a0909 0, #0d0505 100%);
+		border: 1px solid #5a2a2a;
+		border-top: 4px solid var(--red);
+		box-shadow: 0 14px 34px rgba(0, 0, 0, .8), 0 0 0 1px rgba(0, 0, 0, .6);
+	}
+	.bz-tee-num { font-size: 16px; }
+	.inner-content .bz-tee h3 { font-size: 24px; margin-bottom: 8px; }
+	.bz-tee-price { font-size: 30px; margin-bottom: 16px; }
+	.bz-tee-buy { flex-direction: column; gap: 12px; }
+	.bz-tee-buy select {
+		flex: none;
+		height: 56px;
+		padding: 0 16px;
+		font-size: 20px;
+		letter-spacing: .08em;
+		background: #0b0606 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") right 18px center / 14px 9px no-repeat;
+		-webkit-appearance: none;
+		appearance: none;
+	}
+	.bz-tee-buy .btn { flex: none; height: 62px; font-size: 26px; letter-spacing: .08em; }
+	.bz-tee-more { margin-top: 16px; padding: 12px; border: 1px solid #3a2a2a; font-size: 16px; color: #ddd; }
+}
